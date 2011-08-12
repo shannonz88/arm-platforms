@@ -146,10 +146,12 @@ static void ct_ca15x4_smp_enable(unsigned int max_cpus)
 #endif
 
 static struct ct_id ct_ca15x4_ids[] = {
+#ifndef CONFIG_ARCH_VEXPRESS_CA9X4_RS1
 	{ /* Old model */
 		.id	= 0x0c000000,
 		.mask	= V2M_CT_ID_MASK,
 	},
+#endif
 	{ /* New model */
 		.id	= 0x14000000,
 		.mask	= V2M_CT_ID_MASK,

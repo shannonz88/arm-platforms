@@ -46,4 +46,10 @@ config ARCH_VEXPRESS_CA5S
 	select CPU_V7
 	select ARM_GIC
 
+config ARCH_VEXPRESS_CA9X4_RS1
+	bool "Versatile Express Cortex-A9x4 tile model (FastModel)"
+	depends on VEXPRESS_EXTENDED_MEMORY_MAP && EXPERIMENTAL
+	select CPU_V7
+	select ARM_GIC
+
 endmenu

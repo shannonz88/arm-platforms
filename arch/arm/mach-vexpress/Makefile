@@ -5,6 +5,7 @@
 obj-y					:= v2m.o
 obj-$(CONFIG_ARCH_VEXPRESS_CA5S)	+= ct-ca5s.o
 obj-$(CONFIG_ARCH_VEXPRESS_CA9X4)	+= ct-ca9x4.o
+obj-$(CONFIG_ARCH_VEXPRESS_CA9X4_RS1)	+= ct-ca9x4-rs1.o
 obj-$(CONFIG_ARCH_VEXPRESS_CA15X4)	+= ct-ca15x4.o
 obj-$(CONFIG_SMP)			+= platsmp.o
 obj-$(CONFIG_HOTPLUG_CPU)		+= hotplug.o
