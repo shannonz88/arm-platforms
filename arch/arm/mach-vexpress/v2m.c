@@ -354,8 +354,12 @@ static void v2m_clcd_enable(struct clcd_fb *fb)
 	v2m_cfg_write(SYS_CFG_MUXFPGA | SYS_CFG_SITE_MB, 0);
 #ifdef CONFIG_ARCH_VEXPRESS_CA15X4
 	/* work around model bug */
-	if (ct_desc == &ct_ca15x4_desc ||
-	    ct_desc == &ct_ca9x4_rs1_desc)
+	if (ct_desc == &ct_ca15x4_desc)
+		return;
+#endif
+#ifdef CONFIG_ARCH_VEXPRESS_CA9X4_RS1
+	/* work around model bug */
+	if (ct_desc == &ct_ca9x4_rs1_desc)
 		return;
 #endif
 	v2m_cfg_write(SYS_CFG_DVIMODE | SYS_CFG_SITE_MB, 2);
