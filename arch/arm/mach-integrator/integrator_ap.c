@@ -362,15 +362,15 @@ static void integrator_clocksource_init(u32 khz)
 {
 	struct clocksource *cs = &clocksource_timersp;
 	void __iomem *base = clksrc_base;
-	u32 ctrl = TIMER_CTRL_ENABLE;
+	u32 ctrl = TIMER_CTRL_ENABLE | TIMER_CTRL_PERIODIC;
 
 	if (khz >= 1500) {
 		khz /= 16;
-		ctrl = TIMER_CTRL_DIV16;
+		ctrl |= TIMER_CTRL_DIV16;
 	}
 
-	writel(ctrl, base + TIMER_CTRL);
 	writel(0xffff, base + TIMER_LOAD);
+	writel(ctrl, base + TIMER_CTRL);
 
 	clocksource_register_khz(cs, khz);
 }
