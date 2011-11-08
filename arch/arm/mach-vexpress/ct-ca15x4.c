@@ -160,6 +160,10 @@ static struct ct_id ct_ca15x4_ids[] = {
 		.id	= 0x14000217,
 		.mask	= V2M_CT_ID_MASK,
 	},
+	{ /* HBI-0237A Core Tile */
+		.id	= 0x14000237,
+		.mask	= V2M_CT_ID_MASK,
+	},
 	{ },
 };
 
