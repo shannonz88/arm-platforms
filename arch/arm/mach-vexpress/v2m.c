@@ -53,6 +53,7 @@ static struct map_desc v2m_io_desc[] __initdata = {
 	},
 };
 
+#ifdef CONFIG_LOCAL_TIMERS
 static int __cpuinit v2m_arch_timer_setup(struct clock_event_device *evt)
 {
 	int err;
@@ -70,6 +71,9 @@ static int __cpuinit v2m_arch_timer_setup(struct clock_event_device *evt)
 
 	return 0;
 }
+#else
+#define v2m_arch_timer_setup	NULL
+#endif
 
 static void v2m_arch_timer_teardown(struct clock_event_device *evt)
 {
