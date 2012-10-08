@@ -31,6 +31,10 @@
 	__val;								\
 })
 
+#define ARM_CPU_IMP_ARM		0x41
+
+#define ARM_CPU_PART_CORTEX_A57	0xD0F0
+
 /*
  * The CPU ID never changes at run time, so we might as well tell the
  * compiler that it's constant.  Use this function to read the CPU ID
@@ -39,6 +43,16 @@
 static inline u32 __attribute_const__ read_cpuid_id(void)
 {
 	return read_cpuid(ID_MIDR_EL1);
+}
+
+static inline unsigned int __attribute_const__ read_cpuid_implementor(void)
+{
+	return (read_cpuid_id() & 0xFF000000) >> 24;
+}
+
+static inline unsigned int __attribute_const__ read_cpuid_part_number(void)
+{
+	return (read_cpuid_id() & 0xFFF0);
 }
 
 static inline u32 __attribute_const__ read_cpuid_cachetype(void)
