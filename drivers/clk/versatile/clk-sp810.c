@@ -11,13 +11,12 @@
  * Copyright (C) 2012 ARM Limited
  */
 
+#include <linux/amba/sp810.h>
 #include <linux/clkdev.h>
 #include <linux/clk-provider.h>
 #include <linux/err.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
-
-#include <asm/hardware/sp810.h>
 
 #define to_clk_sp810_timerclken(_hw) \
 		container_of(_hw, struct clk_sp810_timerclken, hw)
