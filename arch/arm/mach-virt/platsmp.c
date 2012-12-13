@@ -21,8 +21,6 @@
 #include <linux/smp.h>
 #include <linux/of.h>
 
-#include <linux/irqchip/arm-gic.h>
-
 #include <asm/psci.h>
 #include <asm/smp_plat.h>
 
@@ -47,7 +45,6 @@ static int __cpuinit virt_boot_secondary(unsigned int cpu,
 
 static void __cpuinit virt_secondary_init(unsigned int cpu)
 {
-	gic_secondary_init(0);
 }
 
 struct smp_operations __initdata virt_smp_ops = {
