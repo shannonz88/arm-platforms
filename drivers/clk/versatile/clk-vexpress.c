@@ -78,9 +78,13 @@ static const __initconst struct of_device_id vexpress_clk_match[] = {
 	{}
 };
 
-void __init vexpress_clk_of_init(void)
+int __init vexpress_clk_of_init(void)
 {
 	of_clk_init(vexpress_clk_match);
+	return 0;
 }
+#ifdef CONFIG_ARM64
+arch_initcall(vexpress_clk_of_init);
+#endif
 
 #endif

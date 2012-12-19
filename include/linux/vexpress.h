@@ -116,6 +116,6 @@ struct clk *vexpress_osc_setup(struct device *dev);
 void vexpress_osc_of_setup(struct device_node *node);
 
 void vexpress_clk_init(void __iomem *sp810_base);
-void vexpress_clk_of_init(void);
+int vexpress_clk_of_init(void);
 
 #endif
