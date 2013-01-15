@@ -32,6 +32,8 @@ config ARM64
 	select OF
 	select OF_EARLY_FLATTREE
 	select PERF_USE_VMALLOC
+	select POWER_RESET
+	select POWER_SUPPLY
 	select RTC_LIB
 	select SPARSE_IRQ
 	select SYSCTL_EXCEPTION_TRACE
@@ -107,6 +109,7 @@ config ARCH_VEXPRESS
 	select ARCH_REQUIRE_GPIOLIB
 	select COMMON_CLK_VERSATILE
 	select VEXPRESS_CONFIG
+	select VEXPRESS_RESET
 	help
 	  This enables support for the ARMv8 software model (Versatile
 	  Express).
