@@ -688,6 +688,13 @@ config CPU_ENDIAN_BE8
 	help
 	  Support for the BE-8 (big-endian) mode on ARMv6 and ARMv7 processors.
 
+config CPU_BE8_BOOT_LE
+	bool "Boot BE system from LE loader"
+	depends on CPU_ENDIAN_BE8
+	help
+	  Support for running BE-8 (big-endian) from a boot environment that is
+	  running in LE mode.
+
 config CPU_ENDIAN_BE32
 	bool
 	depends on CPU_BIG_ENDIAN
