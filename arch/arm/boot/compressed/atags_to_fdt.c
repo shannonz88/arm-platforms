@@ -142,7 +142,7 @@ int atags_to_fdt(void *atag_list, void *fdt, int total_space)
 		} else if (atag->hdr.tag == atag32_to_cpu(ATAG_INITRD2)) {
 			uint32_t initrd_start, initrd_size;
 			initrd_start = atag32_to_cpu(atag->u.initrd.start);
-			initrd_size = atag32_to_cpu(____atag->u.initrd.size);
+			initrd_size = atag32_to_cpu(atag->u.initrd.size);
 			setprop_cell(fdt, "/chosen", "linux,initrd-start",
 					initrd_start);
 			setprop_cell(fdt, "/chosen", "linux,initrd-end",
