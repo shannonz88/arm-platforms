@@ -333,6 +333,9 @@ ENTRY(secondary_startup)
 	 * the processor type - there is no need to check the machine type
 	 * as it has already been validated by the primary processor.
 	 */
+#ifdef CONFIG_CPU_BE8_BOOT_LE
+	setend	be				@ if system starts LE, go to BE-8
+#endif
 #ifdef CONFIG_ARM_VIRT_EXT
 	bl	__hyp_stub_install_secondary
 #endif
