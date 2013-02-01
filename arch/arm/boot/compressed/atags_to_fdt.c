@@ -108,9 +108,9 @@ int atags_to_fdt(void *atag_list, void *fdt, int total_space)
 	       return 0;
 
 	/* validate the ATAG */
-	if (atag->hdr.tag != ATAG_CORE ||
-	    (atag->hdr.size != tag_size(tag_core) &&
-	     atag->hdr.size != 2))
+	if (atag->hdr.tag != atag32_to_cpu(ATAG_CORE) ||
+	    (atag->hdr.size != atag32_to_cpu(tag_size(tag_core)) &&
+	     atag->hdr.size != atag32_to_cpu(2)))
 		return 1;
 
 	/* let's give it all the room it could need */
@@ -132,17 +132,17 @@ int atags_to_fdt(void *atag_list, void *fdt, int total_space)
 			else
 				setprop_string(fdt, "/chosen", "bootargs",
 					       atag->u.cmdline.cmdline);
-		} else if (atag->hdr.tag == ATAG_MEM) {
+		} else if (atag->hdr.tag == atag32_to_cpu(ATAG_MEM)) {
 			if (memcount >= sizeof(mem_reg_property)/4)
 				continue;
-			if (!atag->u.mem.size)
+			if (!atag32_to_cpu(atag->u.mem.size))
 				continue;
-			mem_reg_property[memcount++] = cpu_to_fdt32(atag->u.mem.start);
-			mem_reg_property[memcount++] = cpu_to_fdt32(atag->u.mem.size);
-		} else if (atag->hdr.tag == ATAG_INITRD2) {
+			mem_reg_property[memcount++] = cpu_to_fdt32(atag32_to_cpu(atag->u.mem.start));
+			mem_reg_property[memcount++] = cpu_to_fdt32(atag32_to_cpu(atag->u.mem.size));
+		} else if (atag->hdr.tag == atag32_to_cpu(ATAG_INITRD2)) {
 			uint32_t initrd_start, initrd_size;
-			initrd_start = atag->u.initrd.start;
-			initrd_size = atag->u.initrd.size;
+			initrd_start = atag32_to_cpu(atag->u.initrd.start);
+			initrd_size = atag32_to_cpu(____atag->u.initrd.size);
 			setprop_cell(fdt, "/chosen", "linux,initrd-start",
 					initrd_start);
 			setprop_cell(fdt, "/chosen", "linux,initrd-end",
