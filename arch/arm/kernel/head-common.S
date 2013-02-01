@@ -21,6 +21,12 @@
 #define OF_DT_MAGIC 0xedfe0dd0 /* 0xd00dfeed in big-endian */
 #endif
 
+#ifdef CONFIG_CPU_BE8_BOOT_LE
+#define BE8_LE(x...)	x
+#else
+#define BE8_LE(x...)
+#endif
+
 /*
  * Exception handling.  Something went wrong and we can't proceed.  We
  * ought to tell the user, but since we don't have any guarantee that
@@ -53,10 +59,12 @@ __vet_atags:
 	cmp	r5, r6
 	beq	2f
 #endif
+BE8_LE(	rev	r5, r5 )
 	cmp	r5, #ATAG_CORE_SIZE		@ is first tag ATAG_CORE?
 	cmpne	r5, #ATAG_CORE_SIZE_EMPTY
 	bne	1f
 	ldr	r5, [r2, #4]
+BE8_LE(	rev	r5, r5 )
 	ldr	r6, =ATAG_CORE
 	cmp	r5, r6
 	bne	1f
