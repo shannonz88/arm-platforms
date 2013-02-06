@@ -129,7 +129,11 @@ start:
  THUMB(		adr	r12, BSYM(1f)	)
  THUMB(		bx	r12		)
 
+#ifdef CONFIG_CPU_BE8_BOOT_LE
+		.word	0x18286f01
+#else
 		.word	0x016f2818		@ Magic numbers to help the loader
+#endif
 		.word	start			@ absolute load/run zImage address
 		.word	_edata			@ zImage end address
  THUMB(		.thumb			)
