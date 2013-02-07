@@ -13,3 +13,10 @@ config POWER_RESET_GPIO
 	  This driver supports turning off your board via a GPIO line.
 	  If your board needs a GPIO high/low to power down, say Y and
 	  create a binding in your devicetree.
+
+config VEXPRESS_RESET
+	bool
+	depends on POWER_RESET
+	help
+	  Power off and reset support for the ARM Ltd. Versatile
+	  Express boards.

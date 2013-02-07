@@ -336,14 +336,15 @@ void __init vexpress_sysreg_early_init(void __iomem *base)
 
 void __init vexpress_sysreg_of_early_init(void)
 {
-	struct device_node *node = of_find_compatible_node(NULL, NULL,
-			"arm,vexpress-sysreg");
+	struct device_node *node;
 
+	if (vexpress_sysreg_base)
+		return;
+
+	node = of_find_compatible_node(NULL, NULL, "arm,vexpress-sysreg");
 	if (node) {
 		vexpress_sysreg_base = of_iomap(node, 0);
 		vexpress_sysreg_setup(node);
-	} else {
-		pr_info("vexpress-sysreg: No Device Tree node found.");
 	}
 }
 
@@ -478,6 +479,7 @@ static struct platform_driver vexpress_sysreg_driver = {
 
 static int __init vexpress_sysreg_init(void)
 {
+	vexpress_sysreg_of_early_init();
 	return platform_driver_register(&vexpress_sysreg_driver);
 }
 core_initcall(vexpress_sysreg_init);
