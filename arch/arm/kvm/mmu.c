@@ -510,12 +510,13 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	pte_t new_pte, *ptep;
 	pfn_t pfn;
 	int ret;
-	bool write_fault, writable;
+	bool writable;
+	enum kvm_fault_type fault_type;
 	unsigned long mmu_seq;
 	struct kvm_mmu_memory_cache *memcache = &vcpu->arch.mmu_page_cache;
 
-	write_fault = kvm_is_write_fault(kvm_vcpu_get_hsr(vcpu));
-	if (fault_status == FSC_PERM && !write_fault) {
+	fault_type = kvm_decode_fault(kvm_vcpu_get_hsr(vcpu));
+	if (fault_status == FSC_PERM && fault_type == KVM_READ_FAULT) {
 		kvm_err("Unexpected L2 read permission error\n");
 		return -EFAULT;
 	}
@@ -537,7 +538,8 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	 */
 	smp_rmb();
 
-	pfn = gfn_to_pfn_prot(vcpu->kvm, gfn, write_fault, &writable);
+	pfn = gfn_to_pfn_prot(vcpu->kvm, gfn,
+			      fault_type == KVM_WRITE_FAULT, &writable);
 	if (is_error_pfn(pfn))
 		return -EFAULT;
 

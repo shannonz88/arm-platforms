@@ -58,15 +58,21 @@ static inline void kvm_set_pte(pte_t *pte, pte_t new_pte)
 	flush_pmd_entry(pte);
 }
 
-static inline bool kvm_is_write_fault(unsigned long hsr)
+enum kvm_fault_type {
+	KVM_READ_FAULT,
+	KVM_WRITE_FAULT,
+	KVM_EXEC_FAULT,
+};
+
+static inline enum kvm_fault_type kvm_decode_fault(unsigned long hsr)
 {
 	unsigned long hsr_ec = hsr >> HSR_EC_SHIFT;
 	if (hsr_ec == HSR_EC_IABT)
-		return false;
+		return KVM_EXEC_FAULT;
 	else if ((hsr & HSR_ISV) && !(hsr & HSR_WNR))
-		return false;
+		return KVM_READ_FAULT;
 	else
-		return true;
+		return KVM_WRITE_FAULT;
 }
 
 static inline void kvm_clean_pgd(pgd_t *pgd)
