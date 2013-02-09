@@ -409,20 +409,19 @@ void kvm_free_stage2_pgd(struct kvm *kvm)
 }
 
 
-static int stage2_set_pte(struct kvm *kvm, struct kvm_mmu_memory_cache *cache,
-			  phys_addr_t addr, const pte_t *new_pte, bool iomap)
+static pte_t *stage2_get_pte(struct kvm *kvm, struct kvm_mmu_memory_cache *cache,
+			     phys_addr_t addr)
 {
 	pgd_t *pgd;
 	pud_t *pud;
 	pmd_t *pmd;
-	pte_t *pte, old_pte;
 
 	/* Create 2nd stage page table mapping - Level 1 */
 	pgd = kvm->arch.pgd + pgd_index(addr);
 	pud = pud_offset(pgd, addr);
 	if (pud_none(*pud)) {
 		if (!cache)
-			return 0; /* ignore calls from kvm_set_spte_hva */
+			return NULL; /* ignore calls from kvm_set_spte_hva */
 		pmd = mmu_memory_cache_alloc(cache);
 		pud_populate(NULL, pud, pmd);
 		get_page(virt_to_page(pud));
@@ -432,15 +431,27 @@ static int stage2_set_pte(struct kvm *kvm, struct kvm_mmu_memory_cache *cache,
 
 	/* Create 2nd stage page table mapping - Level 2 */
 	if (pmd_none(*pmd)) {
+		pte_t *pte;
+
 		if (!cache)
-			return 0; /* ignore calls from kvm_set_spte_hva */
+			return NULL; /* ignore calls from kvm_set_spte_hva */
 		pte = mmu_memory_cache_alloc(cache);
 		kvm_clean_pte(pte);
 		pmd_populate_kernel(NULL, pmd, pte);
 		get_page(virt_to_page(pmd));
 	}
 
-	pte = pte_offset_kernel(pmd, addr);
+	return pte_offset_kernel(pmd, addr);
+}
+
+static int stage2_set_pte(struct kvm *kvm, struct kvm_mmu_memory_cache *cache,
+			  phys_addr_t addr, const pte_t *new_pte, bool iomap)
+{
+	pte_t *pte, old_pte;
+
+	pte = stage2_get_pte(kvm, cache, addr);
+	if (!pte)
+		return 0;
 
 	if (iomap && pte_present(*pte))
 		return -EFAULT;
