@@ -458,18 +458,6 @@ static void stage2_set_pte_at(struct kvm *kvm, phys_addr_t addr,
 		get_page(virt_to_page(pte));
 }
 
-static int stage2_set_pte(struct kvm *kvm, struct kvm_mmu_memory_cache *cache,
-			  phys_addr_t addr, const pte_t *new_pte)
-{
-	pte_t *pte;
-
-	pte = stage2_get_pte(kvm, cache, addr);
-	if (pte)
-		stage2_set_pte_at(kvm, addr, pte, *new_pte);
-
-	return 0;
-}
-
 /**
  * kvm_phys_addr_ioremap - map a device range to guest IPA
  *
@@ -726,8 +714,11 @@ int kvm_unmap_hva_range(struct kvm *kvm,
 static void kvm_set_spte_handler(struct kvm *kvm, gpa_t gpa, void *data)
 {
 	pte_t *pte = (pte_t *)data;
+	pte_t *ptep;
 
-	stage2_set_pte(kvm, NULL, gpa, pte);
+	ptep = stage2_get_pte(kvm, NULL, gpa);
+	if (ptep)
+		stage2_set_pte_at(kvm, gpa, ptep, *pte);
 }
 
 
