@@ -543,8 +543,6 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	if (is_error_pfn(pfn))
 		return -EFAULT;
 
-	coherent_icache_guest_page(vcpu->kvm, gfn);
-
 	spin_lock(&vcpu->kvm->mmu_lock);
 	if (mmu_notifier_retry(vcpu->kvm, mmu_seq))
 		goto out_unlock;
@@ -558,6 +556,11 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	if (writable) {
 		kvm_set_s2pte_writable(&new_pte);
 		kvm_set_pfn_dirty(pfn);
+	}
+
+	if (fault_type == KVM_EXEC_FAULT) {
+		kvm_set_s2pte_exec(&new_pte);
+		coherent_icache_guest_page(vcpu->kvm, gfn);
 	}
 
 	stage2_set_pte_at(vcpu->kvm, fault_ipa, ptep, new_pte);

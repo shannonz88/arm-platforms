@@ -95,6 +95,11 @@ static inline void kvm_set_s2pte_writable(pte_t *pte)
 	pte_val(*pte) |= L_PTE_S2_RDWR;
 }
 
+static inline void kvm_set_s2pte_exec(pte_t *pte)
+{
+	pte_val(*pte) &= ~L_PTE_XN;
+}
+
 struct kvm;
 
 static inline void coherent_icache_guest_page(struct kvm *kvm, gfn_t gfn)
