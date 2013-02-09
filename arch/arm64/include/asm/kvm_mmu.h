@@ -92,17 +92,23 @@ void kvm_clear_hyp_idmap(void);
 
 #define	kvm_set_pte(ptep, pte)		set_pte(ptep, pte)
 
-static inline bool kvm_is_write_fault(unsigned long esr)
+enum kvm_fault_type {
+	KVM_READ_FAULT,
+	KVM_WRITE_FAULT,
+	KVM_EXEC_FAULT,
+};
+
+static inline enum kvm_fault_type kvm_decode_fault(unsigned long esr)
 {
 	unsigned long esr_ec = esr >> ESR_EL2_EC_SHIFT;
 
 	if (esr_ec == ESR_EL2_EC_IABT)
-		return false;
+		return KVM_EXEC_FAULT;
 
 	if ((esr & ESR_EL2_ISV) && !(esr & ESR_EL2_WNR))
-		return false;
+		return KVM_READ_FAULT;
 
-	return true;
+	return KVM_WRITE_FAULT;
 }
 
 static inline void kvm_clean_pgd(pgd_t *pgd) {}
@@ -112,6 +118,11 @@ static inline void kvm_clean_pte(pte_t *pte) {}
 static inline void kvm_set_s2pte_writable(pte_t *pte)
 {
 	pte_val(*pte) |= PTE_S2_RDWR;
+}
+
+static inline void kvm_set_s2pte_exec(pte_t *pte)
+{
+	pte_val(*pte) &= ~PTE_UXN;
 }
 
 struct kvm;
