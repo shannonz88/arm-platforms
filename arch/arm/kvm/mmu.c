@@ -519,7 +519,7 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 			  gfn_t gfn, struct kvm_memory_slot *memslot,
 			  unsigned long fault_status)
 {
-	pte_t new_pte;
+	pte_t new_pte, *ptep;
 	pfn_t pfn;
 	int ret;
 	bool write_fault, writable;
@@ -553,17 +553,24 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	if (is_error_pfn(pfn))
 		return -EFAULT;
 
-	new_pte = pfn_pte(pfn, PAGE_S2);
 	coherent_icache_guest_page(vcpu->kvm, gfn);
 
 	spin_lock(&vcpu->kvm->mmu_lock);
 	if (mmu_notifier_retry(vcpu->kvm, mmu_seq))
 		goto out_unlock;
+
+	ptep = stage2_get_pte(vcpu->kvm, memcache, fault_ipa);
+	if (pte_present(*ptep))
+		new_pte = *ptep;
+	else
+		new_pte = pfn_pte(pfn, PAGE_S2);
+
 	if (writable) {
 		kvm_set_s2pte_writable(&new_pte);
 		kvm_set_pfn_dirty(pfn);
 	}
-	stage2_set_pte(vcpu->kvm, memcache, fault_ipa, &new_pte);
+
+	stage2_set_pte_at(vcpu->kvm, fault_ipa, ptep, new_pte);
 
 out_unlock:
 	spin_unlock(&vcpu->kvm->mmu_lock);
