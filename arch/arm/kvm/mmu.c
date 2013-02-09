@@ -459,18 +459,13 @@ static void stage2_set_pte_at(struct kvm *kvm, phys_addr_t addr,
 }
 
 static int stage2_set_pte(struct kvm *kvm, struct kvm_mmu_memory_cache *cache,
-			  phys_addr_t addr, const pte_t *new_pte, bool iomap)
+			  phys_addr_t addr, const pte_t *new_pte)
 {
 	pte_t *pte;
 
 	pte = stage2_get_pte(kvm, cache, addr);
-	if (!pte)
-		return 0;
-
-	if (iomap && pte_present(*pte))
-		return -EFAULT;
-
-	stage2_set_pte_at(kvm, addr, pte, *new_pte);
+	if (pte)
+		stage2_set_pte_at(kvm, addr, pte, *new_pte);
 
 	return 0;
 }
@@ -495,6 +490,7 @@ int kvm_phys_addr_ioremap(struct kvm *kvm, phys_addr_t guest_ipa,
 	pfn = __phys_to_pfn(pa);
 
 	for (addr = guest_ipa; addr < end; addr += PAGE_SIZE) {
+		pte_t *ptep;
 		pte_t pte = pfn_pte(pfn, PAGE_S2_DEVICE);
 		kvm_set_s2pte_writable(&pte);
 
@@ -502,7 +498,11 @@ int kvm_phys_addr_ioremap(struct kvm *kvm, phys_addr_t guest_ipa,
 		if (ret)
 			goto out;
 		spin_lock(&kvm->mmu_lock);
-		ret = stage2_set_pte(kvm, &cache, addr, &pte, true);
+		ptep = stage2_get_pte(kvm, &cache, addr);
+		if (pte_present(*ptep))
+			ret = -EFAULT;
+		else
+			stage2_set_pte_at(kvm, addr, ptep, pte);
 		spin_unlock(&kvm->mmu_lock);
 		if (ret)
 			goto out;
@@ -563,7 +563,7 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 		kvm_set_s2pte_writable(&new_pte);
 		kvm_set_pfn_dirty(pfn);
 	}
-	stage2_set_pte(vcpu->kvm, memcache, fault_ipa, &new_pte, false);
+	stage2_set_pte(vcpu->kvm, memcache, fault_ipa, &new_pte);
 
 out_unlock:
 	spin_unlock(&vcpu->kvm->mmu_lock);
@@ -720,7 +720,7 @@ static void kvm_set_spte_handler(struct kvm *kvm, gpa_t gpa, void *data)
 {
 	pte_t *pte = (pte_t *)data;
 
-	stage2_set_pte(kvm, NULL, gpa, pte, false);
+	stage2_set_pte(kvm, NULL, gpa, pte);
 }
 
 
