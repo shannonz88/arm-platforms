@@ -153,6 +153,12 @@ config ARCH_HAS_CPUFREQ
 	  and that the relevant menu configurations are displayed for
 	  it.
 
+config ARCH_SUPPORTS_BIG_ENDIAN
+	bool
+	help
+	  Internal node to specify the architecture can run in Big Endian
+	  mode.
+
 config GENERIC_HWEIGHT
 	bool
 	default y
@@ -518,6 +524,7 @@ config ARCH_IXP4XX
 	bool "IXP4xx-based"
 	depends on MMU
 	select ARCH_HAS_DMA_SET_COHERENT_MASK
+	select ARCH_SUPPORTS_BIG_ENDIAN
 	select ARCH_REQUIRE_GPIOLIB
 	select CLKSRC_MMIO
 	select CPU_XSCALE

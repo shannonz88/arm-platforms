@@ -67,6 +67,10 @@ else
   endif
 endif
 
+ifeq ($(UIMAGE_LOADADDR),)
+    UIMAGE_LOADADDR=0x8000
+endif
+
 check_for_multiple_loadaddr = \
 if [ $(words $(UIMAGE_LOADADDR)) -gt 1 ]; then \
 	echo 'multiple load addresses: $(UIMAGE_LOADADDR)'; \
