@@ -13,13 +13,15 @@
  * GNU General Public License for more details.
  */
 
+.arch_extension virt
+
 		.macro	addruart, rp, rv, tmp
 		.endm
 
 		.macro	senduart,rd,rx
 		mov	\rx, r0
 		mov	r0, \rd
-		hvc	#0x7e57
+		hvc	#1
 		mov	r0, \rx
 		.endm
 

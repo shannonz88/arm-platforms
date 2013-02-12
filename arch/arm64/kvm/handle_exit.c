@@ -30,6 +30,11 @@ typedef int (*exit_handle_fn)(struct kvm_vcpu *, struct kvm_run *);
 
 static int handle_hvc(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
+	if ((kvm_vcpu_get_hsr(vcpu) & 0xffff) == 1) {
+		printk("%c", (int)*vcpu_reg(vcpu, 0));
+		return 1;
+	}
+
 	if (kvm_psci_call(vcpu))
 		return 1;
 
