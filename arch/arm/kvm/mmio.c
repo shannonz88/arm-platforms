@@ -33,28 +33,49 @@
  */
 int kvm_handle_mmio_return(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
-	unsigned long *dest;
 	unsigned int len;
 	int mask;
 
 	if (!run->mmio.is_write) {
-		dest = vcpu_reg(vcpu, vcpu->arch.mmio_decode.rt);
-		*dest = 0;
+		unsigned long data = 0;
 
 		len = run->mmio.len;
 		if (len > sizeof(unsigned long))
 			return -EINVAL;
 
-		memcpy(dest, run->mmio.data, len);
-
-		trace_kvm_mmio(KVM_TRACE_MMIO_READ, len, run->mmio.phys_addr,
-				*((u64 *)run->mmio.data));
+		switch (run->mmio.len) {
+		case 1:
+			data = run->mmio.data[0];
+			break;
+		case 2: {
+			u16 hword;
+			memcpy(&hword, run->mmio.data, len);
+			data = hword;
+			break;
+		}
+		case 4: {
+			u32 word;
+			memcpy(&word, run->mmio.data, len);
+			data = word;
+			break;
+		}
+		case 8: {
+			u64 dword;
+			memcpy(&dword, run->mmio.data, len);
+			data = dword;
+			break;
+		}
+		}
 
 		if (vcpu->arch.mmio_decode.sign_extend &&
 		    len < sizeof(unsigned long)) {
 			mask = 1U << ((len * 8) - 1);
-			*dest = (*dest ^ mask) - mask;
+			data = (data ^ mask) - mask;
 		}
+
+		trace_kvm_mmio(KVM_TRACE_MMIO_READ, len, run->mmio.phys_addr,
+			       data);
+		*vcpu_reg(vcpu, vcpu->arch.mmio_decode.rt) = vcpu_data_host_to_guest(vcpu, data, len);
 	}
 
 	return 0;
@@ -105,6 +126,7 @@ int io_mem_abort(struct kvm_vcpu *vcpu, struct kvm_run *run,
 		 phys_addr_t fault_ipa)
 {
 	struct kvm_exit_mmio mmio;
+	unsigned long data;
 	unsigned long rt;
 	int ret;
 
@@ -125,13 +147,43 @@ int io_mem_abort(struct kvm_vcpu *vcpu, struct kvm_run *run,
 	}
 
 	rt = vcpu->arch.mmio_decode.rt;
+	data = vcpu_data_guest_to_host(vcpu, *vcpu_reg(vcpu, rt), mmio.len);
+
 	trace_kvm_mmio((mmio.is_write) ? KVM_TRACE_MMIO_WRITE :
 					 KVM_TRACE_MMIO_READ_UNSATISFIED,
 			mmio.len, fault_ipa,
-			(mmio.is_write) ? *vcpu_reg(vcpu, rt) : 0);
+			(mmio.is_write) ? data : 0);
 
-	if (mmio.is_write)
-		memcpy(mmio.data, vcpu_reg(vcpu, rt), mmio.len);
+	if (mmio.is_write) {
+		void *datap = NULL;
+		union {
+			u8	byte;
+			u16	hword;
+			u32	word;
+			u64	dword;
+		} tmp;
+
+		switch (mmio.len) {
+		case 1:
+			tmp.byte	= data;
+			datap		= &tmp.byte;
+			break;
+		case 2:
+			tmp.hword	= data;
+			datap		= &tmp.hword;
+			break;
+		case 4:
+			tmp.word	= data;
+			datap		= &tmp.word;
+			break;
+		case 8:
+			tmp.dword	= data;
+			datap		= &tmp.dword;
+			break;
+		}
+
+		memcpy(mmio.data, datap, mmio.len);
+	}
 
 	if (vgic_handle_mmio(vcpu, run, &mmio))
 		return 1;
