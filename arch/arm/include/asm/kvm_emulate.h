@@ -156,4 +156,27 @@ static inline u8 kvm_vcpu_trap_get_fault(struct kvm_vcpu *vcpu)
 	return kvm_vcpu_get_hsr(vcpu) & HSR_FSC_TYPE;
 }
 
+static inline bool kvm_vcpu_is_be(struct kvm_vcpu *vcpu)
+{
+	return !!(*vcpu_cpsr(vcpu) & PSR_E_BIT);
+}
+
+static inline unsigned long vcpu_data_guest_to_host(struct kvm_vcpu *vcpu,
+						    unsigned long data)
+{
+	if (kvm_vcpu_is_be(vcpu))
+		return be32_to_cpu(data);
+	else
+		return le32_to_cpu(data);
+}
+
+static inline unsigned long vcpu_data_host_to_guest(struct kvm_vcpu *vcpu,
+						    unsigned long data)
+{
+	if (kvm_vcpu_is_be(vcpu))
+		return cpu_to_be32(data);
+	else
+		return cpu_to_le32(data);
+}
+
 #endif /* __ARM_KVM_EMULATE_H__ */
