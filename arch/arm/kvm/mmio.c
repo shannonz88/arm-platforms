@@ -51,10 +51,9 @@ int kvm_handle_mmio_return(struct kvm_vcpu *vcpu, struct kvm_run *run)
 			data = (data ^ mask) - mask;
 		}
 
-		data = vcpu_data_host_to_guest(vcpu, data);
 		trace_kvm_mmio(KVM_TRACE_MMIO_READ, len, run->mmio.phys_addr,
 			       data);
-		*vcpu_reg(vcpu, vcpu->arch.mmio_decode.rt) = data;
+		*vcpu_reg(vcpu, vcpu->arch.mmio_decode.rt) = vcpu_data_host_to_guest(vcpu, data);
 	}
 
 	return 0;
