@@ -432,6 +432,11 @@ choice
 		  Note that the system will appear to hang during boot if there
 		  is nothing connected to read from the DCC.
 
+	config DEBUG_HVC
+		bool "Kernel low-level debug output via HVC"
+		help
+		  For KVM only.
+
 	config DEBUG_SEMIHOSTING
 		bool "Kernel low-level debug output via semihosting I/O"
 		help
@@ -508,6 +513,7 @@ config DEBUG_LL_INCLUDE
 		DEBUG_VEXPRESS_UART0_CA9 || DEBUG_VEXPRESS_UART0_RS1
 	default "debug/tegra.S" if DEBUG_TEGRA_UART
 	default "debug/zynq.S" if DEBUG_ZYNQ_UART0 || DEBUG_ZYNQ_UART1
+	default "debug/hvc.S" if DEBUG_HVC
 	default "mach/debug-macro.S"
 
 config EARLY_PRINTK
