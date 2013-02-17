@@ -695,6 +695,14 @@ void vring_transport_features(struct virtio_device *vdev)
 			break;
 		case VIRTIO_RING_F_EVENT_IDX:
 			break;
+		case VIRTIO_RING_F_GUEST_LE:
+			if (cpu_to_le32(0xde7ec7ed) != 0xde7ec7ed)
+				clear_bit(i, vdev->features);
+			break;
+		case VIRTIO_RING_F_GUEST_BE:
+			if (cpu_to_be32(0xde7ec7ed) != 0xde7ec7ed)
+				clear_bit(i, vdev->features);
+			break;
 		default:
 			/* We don't understand this bit. */
 			clear_bit(i, vdev->features);
