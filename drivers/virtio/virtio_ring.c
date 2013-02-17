@@ -813,6 +813,14 @@ void vring_transport_features(struct virtio_device *vdev)
 			break;
 		case VIRTIO_RING_F_EVENT_IDX:
 			break;
+#ifdef __LITTLE_ENDIAN
+		case VIRTIO_RING_F_GUEST_LE:
+			break;
+#endif
+#ifdef __BIG_ENDIAN
+		case VIRTIO_RING_F_GUEST_BE:
+			break;
+#endif
 		default:
 			/* We don't understand this bit. */
 			clear_bit(i, vdev->features);
