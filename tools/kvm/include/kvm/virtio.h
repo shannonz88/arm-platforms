@@ -60,10 +60,15 @@ enum virtio_trans {
 	VIRTIO_MMIO,
 };
 
+#define VIRTIO_ENDIAN_HOST	0
+#define VIRTIO_ENDIAN_LE	1
+#define VIRTIO_ENDIAN_BE	2
+
 struct virtio_device {
 	bool			use_vhost;
 	void			*virtio;
 	struct virtio_ops	*ops;
+	u16			endian;
 };
 
 struct virtio_ops {
