@@ -58,6 +58,14 @@
  * at the end of the used ring. Guest should ignore the used->flags field. */
 #define VIRTIO_RING_F_EVENT_IDX		29
 
+/* The Host can advertise to support either or both endianness for the vring.
+ * If it advertise none, it is assumed to be able to handle the Guest
+ * endianness.
+ * The Guest can select either (but not both) endianness. If it selects none,
+ * it is assumed to be of an endianness compatible with the host. */
+#define VIRTIO_RING_F_GUEST_LE		30
+#define VIRTIO_RING_F_GUEST_BE		31
+
 /* Virtio ring descriptors: 16 bytes.  These can chain together via "next". */
 struct vring_desc {
 	/* Address (guest-physical). */
