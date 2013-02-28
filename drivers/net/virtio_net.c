@@ -1231,6 +1231,7 @@ static void virtnet_config_changed_work(struct work_struct *work)
 			      &v) < 0)
 		goto done;
 
+	v = le16_to_cpu(v);
 	if (v & VIRTIO_NET_S_ANNOUNCE) {
 		netdev_notify_peers(vi->dev);
 		virtnet_ack_link_announce(vi);
@@ -1453,6 +1454,7 @@ static int virtnet_probe(struct virtio_device *vdev)
 	err = virtio_config_val(vdev, VIRTIO_NET_F_MQ,
 				offsetof(struct virtio_net_config,
 				max_virtqueue_pairs), &max_queue_pairs);
+	max_queue_pairs = le16_to_cpu(max_queue_pairs);
 
 	/* We need at least 2 queue's */
 	if (err || max_queue_pairs < VIRTIO_NET_CTRL_MQ_VQ_PAIRS_MIN ||

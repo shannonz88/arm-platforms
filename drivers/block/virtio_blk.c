@@ -485,7 +485,7 @@ static int virtblk_getgeo(struct block_device *bd, struct hd_geometry *geo)
 	if (!err) {
 		geo->heads = vgeo.heads;
 		geo->sectors = vgeo.sectors;
-		geo->cylinders = vgeo.cylinders;
+		geo->cylinders = le16_to_cpu(vgeo.cylinders);
 	} else {
 		/* some standard values, similar to sd */
 		geo->heads = 1 << 6;
@@ -548,6 +548,7 @@ static void virtblk_config_changed_work(struct work_struct *work)
 	/* Host must always specify the capacity. */
 	vdev->config->get(vdev, offsetof(struct virtio_blk_config, capacity),
 			  &capacity, sizeof(capacity));
+	capacity = le64_to_cpu(capacity);
 
 	/* If capacity is too big, truncate with warning. */
 	if ((sector_t)capacity != capacity) {
@@ -718,6 +719,7 @@ static int virtblk_probe(struct virtio_device *vdev)
 	err = virtio_config_val(vdev, VIRTIO_BLK_F_SEG_MAX,
 				offsetof(struct virtio_blk_config, seg_max),
 				&sg_elems);
+	sg_elems = le32_to_cpu(sg_elems);
 
 	/* We need at least one SG element, whatever they say. */
 	if (err || !sg_elems)
@@ -790,6 +792,7 @@ static int virtblk_probe(struct virtio_device *vdev)
 	/* Host must always specify the capacity. */
 	vdev->config->get(vdev, offsetof(struct virtio_blk_config, capacity),
 			  &cap, sizeof(cap));
+	cap = le64_to_cpu(cap);
 
 	/* If capacity is too big, truncate with warning. */
 	if ((sector_t)cap != cap) {
@@ -814,7 +817,7 @@ static int virtblk_probe(struct virtio_device *vdev)
 				offsetof(struct virtio_blk_config, size_max),
 				&v);
 	if (!err)
-		blk_queue_max_segment_size(q, v);
+		blk_queue_max_segment_size(q, le32_to_cpu(v));
 	else
 		blk_queue_max_segment_size(q, -1U);
 
@@ -822,9 +825,10 @@ static int virtblk_probe(struct virtio_device *vdev)
 	err = virtio_config_val(vdev, VIRTIO_BLK_F_BLK_SIZE,
 				offsetof(struct virtio_blk_config, blk_size),
 				&blk_size);
-	if (!err)
+	if (!err) {
+		blk_size = le32_to_cpu(blk_size);
 		blk_queue_logical_block_size(q, blk_size);
-	else
+	} else
 		blk_size = queue_logical_block_size(q);
 
 	/* Use topology information if available */
@@ -845,13 +849,13 @@ static int virtblk_probe(struct virtio_device *vdev)
 			offsetof(struct virtio_blk_config, min_io_size),
 			&min_io_size);
 	if (!err && min_io_size)
-		blk_queue_io_min(q, blk_size * min_io_size);
+		blk_queue_io_min(q, blk_size * le16_to_cpu(min_io_size));
 
 	err = virtio_config_val(vdev, VIRTIO_BLK_F_TOPOLOGY,
 			offsetof(struct virtio_blk_config, opt_io_size),
 			&opt_io_size);
 	if (!err && opt_io_size)
-		blk_queue_io_opt(q, blk_size * opt_io_size);
+		blk_queue_io_opt(q, blk_size * le32_to_cpu(opt_io_size));
 
 	add_disk(vblk->disk);
 	err = device_create_file(disk_to_dev(vblk->disk), &dev_attr_serial);

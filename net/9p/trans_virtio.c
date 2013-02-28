@@ -517,6 +517,7 @@ static int p9_virtio_probe(struct virtio_device *vdev)
 		vdev->config->get(vdev,
 				offsetof(struct virtio_9p_config, tag_len),
 				&tag_len, sizeof(tag_len));
+		tag_len = le16_to_cpu(tag_len);
 	} else {
 		err = -EINVAL;
 		goto out_free_vq;
