@@ -122,6 +122,7 @@ static void virtio_mmio_config_in(u64 addr, void *data, u32 len,
 		if (vmmio->hdr.host_features_sel == 0)
 			val = vdev->ops->get_host_features(vmmio->kvm,
 							   vmmio->dev);
+		printf("host features %08x\n", val);
 		ioport__write32(data, val);
 		break;
 	case VIRTIO_MMIO_QUEUE_PFN:
@@ -156,12 +157,14 @@ static void virtio_mmio_config_out(u64 addr, void *data, u32 len,
 	case VIRTIO_MMIO_GUEST_FEATURES:
 		if (vmmio->hdr.guest_features_sel == 0) {
 			val = ioport__read32(data);
+			printf("guest features %08x\n", val);
 			vdev->ops->set_guest_features(vmmio->kvm,
 						      vmmio->dev, val);
 		}
 		break;
 	case VIRTIO_MMIO_GUEST_PAGE_SIZE:
 		val = ioport__read32(data);
+		printf("guest page size  %08x\n", val);
 		vmmio->hdr.guest_page_size = val;
 		break;
 	case VIRTIO_MMIO_QUEUE_NUM:
@@ -176,6 +179,7 @@ static void virtio_mmio_config_out(u64 addr, void *data, u32 len,
 		break;
 	case VIRTIO_MMIO_QUEUE_PFN:
 		val = ioport__read32(data);
+		printf("guest queue PFN  %08x\n", val);
 		virtio_mmio_init_ioeventfd(vmmio->kvm, vdev, vmmio->hdr.queue_sel);
 		vdev->ops->init_vq(vmmio->kvm, vmmio->dev,
 				   vmmio->hdr.queue_sel,

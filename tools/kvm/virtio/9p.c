@@ -1244,7 +1244,7 @@ static u8 *get_config(struct kvm *kvm, void *dev)
 
 static u32 get_host_features(struct kvm *kvm, void *dev)
 {
-	return 1 << VIRTIO_9P_MOUNT_TAG;
+	return (1 << VIRTIO_9P_MOUNT_TAG) | VIRTIO_RING_ENDIAN;
 }
 
 static void set_guest_features(struct kvm *kvm, void *dev, u32 features)
@@ -1270,6 +1270,7 @@ static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
 	job		= &p9dev->jobs[vq];
 
 	vring_init(&queue->vring, VIRTQUEUE_NUM, p, align);
+	virt_queue__init(queue, p9dev->features);
 
 	*job		= (struct p9_dev_job) {
 		.vq		= queue,

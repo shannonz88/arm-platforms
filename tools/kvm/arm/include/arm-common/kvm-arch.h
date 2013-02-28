@@ -24,6 +24,8 @@
 
 #define VIRTIO_DEFAULT_TRANS	VIRTIO_MMIO
 
+#define VIRTIO_RING_ENDIAN	((1UL << VIRTIO_RING_F_GUEST_LE) | (1UL << VIRTIO_RING_F_GUEST_BE))
+
 static inline bool arm_addr_in_virtio_mmio_region(u64 phys_addr)
 {
 	u64 limit = KVM_VIRTIO_MMIO_AREA + ARM_VIRTIO_MMIO_SIZE;

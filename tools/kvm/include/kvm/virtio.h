@@ -1,6 +1,8 @@
 #ifndef KVM__VIRTIO_H
 #define KVM__VIRTIO_H
 
+#include <endian.h>
+
 #include <linux/virtio_ring.h>
 #include <linux/virtio_pci.h>
 
@@ -15,6 +17,10 @@
 #define VIRTIO_PCI_O_CONFIG	0
 #define VIRTIO_PCI_O_MSIX	1
 
+#define VIRTIO_ENDIAN_HOST	0
+#define VIRTIO_ENDIAN_LE	1
+#define VIRTIO_ENDIAN_BE	2
+
 struct virt_queue {
 	struct vring	vring;
 	u32		pfn;
@@ -22,11 +28,158 @@ struct virt_queue {
 	   It's where we assume the next request index is at.  */
 	u16		last_avail_idx;
 	u16		last_used_signalled;
+	u16		endian;
 };
+
+/*
+ * The default policy is not to cope with the guest endianness.
+ * It also helps not breaking archs that do not care about supporting
+ * such a configuration.
+ */
+#ifndef VIRTIO_RING_ENDIAN
+#define VIRTIO_RING_ENDIAN 0
+#endif
+
+#if (VIRTIO_RING_ENDIAN & ((1UL << VIRTIO_RING_F_GUEST_LE) | (1UL << VIRTIO_RING_F_GUEST_BE)))
+#ifndef __BYTE_ORDER
+#define No byteorder, giving up
+#endif
+
+static inline __u16 virtio_guest_to_host_u16(struct virt_queue *vq, __u16 val)
+{
+#if __BYTE_ORDER == __BIG_ENDIAN
+	if (vq->endian == VIRTIO_ENDIAN_LE)
+		return le16toh(val);
+#else
+	if (vq->endian == VIRTIO_ENDIAN_BE)
+		return be16toh(val);
+#endif
+
+	return val;
+}
+
+static inline __u16 virtio_host_to_guest_u16(struct virt_queue *vq, __u16 val)
+{
+#if __BYTE_ORDER == __BIG_ENDIAN
+	if (vq->endian == VIRTIO_ENDIAN_LE)
+		return htole16(val);
+#else
+	if (vq->endian == VIRTIO_ENDIAN_BE)
+		return htobe16(val);
+#endif
+
+	return val;
+}
+
+static inline __u32 virtio_guest_to_host_u32(struct virt_queue *vq, __u32 val)
+{
+#if __BYTE_ORDER == __BIG_ENDIAN
+	if (vq->endian == VIRTIO_ENDIAN_LE)
+		return le32toh(val);
+#else
+	if (vq->endian == VIRTIO_ENDIAN_BE)
+		return be32toh(val);
+#endif
+
+	return val;
+}
+
+static inline __u32 virtio_host_to_guest_u32(struct virt_queue *vq, __u32 val)
+{
+#if __BYTE_ORDER == __BIG_ENDIAN
+	if (vq->endian == VIRTIO_ENDIAN_LE)
+		return htole32(val);
+#else
+	if (vq->endian == VIRTIO_ENDIAN_BE)
+		return htobe32(val);
+#endif
+
+	return val;
+}
+
+static inline __u64 virtio_guest_to_host_u64(struct virt_queue *vq, __u64 val)
+{
+#if __BYTE_ORDER == __BIG_ENDIAN
+	if (vq->endian == VIRTIO_ENDIAN_LE)
+		return le64toh(val);
+#else
+	if (vq->endian == VIRTIO_ENDIAN_BE)
+		return be64toh(val);
+#endif
+
+	return val;
+}
+
+static inline __u64 virtio_host_to_guest_u64(struct virt_queue *vq, __u64 val)
+{
+#if __BYTE_ORDER == __BIG_ENDIAN
+	if (vq->endian == VIRTIO_ENDIAN_LE)
+		return htole64(val);
+#else
+	if (vq->endian == VIRTIO_ENDIAN_BE)
+		return htobe64(val);
+#endif
+
+	return val;
+}
+
+static inline void virt_queue__init(struct virt_queue *vq, u32 features)
+{
+	vq->endian = VIRTIO_ENDIAN_HOST;
+
+#if __BYTE_ORDER == __BIG_ENDIAN
+	if (features & (1 << VIRTIO_RING_F_GUEST_LE))
+		vq->endian = VIRTIO_ENDIAN_LE;
+#else
+	if (features & (1 << VIRTIO_RING_F_GUEST_BE))
+		vq->endian = VIRTIO_ENDIAN_BE;
+#endif
+}
+
+#else
+
+static inline __u16 virtio_guest_to_host_u16(struct virt_queue *vq, __u16 val)
+{
+	return val;
+}
+
+static inline __u16 virtio_host_to_guest_u16(struct virt_queue *vq, __u16 val)
+{
+	return val;
+}
+
+static inline __u32 virtio_guest_to_host_u32(struct virt_queue *vq, __u32 val)
+{
+	return val;
+}
+
+static inline __u32 virtio_host_to_guest_u32(struct virt_queue *vq, __u32 val)
+{
+	return val;
+}
+
+static inline __u64 virtio_guest_to_host_u64(struct virt_queue *vq, __u64 val)
+{
+	return val;
+}
+
+static inline __u64 virtio_host_to_guest_u64(struct virt_queue *vq, __u64 val)
+{
+	return val;
+}
+
+static inline void virt_queue__init(struct virt_queue *vq, u32 features)
+{
+	queue->endian = VIRTIO_ENDIAN_HOST;
+}
+#endif
 
 static inline u16 virt_queue__pop(struct virt_queue *queue)
 {
-	return queue->vring.avail->ring[queue->last_avail_idx++ % queue->vring.num];
+	__u16 guest_idx;
+
+	guest_idx = queue->vring.avail->ring[queue->last_avail_idx++ % queue->vring.num];
+	return virtio_guest_to_host_u16(queue, guest_idx);
 }
 
 static inline struct vring_desc *virt_queue__get_desc(struct virt_queue *queue, u16 desc_ndx)
@@ -39,8 +192,8 @@ static inline bool virt_queue__available(struct virt_queue *vq)
 	if (!vq->vring.avail)
 		return 0;
 
-	vring_avail_event(&vq->vring) = vq->last_avail_idx;
-	return vq->vring.avail->idx !=  vq->last_avail_idx;
+	vring_avail_event(&vq->vring) = virtio_host_to_guest_u16(vq, vq->last_avail_idx);
+	return virtio_guest_to_host_u16(vq, vq->vring.avail->idx) != vq->last_avail_idx;
 }
 
 struct vring_used_elem *virt_queue__set_used_elem(struct virt_queue *queue, u32 head, u32 len);
@@ -60,15 +213,10 @@ enum virtio_trans {
 	VIRTIO_MMIO,
 };
 
-#define VIRTIO_ENDIAN_HOST	0
-#define VIRTIO_ENDIAN_LE	1
-#define VIRTIO_ENDIAN_BE	2
-
 struct virtio_device {
 	bool			use_vhost;
 	void			*virtio;
 	struct virtio_ops	*ops;
-	u16			endian;
 };
 
 struct virtio_ops {

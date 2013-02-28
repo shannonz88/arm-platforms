@@ -120,12 +120,14 @@ static u8 *get_config(struct kvm *kvm, void *dev)
 
 static u32 get_host_features(struct kvm *kvm, void *dev)
 {
-	return 0;
+	return VIRTIO_RING_ENDIAN;
 }
 
 static void set_guest_features(struct kvm *kvm, void *dev, u32 features)
 {
-	/* Unused */
+	struct con_dev *cdev = dev;
+
+	cdev->features = features;
 }
 
 static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
@@ -143,6 +145,8 @@ static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
 	p		= guest_flat_to_host(kvm, queue->pfn * page_size);
 
 	vring_init(&queue->vring, VIRTIO_CONSOLE_QUEUE_SIZE, p, align);
+
+	virt_queue__init(queue, cdev.features);
 
 	if (vq == VIRTIO_CONSOLE_TX_QUEUE)
 		thread_pool__init_job(&cdev.jobs[vq], kvm, virtio_console_handle_callback, queue);
