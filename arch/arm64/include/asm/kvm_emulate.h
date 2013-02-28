@@ -187,34 +187,60 @@ static inline bool kvm_vcpu_is_be(struct kvm_vcpu *vcpu)
 }
 
 static inline unsigned long vcpu_data_guest_to_host(struct kvm_vcpu *vcpu,
-						    unsigned long data)
+						    unsigned long data,
+						    unsigned int len)
 {
 	if (kvm_vcpu_is_be(vcpu)) {
-		if (vcpu_mode_is_32bit(vcpu))
+		switch (len) {
+		case 1:
+			return data;
+		case 2:
+			return be16_to_cpu(data & 0xffff);
+		case 4:
 			return be32_to_cpu(data & ((1UL << 32) - 1));
-
-		return be64_to_cpu(data);
+		default:
+			return be64_to_cpu(data);
+		}
 	} else {
-		if (vcpu_mode_is_32bit(vcpu))
+		switch (len) {
+		case 1:
+			return data;
+		case 2:
+			return le16_to_cpu(data & 0xffff);
+		case 4:
 			return le32_to_cpu(data & ((1UL << 32) - 1));
-
-		return le64_to_cpu(data);
+		default:
+			return le64_to_cpu(data);
+		}
 	}
 }
 
 static inline unsigned long vcpu_data_host_to_guest(struct kvm_vcpu *vcpu,
-						    unsigned long data)
+						    unsigned long data,
+						    unsigned int len)
 {
 	if (kvm_vcpu_is_be(vcpu)) {
-		if (vcpu_mode_is_32bit(vcpu))
+		switch (len) {
+		case 1:
+			return data;
+		case 2:
+			return cpu_to_be16(data & 0xffff);
+		case 4:
 			return cpu_to_be32(data & ((1UL << 32) - 1));
-
-		return cpu_to_be64(data);
+		default:
+			return cpu_to_be64(data);
+		}
 	} else {
-		if (vcpu_mode_is_32bit(vcpu))
+		switch (len) {
+		case 1:
+			return data;
+		case 2:
+			return cpu_to_le16(data & 0xffff);
+		case 4:
 			return cpu_to_le32(data & ((1UL << 32) - 1));
-
-		return cpu_to_le64(data);
+		default:
+			return cpu_to_le64(data);
+		}
 	}
 }
 
