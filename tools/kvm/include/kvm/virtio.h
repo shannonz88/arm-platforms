@@ -1,6 +1,8 @@
 #ifndef KVM__VIRTIO_H
 #define KVM__VIRTIO_H
 
+#include <endian.h>
+
 #include <linux/virtio_ring.h>
 #include <linux/virtio_pci.h>
 
@@ -29,15 +31,194 @@ struct virt_queue {
 	u16		endian;
 };
 
+/*
+ * The default policy is not to cope with the guest endianness.
+ * It also helps not breaking archs that do not care about supporting
+ * such a configuration.
+ */
+#ifndef VIRTIO_RING_ENDIAN
+#define VIRTIO_RING_ENDIAN 0
+#endif
+
+#if (VIRTIO_RING_ENDIAN & ((1UL << VIRTIO_RING_F_GUEST_LE) | (1UL << VIRTIO_RING_F_GUEST_BE)))
+
+#ifndef __BYTE_ORDER
+#error "No byteorder? Giving up..."
+#endif
+
+
+static inline __u16 __virtio_guest_to_host_u16(u16 endian, __u16 val)
+{
+#if __BYTE_ORDER == __BIG_ENDIAN
+	if (endian == VIRTIO_ENDIAN_LE)
+		return le16toh(val);
+#else
+	if (endian == VIRTIO_ENDIAN_BE)
+		return be16toh(val);
+#endif
+
+	return val;
+}
+
+static inline __u16 virtio_guest_to_host_u16(struct virt_queue *vq, __u16 val)
+{
+	return __virtio_guest_to_host_u16(vq->endian, val);
+}
+
+static inline __u16 __virtio_host_to_guest_u16(u16 endian, __u16 val)
+{
+#if __BYTE_ORDER == __BIG_ENDIAN
+	if (endian == VIRTIO_ENDIAN_LE)
+		return htole16(val);
+#else
+	if (endian == VIRTIO_ENDIAN_BE)
+		return htobe16(val);
+#endif
+
+	return val;
+}
+
+static inline __u16 virtio_host_to_guest_u16(struct virt_queue *vq, __u16 val)
+{
+	return __virtio_host_to_guest_u16(vq->endian, val);
+}
+
+static inline __u32 __virtio_guest_to_host_u32(u16 endian, __u32 val)
+{
+#if __BYTE_ORDER == __BIG_ENDIAN
+	if (endian == VIRTIO_ENDIAN_LE)
+		return le32toh(val);
+#else
+	if (endian == VIRTIO_ENDIAN_BE)
+		return be32toh(val);
+#endif
+
+	return val;
+}
+
+static inline __u32 virtio_guest_to_host_u32(struct virt_queue *vq, __u32 val)
+{
+	return __virtio_guest_to_host_u32(vq->endian, val);
+}
+
+static inline __u32 __virtio_host_to_guest_u32(u16 endian, __u32 val)
+{
+#if __BYTE_ORDER == __BIG_ENDIAN
+	if (endian == VIRTIO_ENDIAN_LE)
+		return htole32(val);
+#else
+	if (endian == VIRTIO_ENDIAN_BE)
+		return htobe32(val);
+#endif
+
+	return val;
+}
+
+static inline __u32 virtio_host_to_guest_u32(struct virt_queue *vq, __u32 val)
+{
+	return __virtio_host_to_guest_u32(vq->endian, val);
+}
+
+static inline __u64 __virtio_guest_to_host_u64(u16 endian, __u64 val)
+{
+#if __BYTE_ORDER == __BIG_ENDIAN
+	if (endian == VIRTIO_ENDIAN_LE)
+		return le64toh(val);
+#else
+	if (endian == VIRTIO_ENDIAN_BE)
+		return be64toh(val);
+#endif
+
+	return val;
+}
+
+static inline __u64 virtio_guest_to_host_u64(struct virt_queue *vq, __u64 val)
+{
+	return __virtio_guest_to_host_u64(vq->endian, val);
+}
+
+static inline __u64 __virtio_host_to_guest_u64(u16 endian, __u64 val)
+{
+#if __BYTE_ORDER == __BIG_ENDIAN
+	if (endian == VIRTIO_ENDIAN_LE)
+		return htole64(val);
+#else
+	if (endian == VIRTIO_ENDIAN_BE)
+		return htobe64(val);
+#endif
+
+	return val;
+}
+
+static inline __u64 virtio_host_to_guest_u64(struct virt_queue *vq, __u64 val)
+{
+	return __virtio_host_to_guest_u64(vq->endian, val);
+}
+
+static inline u16 virtio_features_to_endian(u32 features)
+{
+	u16 endian = VIRTIO_ENDIAN_HOST;
+
+#if __BYTE_ORDER == __BIG_ENDIAN
+	if (features & (1 << VIRTIO_RING_F_GUEST_LE))
+		endian = VIRTIO_ENDIAN_LE;
+#else
+	if (features & (1 << VIRTIO_RING_F_GUEST_BE))
+		endian = VIRTIO_ENDIAN_BE;
+#endif
+
+	return endian;
+}
+
+#else
+
+static inline __u16 virtio_guest_to_host_u16(struct virt_queue *vq, __u16 val)
+{
+	return val;
+}
+
+static inline __u16 virtio_host_to_guest_u16(struct virt_queue *vq, __u16 val)
+{
+	return val;
+}
+
+static inline __u32 virtio_guest_to_host_u32(struct virt_queue *vq, __u32 val)
+{
+	return val;
+}
+
+static inline __u32 virtio_host_to_guest_u32(struct virt_queue *vq, __u32 val)
+{
+	return val;
+}
+
+static inline __u64 virtio_guest_to_host_u64(struct virt_queue *vq, __u64 val)
+{
+	return val;
+}
+
+static inline __u64 virtio_host_to_guest_u64(struct virt_queue *vq, __u64 val)
+{
+	return val;
+}
+
+static inline u16 virtio_features_to_endian(u32 features)
+{
+	return VIRTIO_ENDIAN_HOST;
+}
+#endif
 
 static inline void virt_queue__init(struct virt_queue *vq, u32 features)
 {
-	vq->endian = VIRTIO_ENDIAN_HOST;
+	vq->endian = virtio_features_to_endian(features);
 }
 
 static inline u16 virt_queue__pop(struct virt_queue *queue)
 {
-	return queue->vring.avail->ring[queue->last_avail_idx++ % queue->vring.num];
+	__u16 guest_idx;
+
+	guest_idx = queue->vring.avail->ring[queue->last_avail_idx++ % queue->vring.num];
+	return virtio_guest_to_host_u16(queue, guest_idx);
 }
 
 static inline struct vring_desc *virt_queue__get_desc(struct virt_queue *queue, u16 desc_ndx)
@@ -50,8 +231,8 @@ static inline bool virt_queue__available(struct virt_queue *vq)
 	if (!vq->vring.avail)
 		return 0;
 
-	vring_avail_event(&vq->vring) = vq->last_avail_idx;
-	return vq->vring.avail->idx !=  vq->last_avail_idx;
+	vring_avail_event(&vq->vring) = virtio_host_to_guest_u16(vq, vq->last_avail_idx);
+	return virtio_guest_to_host_u16(vq, vq->vring.avail->idx) != vq->last_avail_idx;
 }
 
 struct vring_used_elem *virt_queue__set_used_elem(struct virt_queue *queue, u32 head, u32 len);
