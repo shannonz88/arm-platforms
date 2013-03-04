@@ -318,16 +318,11 @@ static void set_guest_features(struct kvm *kvm, void *dev, u32 features)
 {
 	struct net_dev *ndev = dev;
 	struct virtio_net_config *conf = &ndev->config;
-	u16 endian;
 
 	ndev->features = features;
 
-	endian = virtio_features_to_endian(features);
-	if (endian == VIRTIO_ENDIAN_HOST)
-		return;
-
-	conf->status = __virtio_host_to_guest_u16(endian, conf->status);
-	conf->max_virtqueue_pairs = __virtio_host_to_guest_u16(endian, conf->max_virtqueue_pairs);
+	conf->status = htole16(conf->status);
+	conf->max_virtqueue_pairs = htole16(conf->max_virtqueue_pairs);
 }
 
 static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
