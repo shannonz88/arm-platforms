@@ -15,6 +15,10 @@
 #define VIRTIO_PCI_O_CONFIG	0
 #define VIRTIO_PCI_O_MSIX	1
 
+#define VIRTIO_ENDIAN_HOST	0
+#define VIRTIO_ENDIAN_LE	1
+#define VIRTIO_ENDIAN_BE	2
+
 struct virt_queue {
 	struct vring	vring;
 	u32		pfn;
@@ -22,7 +26,14 @@ struct virt_queue {
 	   It's where we assume the next request index is at.  */
 	u16		last_avail_idx;
 	u16		last_used_signalled;
+	u16		endian;
 };
+
+
+static inline void virt_queue__init(struct virt_queue *vq, u32 features)
+{
+	vq->endian = VIRTIO_ENDIAN_HOST;
+}
 
 static inline u16 virt_queue__pop(struct virt_queue *queue)
 {
