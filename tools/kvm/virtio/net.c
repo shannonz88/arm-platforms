@@ -382,13 +382,18 @@ static u32 get_host_features(struct kvm *kvm, void *dev)
 		| 1UL << VIRTIO_NET_F_CTRL_VQ
 		| 1UL << VIRTIO_NET_F_MRG_RXBUF
 		| 1UL << (ndev->queue_pairs > 1 ? VIRTIO_NET_F_MQ : 0);
+		| VIRTIO_RING_ENDIAN;
 }
 
 static void set_guest_features(struct kvm *kvm, void *dev, u32 features)
 {
 	struct net_dev *ndev = dev;
+	struct virtio_net_config *conf = &ndev->config;
 
 	ndev->features = features;
+
+	conf->status = htole16(conf->status);
+	conf->max_virtqueue_pairs = htole16(conf->max_virtqueue_pairs);
 }
 
 static bool is_ctrl_vq(struct net_dev *ndev, u32 vq)
@@ -413,6 +418,7 @@ static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
 	p		= virtio_get_vq(kvm, queue->pfn, page_size);
 
 	vring_init(&queue->vring, VIRTIO_NET_QUEUE_SIZE, p, align);
+	virt_queue__init(queue, ndev->features);
 
 	mutex_init(&ndev->io_lock[vq]);
 	pthread_cond_init(&ndev->io_cond[vq], NULL);
@@ -428,6 +434,9 @@ static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
 
 		return 0;
 	}
+
+	if (queue->endian != VIRTIO_ENDIAN_HOST)
+		die_perror("VHOST requires VIRTIO_ENDIAN_HOST");
 
 	state.num = queue->vring.num;
 	r = ioctl(ndev->vhost_fd, VHOST_SET_VRING_NUM, &state);
