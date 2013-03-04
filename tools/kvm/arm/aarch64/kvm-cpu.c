@@ -1,10 +1,12 @@
 #include "kvm/kvm-cpu.h"
 #include "kvm/kvm.h"
+#include "kvm/virtio.h"
 
 #include <asm/ptrace.h>
 
 #define COMPAT_PSR_F_BIT	0x00000040
 #define COMPAT_PSR_I_BIT	0x00000080
+#define COMPAT_PSR_E_BIT	0x00000200
 #define COMPAT_PSR_MODE_SVC	0x00000013
 
 #define ARM64_CORE_REG(x)	(KVM_REG_ARM64 | KVM_REG_SIZE_U64 | \
@@ -131,6 +133,27 @@ void kvm_cpu__reset_vcpu(struct kvm_cpu *vcpu)
 		return reset_vcpu_aarch32(vcpu);
 	else
 		return reset_vcpu_aarch64(vcpu);
+}
+
+int kvm_cpu__get_endianness(struct kvm_cpu *vcpu)
+{
+	struct kvm_one_reg reg;
+	u64 data;
+
+	reg.id = ARM64_CORE_REG(regs.pstate);
+	reg.addr = (u64)&data;
+	if (ioctl(vcpu->vcpu_fd, KVM_GET_ONE_REG, &reg) < 0)
+		die("KVM_GET_ONE_REG failed (spsr[EL1])");
+
+	if (data & PSR_MODE32_BIT)
+		return (data & COMPAT_PSR_E_BIT) ? VIRTIO_ENDIAN_BE : VIRTIO_ENDIAN_LE;
+
+	reg.id = ARM64_SYS_REG(3, 0, 1, 0, 0); /* SCTLR_EL1 */
+	reg.addr = (u64)&data;
+	if (ioctl(vcpu->vcpu_fd, KVM_GET_ONE_REG, &reg) < 0)
+		die("KVM_GET_ONE_REG failed (SCTLR_EL1)");
+
+	return (data & (1 <<25)) ? VIRTIO_ENDIAN_BE : VIRTIO_ENDIAN_LE;
 }
 
 void kvm_cpu__show_code(struct kvm_cpu *vcpu)

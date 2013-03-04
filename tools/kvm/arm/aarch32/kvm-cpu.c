@@ -76,6 +76,19 @@ void kvm_cpu__reset_vcpu(struct kvm_cpu *vcpu)
 		die_perror("KVM_SET_ONE_REG failed (pc)");
 }
 
+int kvm_cpu__get_endianness(struct kvm_cpu *vcpu)
+{
+	struct kvm_one_reg reg;
+	u64 data;
+
+	reg.id = ARM_CORE_REG(usr_regs.ARM_cpsr);
+	reg.addr = (u64)(unsigned long)&data;
+	if (ioctl(vcpu->vcpu_fd, KVM_GET_ONE_REG, &reg) < 0)
+		die("KVM_GET_ONE_REG failed (cpsr)");
+
+	return (data & PSR_E_BIT) ? VIRTIO_ENDIAN_BE : VIRTIO_ENDIAN_LE;
+}
+
 void kvm_cpu__show_code(struct kvm_cpu *vcpu)
 {
 	struct kvm_one_reg reg;
