@@ -77,13 +77,15 @@ void virtio_blk_complete(void *param, long len)
 		bdev->vdev.ops->signal_vq(req->kvm, &bdev->vdev, queueid);
 }
 
-static void virtio_blk_do_io_request(struct kvm *kvm, struct blk_dev_req *req)
+static void virtio_blk_do_io_request(struct kvm *kvm, struct virt_queue *vq, struct blk_dev_req *req)
 {
 	struct virtio_blk_outhdr *req_hdr;
 	ssize_t block_cnt;
 	struct blk_dev *bdev;
 	struct iovec *iov;
 	u16 out, in;
+	u32 type;
+	u64 sector;
 
 	block_cnt	= -1;
 	bdev		= req->bdev;
@@ -92,13 +94,16 @@ static void virtio_blk_do_io_request(struct kvm *kvm, struct blk_dev_req *req)
 	in		= req->in;
 	req_hdr		= iov[0].iov_base;
 
-	switch (req_hdr->type) {
+	type = virtio_guest_to_host_u32(vq, req_hdr->type);
+	sector = virtio_guest_to_host_u64(vq, req_hdr->sector);
+
+	switch (type) {
 	case VIRTIO_BLK_T_IN:
-		block_cnt = disk_image__read(bdev->disk, req_hdr->sector,
+		block_cnt = disk_image__read(bdev->disk, sector,
 				iov + 1, in + out - 2, req);
 		break;
 	case VIRTIO_BLK_T_OUT:
-		block_cnt = disk_image__write(bdev->disk, req_hdr->sector,
+		block_cnt = disk_image__write(bdev->disk, sector,
 				iov + 1, in + out - 2, req);
 		break;
 	case VIRTIO_BLK_T_FLUSH:
@@ -112,7 +117,7 @@ static void virtio_blk_do_io_request(struct kvm *kvm, struct blk_dev_req *req)
 		virtio_blk_complete(req, block_cnt);
 		break;
 	default:
-		pr_warning("request type %d", req_hdr->type);
+		pr_warning("request type %d", type);
 		block_cnt	= -1;
 		break;
 	}
@@ -130,7 +135,7 @@ static void virtio_blk_do_io(struct kvm *kvm, struct virt_queue *vq, struct blk_
 					&req->in, head, kvm);
 		req->vq		= vq;
 
-		virtio_blk_do_io_request(kvm, req);
+		virtio_blk_do_io_request(kvm, vq, req);
 	}
 }
 
@@ -146,14 +151,28 @@ static u32 get_host_features(struct kvm *kvm, void *dev)
 	return	1UL << VIRTIO_BLK_F_SEG_MAX
 		| 1UL << VIRTIO_BLK_F_FLUSH
 		| 1UL << VIRTIO_RING_F_EVENT_IDX
-		| 1UL << VIRTIO_RING_F_INDIRECT_DESC;
+		| 1UL << VIRTIO_RING_F_INDIRECT_DESC
+		| VIRTIO_RING_ENDIAN;
 }
 
 static void set_guest_features(struct kvm *kvm, void *dev, u32 features)
 {
 	struct blk_dev *bdev = dev;
+	struct virtio_blk_config *conf = &bdev->blk_config;
+	struct virtio_blk_geometry *geo = &conf->geometry;
 
 	bdev->features = features;
+
+	conf->capacity = htole64(conf->capacity);
+	conf->size_max = htole32(conf->size_max);
+	conf->seg_max = htole32(conf->seg_max);
+
+	/* Geometry */
+	geo->cylinders = htole16(geo->cylinders);
+
+	conf->blk_size = htole32(conf->blk_size);
+	conf->min_io_size = htole16(conf->min_io_size);
+	conf->opt_io_size = htole32(conf->opt_io_size);
 }
 
 static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
@@ -170,6 +189,7 @@ static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
 	p		= virtio_get_vq(kvm, queue->pfn, page_size);
 
 	vring_init(&queue->vring, VIRTIO_BLK_QUEUE_SIZE, p, align);
+	virt_queue__init(queue, bdev->features);
 
 	return 0;
 }
