@@ -310,14 +310,24 @@ static u32 get_host_features(struct kvm *kvm, void *dev)
 		| 1UL << VIRTIO_NET_F_GUEST_TSO4
 		| 1UL << VIRTIO_NET_F_GUEST_TSO6
 		| 1UL << VIRTIO_RING_F_EVENT_IDX
-		| 1UL << VIRTIO_RING_F_INDIRECT_DESC;
+		| 1UL << VIRTIO_RING_F_INDIRECT_DESC
+		| VIRTIO_RING_ENDIAN;
 }
 
 static void set_guest_features(struct kvm *kvm, void *dev, u32 features)
 {
 	struct net_dev *ndev = dev;
+	struct virtio_net_config *conf = &ndev->config;
+	u16 endian;
 
 	ndev->features = features;
+
+	endian = virtio_features_to_endian(features);
+	if (endian == VIRTIO_ENDIAN_HOST)
+		return;
+
+	conf->status = __virtio_host_to_guest_u16(endian, conf->status);
+	conf->max_virtqueue_pairs = __virtio_host_to_guest_u16(endian, conf->max_virtqueue_pairs);
 }
 
 static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
@@ -337,9 +347,13 @@ static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
 	p		= guest_flat_to_host(kvm, queue->pfn * page_size);
 
 	vring_init(&queue->vring, VIRTIO_NET_QUEUE_SIZE, p, align);
+	virt_queue__init(queue, ndev->features);
 
 	if (ndev->vhost_fd == 0)
 		return 0;
+
+	if (queue->endian != VIRTIO_ENDIAN_HOST)
+		die_perror("VHOST requires VIRTIO_ENDIAN_HOST");
 
 	state.num = queue->vring.num;
 	r = ioctl(ndev->vhost_fd, VHOST_SET_VRING_NUM, &state);
