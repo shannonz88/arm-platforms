@@ -131,7 +131,12 @@ static u32 get_host_features(struct kvm *kvm, void *dev)
 
 static void set_guest_features(struct kvm *kvm, void *dev, u32 features)
 {
-	/* Unused */
+	struct con_dev *cdev = dev;
+	struct virtio_console_config *conf = &cdev->config;
+
+	conf->cols = htole16(conf->cols);
+	conf->rows = htole16(conf->rows);
+	conf->max_nr_ports = htole32(conf->max_nr_ports);
 }
 
 static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
@@ -149,6 +154,7 @@ static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
 	p		= virtio_get_vq(kvm, queue->pfn, page_size);
 
 	vring_init(&queue->vring, VIRTIO_CONSOLE_QUEUE_SIZE, p, align);
+	virtio_init_device_vq(&cdev.vdev, queue);
 
 	if (vq == VIRTIO_CONSOLE_TX_QUEUE) {
 		thread_pool__init_job(&cdev.jobs[vq], kvm, virtio_console_handle_callback, queue);
