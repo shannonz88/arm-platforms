@@ -1251,8 +1251,10 @@ static u32 get_host_features(struct kvm *kvm, void *dev)
 static void set_guest_features(struct kvm *kvm, void *dev, u32 features)
 {
 	struct p9_dev *p9dev = dev;
+	struct virtio_9p_config *conf = p9dev->config;
 
 	p9dev->features = features;
+	conf->tag_len = htole16(conf->tag_len);
 }
 
 static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
@@ -1271,6 +1273,7 @@ static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
 	job		= &p9dev->jobs[vq];
 
 	vring_init(&queue->vring, VIRTQUEUE_NUM, p, align);
+	virtio_init_device_vq(&p9dev->vdev, queue);
 
 	*job		= (struct p9_dev_job) {
 		.vq		= queue,
