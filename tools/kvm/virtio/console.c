@@ -127,18 +127,12 @@ static void set_guest_features(struct kvm *kvm, void *dev, u32 features)
 {
 	struct con_dev *cdev = dev;
 	struct virtio_console_config *conf = &cdev->config;
-	u16 endian;
 
 	cdev->features = features;
 
-	endian = virtio_features_to_endian(features);
-	if (endian == VIRTIO_ENDIAN_HOST)
-		return;
-
-	conf->cols = __virtio_host_to_guest_u16(endian, conf->cols);
-	conf->rows = __virtio_host_to_guest_u16(endian, conf->rows);
-	conf->max_nr_ports = __virtio_host_to_guest_u32(endian,
-							conf->max_nr_ports);
+	conf->cols = htole16(conf->cols);
+	conf->rows = htole16(conf->rows);
+	conf->max_nr_ports = htole32(conf->max_nr_ports);
 }
 
 static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
