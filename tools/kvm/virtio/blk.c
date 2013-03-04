@@ -160,26 +160,19 @@ static void set_guest_features(struct kvm *kvm, void *dev, u32 features)
 	struct blk_dev *bdev = dev;
 	struct virtio_blk_config *conf = &bdev->blk_config;
 	struct virtio_blk_geometry *geo = &conf->geometry;
-	u16 endian;
 
 	bdev->features = features;
 
-	endian = virtio_features_to_endian(features);
-	if (endian == VIRTIO_ENDIAN_HOST)
-		return;
-
-	conf->capacity = __virtio_host_to_guest_u64(endian, conf->capacity);
-	conf->size_max = __virtio_host_to_guest_u32(endian, conf->size_max);
-	conf->seg_max = __virtio_host_to_guest_u32(endian, conf->seg_max);
+	conf->capacity = htole64(conf->capacity);
+	conf->size_max = htole32(conf->size_max);
+	conf->seg_max = htole32(conf->seg_max);
 
 	/* Geometry */
-	geo->cylinders = __virtio_host_to_guest_u16(endian, geo->cylinders);
+	geo->cylinders = htole16(geo->cylinders);
 
-	conf->blk_size = __virtio_host_to_guest_u32(endian, conf->blk_size);
-	conf->min_io_size = __virtio_host_to_guest_u16(endian,
-						       conf->min_io_size);
-	conf->opt_io_size = __virtio_host_to_guest_u32(endian,
-						       conf->opt_io_size);
+	conf->blk_size = htole32(conf->blk_size);
+	conf->min_io_size = htole16(conf->min_io_size);
+	conf->opt_io_size = htole32(conf->opt_io_size);
 }
 
 static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
