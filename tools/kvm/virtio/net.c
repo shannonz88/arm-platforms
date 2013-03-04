@@ -116,8 +116,10 @@ static void *virtio_net_rx_thread(void *p)
 
 				memcpy_toiovec(iov, buffer + copied, iovsize);
 				copied += iovsize;
-				if (has_virtio_feature(ndev, VIRTIO_NET_F_MRG_RXBUF))
-					hdr->num_buffers++;
+				if (has_virtio_feature(ndev, VIRTIO_NET_F_MRG_RXBUF)) {
+					u16 num_buffers = virtio_guest_to_host_u16(vq, hdr->num_buffers);
+					hdr->num_buffers = virtio_host_to_guest_u16(vq, num_buffers + 1);
+				}
 				virt_queue__set_used_elem(vq, head, iovsize);
 				if (copied == len)
 					break;
@@ -387,8 +389,12 @@ static u32 get_host_features(struct kvm *kvm, void *dev)
 static void set_guest_features(struct kvm *kvm, void *dev, u32 features)
 {
 	struct net_dev *ndev = dev;
+	struct virtio_net_config *conf = &ndev->config;
 
 	ndev->features = features;
+
+	conf->status = htole16(conf->status);
+	conf->max_virtqueue_pairs = htole16(conf->max_virtqueue_pairs);
 }
 
 static bool is_ctrl_vq(struct net_dev *ndev, u32 vq)
@@ -413,6 +419,7 @@ static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
 	p		= virtio_get_vq(kvm, queue->pfn, page_size);
 
 	vring_init(&queue->vring, VIRTIO_NET_QUEUE_SIZE, p, align);
+	virtio_init_device_vq(&ndev->vdev, queue);
 
 	mutex_init(&ndev->io_lock[vq]);
 	pthread_cond_init(&ndev->io_cond[vq], NULL);
@@ -428,6 +435,9 @@ static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
 
 		return 0;
 	}
+
+	if (queue->endian != VIRTIO_ENDIAN_HOST)
+		die_perror("VHOST requires VIRTIO_ENDIAN_HOST");
 
 	state.num = queue->vring.num;
 	r = ioctl(ndev->vhost_fd, VHOST_SET_VRING_NUM, &state);
