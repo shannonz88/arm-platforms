@@ -1252,15 +1252,9 @@ static void set_guest_features(struct kvm *kvm, void *dev, u32 features)
 {
 	struct p9_dev *p9dev = dev;
 	struct virtio_9p_config *conf = p9dev->config;
-	u16 endian;
 
 	p9dev->features = features;
-
-	endian = virtio_features_to_endian(features);
-	if (endian == VIRTIO_ENDIAN_HOST)
-		return;
-
-	conf->tag_len = __virtio_host_to_guest_u16(endian, conf->tag_len);
+	conf->tag_len = htole16(conf->tag_len);
 }
 
 static int init_vq(struct kvm *kvm, void *dev, u32 vq, u32 page_size, u32 align,
