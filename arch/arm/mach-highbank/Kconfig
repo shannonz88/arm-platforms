@@ -17,3 +17,4 @@ config ARCH_HIGHBANK
 	select PL320_MBOX
 	select SPARSE_IRQ
 	select USE_OF
+	select ARCH_SUPPORTS_BIG_ENDIAN

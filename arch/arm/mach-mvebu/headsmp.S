@@ -36,6 +36,10 @@
  */
 ENTRY(armada_xp_secondary_startup)
 
+#ifdef CONFIG_CPU_BE8_BOOT_LE
+	setend	be
+#endif
+
 	/* Read CPU id */
 	mrc     p15, 0, r1, c0, c0, 5
 	and     r1, r1, #0xF

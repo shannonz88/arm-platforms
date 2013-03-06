@@ -129,11 +129,18 @@ start:
  THUMB(		adr	r12, BSYM(1f)	)
  THUMB(		bx	r12		)
 
+#ifdef CONFIG_CPU_BE8_BOOT_LE
+		.word	0x18286f01
+#else
 		.word	0x016f2818		@ Magic numbers to help the loader
+#endif
 		.word	start			@ absolute load/run zImage address
 		.word	_edata			@ zImage end address
  THUMB(		.thumb			)
 1:
+#ifdef CONFIG_CPU_BE8_BOOT_LE
+		setend	be			@ go BE-8 if we booted LE / no-op if already BE-8
+#endif
 		mrs	r9, cpsr
 #ifdef CONFIG_ARM_VIRT_EXT
 		bl	__hyp_stub_install	@ get into SVC mode, reversibly
