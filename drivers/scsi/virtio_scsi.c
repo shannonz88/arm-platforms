@@ -566,7 +566,7 @@ static struct scsi_host_template virtscsi_host_template = {
 		typeof(((struct virtio_scsi_config *)0)->fld) __val; \
 		vdev->config->get(vdev, \
 				  offsetof(struct virtio_scsi_config, fld), \
-				  &__val, sizeof(__val)); \
+				  &__val, 1, sizeof(__val));		\
 		__val; \
 	})
 
@@ -575,7 +575,7 @@ static struct scsi_host_template virtscsi_host_template = {
 		typeof(((struct virtio_scsi_config *)0)->fld) __val = (val); \
 		vdev->config->set(vdev, \
 				  offsetof(struct virtio_scsi_config, fld), \
-				  &__val, sizeof(__val)); \
+				  &__val, 1, sizeof(__val));		\
 	})
 
 static void virtscsi_init_vq(struct virtio_scsi_vq *virtscsi_vq,
