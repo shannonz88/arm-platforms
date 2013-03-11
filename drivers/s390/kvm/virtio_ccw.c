@@ -477,12 +477,15 @@ out_free:
 }
 
 static void virtio_ccw_get_config(struct virtio_device *vdev,
-				  unsigned int offset, void *buf, unsigned len)
+				  unsigned int offset, void *buf,
+				  unsigned len, unsigned access_size)
 {
 	struct virtio_ccw_device *vcdev = to_vc_device(vdev);
 	int ret;
 	struct ccw1 *ccw;
 	void *config_area;
+
+	len *= access_size;
 
 	ccw = kzalloc(sizeof(*ccw), GFP_DMA | GFP_KERNEL);
 	if (!ccw)
@@ -511,11 +514,13 @@ out_free:
 
 static void virtio_ccw_set_config(struct virtio_device *vdev,
 				  unsigned int offset, const void *buf,
-				  unsigned len)
+				  unsigned len, unsigned acess_size)
 {
 	struct virtio_ccw_device *vcdev = to_vc_device(vdev);
 	struct ccw1 *ccw;
 	void *config_area;
+
+	len *= access_size;
 
 	ccw = kzalloc(sizeof(*ccw), GFP_DMA | GFP_KERNEL);
 	if (!ccw)

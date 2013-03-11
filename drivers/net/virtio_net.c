@@ -831,7 +831,7 @@ static int virtnet_set_mac_address(struct net_device *dev, void *p)
 		}
 	} else if (virtio_has_feature(vdev, VIRTIO_NET_F_MAC)) {
 		vdev->config->set(vdev, offsetof(struct virtio_net_config, mac),
-				  addr->sa_data, dev->addr_len);
+				  addr->sa_data, dev->addr_len, 1);
 	}
 
 	eth_commit_mac_addr_change(dev, p);

@@ -1832,10 +1832,10 @@ static void config_intr(struct virtio_device *vdev)
 
 		vdev->config->get(vdev,
 				  offsetof(struct virtio_console_config, cols),
-				  &cols, sizeof(u16));
+				  &cols, 1, sizeof(u16));
 		vdev->config->get(vdev,
 				  offsetof(struct virtio_console_config, rows),
-				  &rows, sizeof(u16));
+				  &rows, 1, sizeof(u16));
 
 		port = find_port_by_id(portdev, 0);
 		set_console_size(port, rows, cols);
