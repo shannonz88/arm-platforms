@@ -546,7 +546,7 @@ static int p9_virtio_probe(struct virtio_device *vdev)
 	if (virtio_has_feature(vdev, VIRTIO_9P_MOUNT_TAG)) {
 		vdev->config->get(vdev,
 				offsetof(struct virtio_9p_config, tag_len),
-				&tag_len, sizeof(tag_len));
+				  &tag_len, 1, sizeof(tag_len));
 	} else {
 		err = -EINVAL;
 		goto out_free_vq;
@@ -557,7 +557,7 @@ static int p9_virtio_probe(struct virtio_device *vdev)
 		goto out_free_vq;
 	}
 	vdev->config->get(vdev, offsetof(struct virtio_9p_config, tag),
-			tag, tag_len);
+			  tag, tag_len, 1);
 	chan->tag = tag;
 	chan->tag_len = tag_len;
 	err = sysfs_create_file(&(vdev->dev.kobj), &dev_attr_mount_tag.attr);

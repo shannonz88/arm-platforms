@@ -234,11 +234,13 @@ static void rproc_virtio_finalize_features(struct virtio_device *vdev)
 }
 
 static void rproc_virtio_get(struct virtio_device *vdev, unsigned offset,
-							void *buf, unsigned len)
+			     void *buf, unsigned len, unsigned access_size)
 {
 	struct rproc_vdev *rvdev = vdev_to_rvdev(vdev);
 	struct fw_rsc_vdev *rsc;
 	void *cfg;
+
+	len *= access_size;
 
 	rsc = (void *)rvdev->rproc->table_ptr + rvdev->rsc_offset;
 	cfg = &rsc->vring[rsc->num_of_vrings];
@@ -252,11 +254,13 @@ static void rproc_virtio_get(struct virtio_device *vdev, unsigned offset,
 }
 
 static void rproc_virtio_set(struct virtio_device *vdev, unsigned offset,
-		      const void *buf, unsigned len)
+			     const void *buf, unsigned len, unsigned access_size)
 {
 	struct rproc_vdev *rvdev = vdev_to_rvdev(vdev);
 	struct fw_rsc_vdev *rsc;
 	void *cfg;
+
+	len *= access_size;
 
 	rsc = (void *)rvdev->rproc->table_ptr + rvdev->rsc_offset;
 	cfg = &rsc->vring[rsc->num_of_vrings];

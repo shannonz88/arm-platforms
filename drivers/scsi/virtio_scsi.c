@@ -712,7 +712,7 @@ static struct scsi_host_template virtscsi_host_template_multi = {
 		typeof(((struct virtio_scsi_config *)0)->fld) __val; \
 		vdev->config->get(vdev, \
 				  offsetof(struct virtio_scsi_config, fld), \
-				  &__val, sizeof(__val)); \
+				  &__val, 1, sizeof(__val));		\
 		__val; \
 	})
 
@@ -721,7 +721,7 @@ static struct scsi_host_template virtscsi_host_template_multi = {
 		typeof(((struct virtio_scsi_config *)0)->fld) __val = (val); \
 		vdev->config->set(vdev, \
 				  offsetof(struct virtio_scsi_config, fld), \
-				  &__val, sizeof(__val)); \
+				  &__val, 1, sizeof(__val));		\
 	})
 
 static void __virtscsi_set_affinity(struct virtio_scsi *vscsi, bool affinity)

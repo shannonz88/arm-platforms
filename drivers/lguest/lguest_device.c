@@ -154,9 +154,11 @@ static void lg_finalize_features(struct virtio_device *vdev)
 
 /* Once they've found a field, getting a copy of it is easy. */
 static void lg_get(struct virtio_device *vdev, unsigned int offset,
-		   void *buf, unsigned len)
+		   void *buf, unsigned len, unsigned access_size)
 {
 	struct lguest_device_desc *desc = to_lgdev(vdev)->desc;
+
+	len *= access_size;
 
 	/* Check they didn't ask for more than the length of the config! */
 	BUG_ON(offset + len > desc->config_len);
@@ -165,9 +167,11 @@ static void lg_get(struct virtio_device *vdev, unsigned int offset,
 
 /* Setting the contents is also trivial. */
 static void lg_set(struct virtio_device *vdev, unsigned int offset,
-		   const void *buf, unsigned len)
+		   const void *buf, unsigned len, unsigned access_size)
 {
 	struct lguest_device_desc *desc = to_lgdev(vdev)->desc;
+
+	len *= access_size;
 
 	/* Check they didn't ask for more than the length of the config! */
 	BUG_ON(offset + len > desc->config_len);

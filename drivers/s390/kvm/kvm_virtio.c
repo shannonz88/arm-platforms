@@ -115,18 +115,22 @@ static void kvm_finalize_features(struct virtio_device *vdev)
  * Reading and writing elements in config space
  */
 static void kvm_get(struct virtio_device *vdev, unsigned int offset,
-		   void *buf, unsigned len)
+		    void *buf, unsigned len, unsigned access_size)
 {
 	struct kvm_device_desc *desc = to_kvmdev(vdev)->desc;
+
+	len *= access_size;
 
 	BUG_ON(offset + len > desc->config_len);
 	memcpy(buf, kvm_vq_configspace(desc) + offset, len);
 }
 
 static void kvm_set(struct virtio_device *vdev, unsigned int offset,
-		   const void *buf, unsigned len)
+		    const void *buf, unsigned len, unsigned access_size)
 {
 	struct kvm_device_desc *desc = to_kvmdev(vdev)->desc;
+
+	len *= access_size;
 
 	BUG_ON(offset + len > desc->config_len);
 	memcpy(kvm_vq_configspace(desc) + offset, buf, len);

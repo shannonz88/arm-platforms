@@ -101,7 +101,7 @@
 #include <linux/virtio_mmio.h>
 #include <linux/virtio_ring.h>
 
-
+#include <asm-generic/io-64-nonatomic-lo-hi.h>
 
 /* The alignment to use between consumer and producer parts of vring.
  * Currently hardcoded to the page size. */
@@ -168,25 +168,93 @@ static void vm_finalize_features(struct virtio_device *vdev)
 }
 
 static void vm_get(struct virtio_device *vdev, unsigned offset,
-		   void *buf, unsigned len)
+		   void *buf, unsigned len, unsigned access_size)
 {
 	struct virtio_mmio_device *vm_dev = to_virtio_mmio_device(vdev);
-	u8 *ptr = buf;
 	int i;
 
-	for (i = 0; i < len; i++)
-		ptr[i] = readb(vm_dev->base + VIRTIO_MMIO_CONFIG + offset + i);
+	switch (access_size) {
+	case 1: {
+		u8 *ptr = buf;
+
+		for (i = 0; i < len; i++)
+			ptr[i] = readb(vm_dev->base + VIRTIO_MMIO_CONFIG + offset + i);
+
+		break;
+	}
+	case 2: {
+		u16 *ptr = buf;
+
+		for (i = 0; i < len; i++)
+			ptr[i] = readw(vm_dev->base + VIRTIO_MMIO_CONFIG + offset + i);
+
+		break;
+	}
+	case 4: {
+		u32 *ptr = buf;
+
+		for (i = 0; i < len; i++)
+			ptr[i] = readl(vm_dev->base + VIRTIO_MMIO_CONFIG + offset + i);
+
+		break;
+	}
+	case 8: {
+		u64 *ptr = buf;
+
+		for (i = 0; i < len; i++)
+			ptr[i] = readq(vm_dev->base + VIRTIO_MMIO_CONFIG + offset + i);
+
+		break;
+	}
+	default:
+		pr_err("virtio: illegal access size %d\n", access_size);
+		BUG();
+	}
 }
 
 static void vm_set(struct virtio_device *vdev, unsigned offset,
-		   const void *buf, unsigned len)
+		   const void *buf, unsigned len, unsigned access_size)
 {
 	struct virtio_mmio_device *vm_dev = to_virtio_mmio_device(vdev);
-	const u8 *ptr = buf;
 	int i;
 
-	for (i = 0; i < len; i++)
-		writeb(ptr[i], vm_dev->base + VIRTIO_MMIO_CONFIG + offset + i);
+	switch (access_size) {
+	case 1: {
+		const u8 *ptr = buf;
+
+		for (i = 0; i < len; i++)
+			writeb(ptr[i], vm_dev->base + VIRTIO_MMIO_CONFIG + offset + i);
+
+		break;
+	}
+	case 2: {
+		const u16 *ptr = buf;
+
+		for (i = 0; i < len; i++)
+			writew(ptr[i], vm_dev->base + VIRTIO_MMIO_CONFIG + offset + i);
+
+		break;
+	}
+	case 4: {
+		const u32 *ptr = buf;
+
+		for (i = 0; i < len; i++)
+			writel(ptr[i], vm_dev->base + VIRTIO_MMIO_CONFIG + offset + i);
+
+		break;
+	}
+	case 8: {
+		const u64 *ptr = buf;
+
+		for (i = 0; i < len; i++)
+			writeq(ptr[i], vm_dev->base + VIRTIO_MMIO_CONFIG + offset + i);
+
+		break;
+	}
+	default:
+		pr_err("virtio: illegal access size %d\n", access_size);
+		BUG();
+	}
 }
 
 static u8 vm_get_status(struct virtio_device *vdev)

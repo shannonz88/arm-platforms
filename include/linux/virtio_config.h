@@ -12,12 +12,14 @@
  *	vdev: the virtio_device
  *	offset: the offset of the configuration field
  *	buf: the buffer to write the field value into.
- *	len: the length of the buffer
+ *	len: the length of the buffer in access_size unit
+ *	access_size: access length
  * @set: write the value of a configuration field
  *	vdev: the virtio_device
  *	offset: the offset of the configuration field
  *	buf: the buffer to read the field value from.
- *	len: the length of the buffer
+ *	len: the length of the buffer in access_size unit
+ *	access_size: access length
  * @get_status: read the status byte
  *	vdev: the virtio_device
  *	Returns the status byte
@@ -55,9 +57,9 @@
 typedef void vq_callback_t(struct virtqueue *);
 struct virtio_config_ops {
 	void (*get)(struct virtio_device *vdev, unsigned offset,
-		    void *buf, unsigned len);
+		    void *buf, unsigned len, unsigned access_size);
 	void (*set)(struct virtio_device *vdev, unsigned offset,
-		    const void *buf, unsigned len);
+		    const void *buf, unsigned len, unsigned access_size);
 	u8 (*get_status)(struct virtio_device *vdev);
 	void (*set_status)(struct virtio_device *vdev, u8 status);
 	void (*reset)(struct virtio_device *vdev);
@@ -106,20 +108,21 @@ static inline bool virtio_has_feature(const struct virtio_device *vdev,
  * The return value is -ENOENT if the feature doesn't exist.  Otherwise
  * the config value is copied into whatever is pointed to by v. */
 #define virtio_config_val(vdev, fbit, offset, v) \
-	virtio_config_buf((vdev), (fbit), (offset), (v), sizeof(*v))
+	virtio_config_buf((vdev), (fbit), (offset), (v), 1, sizeof(*v))
 
 #define virtio_config_val_len(vdev, fbit, offset, v, len) \
-	virtio_config_buf((vdev), (fbit), (offset), (v), (len))
+	virtio_config_buf((vdev), (fbit), (offset), (v), (len), 1)
 
 static inline int virtio_config_buf(struct virtio_device *vdev,
 				    unsigned int fbit,
 				    unsigned int offset,
-				    void *buf, unsigned len)
+				    void *buf, unsigned len,
+				    unsigned access_size)
 {
 	if (!virtio_has_feature(vdev, fbit))
 		return -ENOENT;
 
-	vdev->config->get(vdev, offset, buf, len);
+	vdev->config->get(vdev, offset, buf, len, access_size);
 	return 0;
 }
 
