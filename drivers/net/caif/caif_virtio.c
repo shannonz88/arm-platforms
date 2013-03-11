@@ -689,7 +689,7 @@ static int cfv_probe(struct virtio_device *vdev)
 #define GET_VIRTIO_CONFIG_OPS(_v, _var, _f) \
 	((_v)->config->get(_v, offsetof(struct virtio_caif_transf_config, _f), \
 			   &_var, \
-			   FIELD_SIZEOF(struct virtio_caif_transf_config, _f)))
+			   1, FIELD_SIZEOF(struct virtio_caif_transf_config, _f)))
 
 	if (vdev->config->get) {
 		GET_VIRTIO_CONFIG_OPS(vdev, cfv->tx_hr, headroom);

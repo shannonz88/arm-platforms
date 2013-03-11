@@ -530,7 +530,7 @@ static void virtblk_config_changed_work(struct work_struct *work)
 
 	/* Host must always specify the capacity. */
 	vdev->config->get(vdev, offsetof(struct virtio_blk_config, capacity),
-			  &capacity, sizeof(capacity));
+			  &capacity, 1, sizeof(capacity));
 
 	/* If capacity is too big, truncate with warning. */
 	if ((sector_t)capacity != capacity) {
@@ -655,7 +655,7 @@ virtblk_cache_type_store(struct device *dev, struct device_attribute *attr,
 	writeback = i;
 	vdev->config->set(vdev,
 			  offsetof(struct virtio_blk_config, wce),
-			  &writeback, sizeof(writeback));
+			  &writeback, 1, sizeof(writeback));
 
 	virtblk_update_cache_mode(vdev);
 	return count;
@@ -773,7 +773,7 @@ static int virtblk_probe(struct virtio_device *vdev)
 
 	/* Host must always specify the capacity. */
 	vdev->config->get(vdev, offsetof(struct virtio_blk_config, capacity),
-			  &cap, sizeof(cap));
+			  &cap, 1, sizeof(cap));
 
 	/* If capacity is too big, truncate with warning. */
 	if ((sector_t)cap != cap) {
