@@ -28,6 +28,15 @@
 #define RTC_24H 0x02		/* 24 hour mode - else hours bit 7 means pm */
 #define RTC_DST_EN 0x01	        /* auto switch DST - works f. USA only */
 
+static inline u8 do_cmos_read(u8 reg)
+{
+	return CMOS_READ(reg);
+}
+
+static inline void do_cmos_write(u8 val, u8 reg)
+{
+	CMOS_WRITE(val, reg);
+}
 /*
  * Returns true if a clock update is in progress
  */
@@ -37,7 +46,7 @@ static inline unsigned char rtc_is_updating(void)
 	unsigned long flags;
 
 	spin_lock_irqsave(&rtc_lock, flags);
-	uip = (CMOS_READ(RTC_FREQ_SELECT) & RTC_UIP);
+	uip = (do_cmos_read(RTC_FREQ_SELECT) & RTC_UIP);
 	spin_unlock_irqrestore(&rtc_lock, flags);
 	return uip;
 }
@@ -70,16 +79,16 @@ static inline unsigned int __get_rtc_time(struct rtc_time *time)
 	 * by the RTC when initially set to a non-zero value.
 	 */
 	spin_lock_irqsave(&rtc_lock, flags);
-	time->tm_sec = CMOS_READ(RTC_SECONDS);
-	time->tm_min = CMOS_READ(RTC_MINUTES);
-	time->tm_hour = CMOS_READ(RTC_HOURS);
-	time->tm_mday = CMOS_READ(RTC_DAY_OF_MONTH);
-	time->tm_mon = CMOS_READ(RTC_MONTH);
-	time->tm_year = CMOS_READ(RTC_YEAR);
+	time->tm_sec = do_cmos_read(RTC_SECONDS);
+	time->tm_min = do_cmos_read(RTC_MINUTES);
+	time->tm_hour = do_cmos_read(RTC_HOURS);
+	time->tm_mday = do_cmos_read(RTC_DAY_OF_MONTH);
+	time->tm_mon = do_cmos_read(RTC_MONTH);
+	time->tm_year = do_cmos_read(RTC_YEAR);
 #ifdef CONFIG_MACH_DECSTATION
-	real_year = CMOS_READ(RTC_DEC_YEAR);
+	real_year = do_cmos_read(RTC_DEC_YEAR);
 #endif
-	ctrl = CMOS_READ(RTC_CONTROL);
+	ctrl = do_cmos_read(RTC_CONTROL);
 	spin_unlock_irqrestore(&rtc_lock, flags);
 
 	if (!(ctrl & RTC_DM_BINARY) || RTC_ALWAYS_BCD)
@@ -161,7 +170,7 @@ static inline int __set_rtc_time(struct rtc_time *time)
 	if (yrs >= 100)
 		yrs -= 100;
 
-	if (!(CMOS_READ(RTC_CONTROL) & RTC_DM_BINARY)
+	if (!(do_cmos_read(RTC_CONTROL) & RTC_DM_BINARY)
 	    || RTC_ALWAYS_BCD) {
 		sec = bin2bcd(sec);
 		min = bin2bcd(min);
@@ -171,23 +180,23 @@ static inline int __set_rtc_time(struct rtc_time *time)
 		yrs = bin2bcd(yrs);
 	}
 
-	save_control = CMOS_READ(RTC_CONTROL);
-	CMOS_WRITE((save_control|RTC_SET), RTC_CONTROL);
-	save_freq_select = CMOS_READ(RTC_FREQ_SELECT);
-	CMOS_WRITE((save_freq_select|RTC_DIV_RESET2), RTC_FREQ_SELECT);
+	save_control = do_cmos_read(RTC_CONTROL);
+	do_cmos_write((save_control|RTC_SET), RTC_CONTROL);
+	save_freq_select = do_cmos_read(RTC_FREQ_SELECT);
+	do_cmos_write((save_freq_select|RTC_DIV_RESET2), RTC_FREQ_SELECT);
 
 #ifdef CONFIG_MACH_DECSTATION
-	CMOS_WRITE(real_yrs, RTC_DEC_YEAR);
+	do_cmos_write(real_yrs, RTC_DEC_YEAR);
 #endif
-	CMOS_WRITE(yrs, RTC_YEAR);
-	CMOS_WRITE(mon, RTC_MONTH);
-	CMOS_WRITE(day, RTC_DAY_OF_MONTH);
-	CMOS_WRITE(hrs, RTC_HOURS);
-	CMOS_WRITE(min, RTC_MINUTES);
-	CMOS_WRITE(sec, RTC_SECONDS);
+	do_cmos_write(yrs, RTC_YEAR);
+	do_cmos_write(mon, RTC_MONTH);
+	do_cmos_write(day, RTC_DAY_OF_MONTH);
+	do_cmos_write(hrs, RTC_HOURS);
+	do_cmos_write(min, RTC_MINUTES);
+	do_cmos_write(sec, RTC_SECONDS);
 
-	CMOS_WRITE(save_control, RTC_CONTROL);
-	CMOS_WRITE(save_freq_select, RTC_FREQ_SELECT);
+	do_cmos_write(save_control, RTC_CONTROL);
+	do_cmos_write(save_freq_select, RTC_FREQ_SELECT);
 
 	spin_unlock_irqrestore(&rtc_lock, flags);
 
