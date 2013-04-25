@@ -37,6 +37,7 @@
 #include <linux/log2.h>
 #include <linux/pm.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/of_platform.h>
 #include <linux/dmi.h>
 
@@ -65,6 +66,41 @@ struct cmos_rtc {
 #define is_valid_irq(n)		((n) > 0)
 
 static const char driver_name[] = "rtc_cmos";
+
+#ifdef CONFIG_RTC_DRV_CMOS_MMIO
+static void __iomem *rtc_cmos_base;
+
+static u8 do_cmos_read(u8 reg)
+{
+	u8 val;
+
+	if (rtc_cmos_base) {
+		writeb(reg, rtc_cmos_base);
+		val = readb(rtc_cmos_base + 1);
+	} else {
+		val = CMOS_READ(reg);
+	}
+
+	return val;
+}
+
+static void do_cmos_write(u8 val, u8 reg)
+{
+	if (rtc_cmos_base) {
+		writeb(reg, rtc_cmos_base);
+		writeb(val, rtc_cmos_base + 1);
+	} else {
+		CMOS_WRITE(val, reg);
+	}
+}
+
+static inline void rtc_cmos_set_base(void __iomem *base)
+{
+	rtc_cmos_base = base;
+}
+#else
+static void rtc_cmos_set_base(void __iomem *base) {}
+#endif
 
 /* The RTC_INTR register may have e.g. RTC_PF set even if RTC_PIE is clear;
  * always mask it against the irq enable bits in RTC_CONTROL.  Bit values
@@ -663,13 +699,23 @@ cmos_do_probe(struct device *dev, struct resource *ports, int rtc_irq)
 		return -ENODEV;
 
 	/* Claim I/O ports ASAP, minimizing conflict with legacy driver.
-	 *
-	 * REVISIT non-x86 systems may instead use memory space resources
-	 * (needing ioremap etc), not i/o space resources like this ...
+	 * MMIO gets requested the same way, not that it matters much.
 	 */
-	ports = request_region(ports->start,
-			resource_size(ports),
-			driver_name);
+	switch(resource_type(ports)) {
+	case IORESOURCE_IO:
+		ports = request_region(ports->start,
+				       resource_size(ports),
+				       driver_name);
+		break;
+	case IORESOURCE_MEM:
+		ports = request_mem_region(ports->start,
+					   resource_size(ports),
+					   driver_name);
+		break;
+	default:		/* Martian I/O??? */
+		ports = NULL;
+	}
+
 	if (!ports) {
 		dev_dbg(dev, "i/o registers already in use\n");
 		return -EBUSY;
@@ -1160,10 +1206,17 @@ static inline void cmos_of_init(struct platform_device *pdev) {}
 
 static int __init cmos_platform_probe(struct platform_device *pdev)
 {
+	struct resource *ports;
+
 	cmos_of_init(pdev);
+
+	ports = platform_get_resource(pdev, IORESOURCE_IO, 0);
+	if (!ports)
+		ports = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+
 	cmos_wake_setup(&pdev->dev);
 	return cmos_do_probe(&pdev->dev,
-			platform_get_resource(pdev, IORESOURCE_IO, 0),
+			ports,
 			platform_get_irq(pdev, 0));
 }
 

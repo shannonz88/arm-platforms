@@ -28,6 +28,10 @@
 #define RTC_24H 0x02		/* 24 hour mode - else hours bit 7 means pm */
 #define RTC_DST_EN 0x01	        /* auto switch DST - works f. USA only */
 
+#ifdef CONFIG_RTC_DRV_CMOS_MMIO
+static u8 do_cmos_read(u8 reg);
+static void do_cmos_write(u8 val, u8 reg);
+#else
 static inline u8 do_cmos_read(u8 reg)
 {
 	return CMOS_READ(reg);
@@ -37,6 +41,7 @@ static inline void do_cmos_write(u8 val, u8 reg)
 {
 	CMOS_WRITE(val, reg);
 }
+#endif
 
 static inline unsigned long rtc_cmos_lock(void)
 {
