@@ -404,14 +404,14 @@ __kvm_hyp_code_start:
 	ldr	w10, [x2, #GICH_ELRSR1]
 	ldr	w11, [x2, #GICH_APR]
 
-	str	w4, [x3, #VGIC_CPU_HCR]
-	str	w5, [x3, #VGIC_CPU_VMCR]
-	str	w6, [x3, #VGIC_CPU_MISR]
-	str	w7, [x3, #VGIC_CPU_EISR]
-	str	w8, [x3, #(VGIC_CPU_EISR + 4)]
-	str	w9, [x3, #VGIC_CPU_ELRSR]
-	str	w10, [x3, #(VGIC_CPU_ELRSR + 4)]
-	str	w11, [x3, #VGIC_CPU_APR]
+	str	w4, [x3, #VGIC_V2_CPU_HCR]
+	str	w5, [x3, #VGIC_V2_CPU_VMCR]
+	str	w6, [x3, #VGIC_V2_CPU_MISR]
+	str	w7, [x3, #VGIC_V2_CPU_EISR]
+	str	w8, [x3, #(VGIC_V2_CPU_EISR + 4)]
+	str	w9, [x3, #VGIC_V2_CPU_ELRSR]
+	str	w10, [x3, #(VGIC_V2_CPU_ELRSR + 4)]
+	str	w11, [x3, #VGIC_V2_CPU_APR]
 
 	/* Clear GICH_HCR */
 	str	wzr, [x2, #GICH_HCR]
@@ -419,7 +419,7 @@ __kvm_hyp_code_start:
 	/* Save list registers */
 	add	x2, x2, #GICH_LR0
 	ldr	w4, [x3, #VGIC_CPU_NR_LR]
-	add	x3, x3, #VGIC_CPU_LR
+	add	x3, x3, #VGIC_V2_CPU_LR
 1:	ldr	w5, [x2], #4
 	str	w5, [x3], #4
 	sub	w4, w4, #1
@@ -443,9 +443,9 @@ __kvm_hyp_code_start:
 	add	x3, x0, #VCPU_VGIC_CPU
 
 	/* We only restore a minimal set of registers */
-	ldr	w4, [x3, #VGIC_CPU_HCR]
-	ldr	w5, [x3, #VGIC_CPU_VMCR]
-	ldr	w6, [x3, #VGIC_CPU_APR]
+	ldr	w4, [x3, #VGIC_V2_CPU_HCR]
+	ldr	w5, [x3, #VGIC_V2_CPU_VMCR]
+	ldr	w6, [x3, #VGIC_V2_CPU_APR]
 
 	str	w4, [x2, #GICH_HCR]
 	str	w5, [x2, #GICH_VMCR]
@@ -454,7 +454,7 @@ __kvm_hyp_code_start:
 	/* Restore list registers */
 	add	x2, x2, #GICH_LR0
 	ldr	w4, [x3, #VGIC_CPU_NR_LR]
-	add	x3, x3, #VGIC_CPU_LR
+	add	x3, x3, #VGIC_V2_CPU_LR
 1:	ldr	w5, [x3], #4
 	str	w5, [x2], #4
 	sub	w4, w4, #1
