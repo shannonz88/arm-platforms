@@ -831,8 +831,32 @@ static int vgic_v2_get_lr_irq(const struct kvm_vcpu *vcpu, int lr)
 	return vcpu->arch.vgic_cpu.vgic_v2.vgic_lr[lr] & GICH_LR_VIRTUALID;
 }
 
+#define MK_LR_PEND(src, irq)	\
+	(GICH_LR_PENDING_BIT | ((src) << GICH_LR_PHYSID_CPUID_SHIFT) | (irq))
+
+static void vgic_v2_build_lr(struct kvm_vcpu *vcpu, u8 source_id,
+			     int irq, int lr, bool is_edge)
+{
+	u32 lr_val = MK_LR_PEND(source_id, irq);
+
+	/*
+	 * If an interrupt is already active, preserve the active bit.
+	 * Only an edge interrupt can be both active and pending, so
+	 * skip the test in this case.
+	 */
+	if (vcpu->arch.vgic_cpu.vgic_v2.vgic_lr[lr] & GICH_LR_ACTIVE_BIT) {
+		lr_val |= GICH_LR_ACTIVE_BIT;
+	} else {
+		if (!is_edge)
+			lr_val |= GICH_LR_EOI;
+	}
+
+	vcpu->arch.vgic_cpu.vgic_v2.vgic_lr[lr] = lr_val;
+}
+
 static const struct vgic_ops vgic_ops = {
 	.get_lr_irq	= vgic_v2_get_lr_irq,
+	.build_lr	= vgic_v2_build_lr,
 };
 
 static inline int vgic_get_lr_irq(const struct kvm_vcpu *vcpu, int lr)
@@ -840,10 +864,14 @@ static inline int vgic_get_lr_irq(const struct kvm_vcpu *vcpu, int lr)
 	return vgic_ops.get_lr_irq(vcpu, lr);
 }
 
+static inline void vgic_build_lr(struct kvm_vcpu *vcpu, u8 source_id,
+				 int irq, int lr, bool is_edge)
+{
+	vgic_ops.build_lr(vcpu, source_id, irq, lr, is_edge);
+}
+
 #define LR_CPUID(lr)	\
 	(((lr) & GICH_LR_PHYSID_CPUID) >> GICH_LR_PHYSID_CPUID_SHIFT)
-#define MK_LR_PEND(src, irq)	\
-	(GICH_LR_PENDING_BIT | ((src) << GICH_LR_PHYSID_CPUID_SHIFT) | (irq))
 
 /*
  * An interrupt may have been disabled after being made pending on the
@@ -896,7 +924,7 @@ static bool vgic_queue_irq(struct kvm_vcpu *vcpu, u8 sgi_source_id, int irq)
 		kvm_debug("LR%d piggyback for IRQ%d %x\n",
 			  lr, irq, vgic_cpu->vgic_v2.vgic_lr[lr]);
 		BUG_ON(!test_bit(lr, vgic_cpu->lr_used));
-		vgic_cpu->vgic_v2.vgic_lr[lr] |= GICH_LR_PENDING_BIT;
+		vgic_build_lr(vcpu, sgi_source_id, irq, lr, true);
 		return true;
 	}
 
@@ -907,12 +935,11 @@ static bool vgic_queue_irq(struct kvm_vcpu *vcpu, u8 sgi_source_id, int irq)
 		return false;
 
 	kvm_debug("LR%d allocated for IRQ%d %x\n", lr, irq, sgi_source_id);
-	vgic_cpu->vgic_v2.vgic_lr[lr] = MK_LR_PEND(sgi_source_id, irq);
 	vgic_cpu->vgic_irq_lr_map[irq] = lr;
 	set_bit(lr, vgic_cpu->lr_used);
 
-	if (!vgic_irq_is_edge(vcpu, irq))
-		vgic_cpu->vgic_v2.vgic_lr[lr] |= GICH_LR_EOI;
+	vgic_build_lr(vcpu, sgi_source_id, irq, lr,
+		      vgic_irq_is_edge(vcpu, irq));
 
 	return true;
 }

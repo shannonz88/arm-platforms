@@ -72,6 +72,7 @@ struct kvm_vcpu;
 
 struct vgic_ops {
 	int	(*get_lr_irq)(const struct kvm_vcpu *, int);
+	void	(*build_lr)(struct kvm_vcpu *, u8, int, int, bool);
 };
 
 struct vgic_dist {
