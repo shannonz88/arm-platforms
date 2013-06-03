@@ -826,6 +826,20 @@ static void vgic_update_state(struct kvm *kvm)
 	}
 }
 
+static int vgic_v2_get_lr_irq(const struct kvm_vcpu *vcpu, int lr)
+{
+	return vcpu->arch.vgic_cpu.vgic_v2.vgic_lr[lr] & GICH_LR_VIRTUALID;
+}
+
+static const struct vgic_ops vgic_ops = {
+	.get_lr_irq	= vgic_v2_get_lr_irq,
+};
+
+static inline int vgic_get_lr_irq(const struct kvm_vcpu *vcpu, int lr)
+{
+	return vgic_ops.get_lr_irq(vcpu, lr);
+}
+
 #define LR_CPUID(lr)	\
 	(((lr) & GICH_LR_PHYSID_CPUID) >> GICH_LR_PHYSID_CPUID_SHIFT)
 #define MK_LR_PEND(src, irq)	\
@@ -846,7 +860,7 @@ static void vgic_retire_disabled_irqs(struct kvm_vcpu *vcpu)
 	int lr;
 
 	for_each_set_bit(lr, vgic_cpu->lr_used, vgic_cpu->nr_lr) {
-		int irq = vgic_cpu->vgic_v2.vgic_lr[lr] & GICH_LR_VIRTUALID;
+		int irq = vgic_get_lr_irq(vcpu, lr);
 
 		if (!vgic_irq_is_enabled(vcpu, irq)) {
 			vgic_cpu->vgic_irq_lr_map[irq] = LR_EMPTY;
@@ -1025,7 +1039,7 @@ static bool vgic_process_maintenance(struct kvm_vcpu *vcpu)
 
 		for_each_set_bit(lr, (unsigned long *)vgic_cpu->vgic_v2.vgic_eisr,
 				 vgic_cpu->nr_lr) {
-			irq = vgic_cpu->vgic_v2.vgic_lr[lr] & GICH_LR_VIRTUALID;
+			irq = vgic_get_lr_irq(vcpu, lr);
 
 			vgic_irq_clear_active(vcpu, irq);
 			vgic_cpu->vgic_v2.vgic_lr[lr] &= ~GICH_LR_EOI;
@@ -1074,7 +1088,7 @@ static void __kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu)
 		if (!test_and_clear_bit(lr, vgic_cpu->lr_used))
 			continue;
 
-		irq = vgic_cpu->vgic_v2.vgic_lr[lr] & GICH_LR_VIRTUALID;
+		irq = vgic_get_lr_irq(vcpu, lr);
 
 		BUG_ON(irq >= VGIC_NR_IRQS);
 		vgic_cpu->vgic_irq_lr_map[irq] = LR_EMPTY;

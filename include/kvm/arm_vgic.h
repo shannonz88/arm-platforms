@@ -68,6 +68,12 @@ struct vgic_bytemap {
 	u32 shared[VGIC_NR_SHARED_IRQS  / 4];
 };
 
+struct kvm_vcpu;
+
+struct vgic_ops {
+	int	(*get_lr_irq)(const struct kvm_vcpu *, int);
+};
+
 struct vgic_dist {
 #ifdef CONFIG_KVM_ARM_VGIC
 	spinlock_t		lock;
