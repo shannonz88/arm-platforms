@@ -854,9 +854,18 @@ static void vgic_v2_build_lr(struct kvm_vcpu *vcpu, u8 source_id,
 	vcpu->arch.vgic_cpu.vgic_v2.vgic_lr[lr] = lr_val;
 }
 
+static bool vgic_v2_match_lr_source_id(const struct kvm_vcpu *vcpu,
+				       int lr, u8 source_id)
+{
+	u32 val = vcpu->arch.vgic_cpu.vgic_v2.vgic_lr[lr];
+	val = (val & GICH_LR_PHYSID_CPUID) >> GICH_LR_PHYSID_CPUID_SHIFT;
+	return val == source_id;
+}
+
 static const struct vgic_ops vgic_ops = {
-	.get_lr_irq	= vgic_v2_get_lr_irq,
-	.build_lr	= vgic_v2_build_lr,
+	.get_lr_irq		= vgic_v2_get_lr_irq,
+	.build_lr		= vgic_v2_build_lr,
+	.match_lr_source_id	= vgic_v2_match_lr_source_id,
 };
 
 static inline int vgic_get_lr_irq(const struct kvm_vcpu *vcpu, int lr)
@@ -870,8 +879,10 @@ static inline void vgic_build_lr(struct kvm_vcpu *vcpu, u8 source_id,
 	vgic_ops.build_lr(vcpu, source_id, irq, lr, is_edge);
 }
 
-#define LR_CPUID(lr)	\
-	(((lr) & GICH_LR_PHYSID_CPUID) >> GICH_LR_PHYSID_CPUID_SHIFT)
+static inline bool vgic_match_lr_source_id(const struct kvm_vcpu *vcpu, int lr, u8 source_id)
+{
+	return vgic_ops.match_lr_source_id(vcpu, lr, source_id);
+}
 
 /*
  * An interrupt may have been disabled after being made pending on the
@@ -920,7 +931,7 @@ static bool vgic_queue_irq(struct kvm_vcpu *vcpu, u8 sgi_source_id, int irq)
 
 	/* Do we have an active interrupt for the same CPUID? */
 	if (lr != LR_EMPTY &&
-	    (LR_CPUID(vgic_cpu->vgic_v2.vgic_lr[lr]) == sgi_source_id)) {
+	    vgic_match_lr_source_id(vcpu, lr, sgi_source_id)) {
 		kvm_debug("LR%d piggyback for IRQ%d %x\n",
 			  lr, irq, vgic_cpu->vgic_v2.vgic_lr[lr]);
 		BUG_ON(!test_bit(lr, vgic_cpu->lr_used));
