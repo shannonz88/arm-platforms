@@ -862,10 +862,23 @@ static bool vgic_v2_match_lr_source_id(const struct kvm_vcpu *vcpu,
 	return val == source_id;
 }
 
+static void vgic_v2_clear_lr_state(struct kvm_vcpu *vcpu, int lr)
+{
+	u32 bits = GICH_LR_STATE | GICH_LR_EOI;
+	vcpu->arch.vgic_cpu.vgic_v2.vgic_lr[lr] &= ~bits;
+
+	/*
+	 * Despite being EOIed, the LR may not have been marked as
+	 * empty.
+	 */
+	set_bit(lr, (unsigned long *)vcpu->arch.vgic_cpu.vgic_v2.vgic_elrsr);
+}
+
 static const struct vgic_ops vgic_ops = {
 	.get_lr_irq		= vgic_v2_get_lr_irq,
 	.build_lr		= vgic_v2_build_lr,
 	.match_lr_source_id	= vgic_v2_match_lr_source_id,
+	.clear_lr_state		= vgic_v2_clear_lr_state,
 };
 
 static inline int vgic_get_lr_irq(const struct kvm_vcpu *vcpu, int lr)
@@ -882,6 +895,11 @@ static inline void vgic_build_lr(struct kvm_vcpu *vcpu, u8 source_id,
 static inline bool vgic_match_lr_source_id(const struct kvm_vcpu *vcpu, int lr, u8 source_id)
 {
 	return vgic_ops.match_lr_source_id(vcpu, lr, source_id);
+}
+
+static inline void vgic_clear_lr_state(struct kvm_vcpu *vcpu, int lr)
+{
+	vgic_ops.clear_lr_state(vcpu, lr);
 }
 
 /*
@@ -904,7 +922,7 @@ static void vgic_retire_disabled_irqs(struct kvm_vcpu *vcpu)
 		if (!vgic_irq_is_enabled(vcpu, irq)) {
 			vgic_cpu->vgic_irq_lr_map[irq] = LR_EMPTY;
 			clear_bit(lr, vgic_cpu->lr_used);
-			vgic_cpu->vgic_v2.vgic_lr[lr] &= ~GICH_LR_STATE;
+			vgic_clear_lr_state(vcpu, lr);
 			if (vgic_irq_is_active(vcpu, irq))
 				vgic_irq_clear_active(vcpu, irq);
 		}
@@ -932,8 +950,7 @@ static bool vgic_queue_irq(struct kvm_vcpu *vcpu, u8 sgi_source_id, int irq)
 	/* Do we have an active interrupt for the same CPUID? */
 	if (lr != LR_EMPTY &&
 	    vgic_match_lr_source_id(vcpu, lr, sgi_source_id)) {
-		kvm_debug("LR%d piggyback for IRQ%d %x\n",
-			  lr, irq, vgic_cpu->vgic_v2.vgic_lr[lr]);
+		kvm_debug("LR%d piggyback for IRQ%d\n", lr, irq);
 		BUG_ON(!test_bit(lr, vgic_cpu->lr_used));
 		vgic_build_lr(vcpu, sgi_source_id, irq, lr, true);
 		return true;
@@ -1080,7 +1097,7 @@ static bool vgic_process_maintenance(struct kvm_vcpu *vcpu)
 			irq = vgic_get_lr_irq(vcpu, lr);
 
 			vgic_irq_clear_active(vcpu, irq);
-			vgic_cpu->vgic_v2.vgic_lr[lr] &= ~GICH_LR_EOI;
+			vgic_clear_lr_state(vcpu, lr);
 
 			/* Any additional pending interrupt? */
 			if (vgic_dist_irq_is_pending(vcpu, irq)) {
@@ -1089,13 +1106,6 @@ static bool vgic_process_maintenance(struct kvm_vcpu *vcpu)
 			} else {
 				vgic_cpu_irq_clear(vcpu, irq);
 			}
-
-			/*
-			 * Despite being EOIed, the LR may not have
-			 * been marked as empty.
-			 */
-			set_bit(lr, (unsigned long *)vgic_cpu->vgic_v2.vgic_elrsr);
-			vgic_cpu->vgic_v2.vgic_lr[lr] &= ~GICH_LR_ACTIVE_BIT;
 		}
 	}
 
