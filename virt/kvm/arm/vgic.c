@@ -874,11 +874,18 @@ static void vgic_v2_clear_lr_state(struct kvm_vcpu *vcpu, int lr)
 	set_bit(lr, (unsigned long *)vcpu->arch.vgic_cpu.vgic_v2.vgic_elrsr);
 }
 
+static u64 vgic_v2_get_elrsr(const struct kvm_vcpu *vcpu)
+{
+	const u32 *elrsr = vcpu->arch.vgic_cpu.vgic_v2.vgic_elrsr;
+	return *(u64 *)elrsr;
+}
+
 static const struct vgic_ops vgic_ops = {
 	.get_lr_irq		= vgic_v2_get_lr_irq,
 	.build_lr		= vgic_v2_build_lr,
 	.match_lr_source_id	= vgic_v2_match_lr_source_id,
 	.clear_lr_state		= vgic_v2_clear_lr_state,
+	.get_elrsr		= vgic_v2_get_elrsr,
 };
 
 static inline int vgic_get_lr_irq(const struct kvm_vcpu *vcpu, int lr)
@@ -900,6 +907,11 @@ static inline bool vgic_match_lr_source_id(const struct kvm_vcpu *vcpu, int lr, 
 static inline void vgic_clear_lr_state(struct kvm_vcpu *vcpu, int lr)
 {
 	vgic_ops.clear_lr_state(vcpu, lr);
+}
+
+static inline u64 vgic_get_elrsr(struct kvm_vcpu *vcpu)
+{
+	return vgic_ops.get_elrsr(vcpu);
 }
 
 /*
@@ -1123,14 +1135,15 @@ static void __kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu)
 {
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
+	u64 elrsr = vgic_get_elrsr(vcpu);
+	unsigned long *elrsr_ptr = (unsigned long *)&elrsr;
 	int lr, pending;
 	bool level_pending;
 
 	level_pending = vgic_process_maintenance(vcpu);
 
 	/* Clear mappings for empty LRs */
-	for_each_set_bit(lr, (unsigned long *)vgic_cpu->vgic_v2.vgic_elrsr,
-			 vgic_cpu->nr_lr) {
+	for_each_set_bit(lr, elrsr_ptr, vgic_cpu->nr_lr) {
 		int irq;
 
 		if (!test_and_clear_bit(lr, vgic_cpu->lr_used))
@@ -1143,8 +1156,7 @@ static void __kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu)
 	}
 
 	/* Check if we still have something up our sleeve... */
-	pending = find_first_zero_bit((unsigned long *)vgic_cpu->vgic_v2.vgic_elrsr,
-				      vgic_cpu->nr_lr);
+	pending = find_first_zero_bit(elrsr_ptr, vgic_cpu->nr_lr);
 	if (level_pending || pending < vgic_cpu->nr_lr)
 		set_bit(vcpu->vcpu_id, &dist->irq_pending_on_cpu);
 }
