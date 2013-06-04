@@ -78,6 +78,8 @@ struct vgic_ops {
 	u64	(*get_elrsr)(const struct kvm_vcpu *vcpu);
 	u64	(*get_eisr)(const struct kvm_vcpu *vcpu);
 	u32	(*get_interrupt_status)(const struct kvm_vcpu *vcpu);
+	void	(*set_underflow)(struct kvm_vcpu *vcpu);
+	void	(*clear_underflow)(struct kvm_vcpu *vcpu);
 };
 
 struct vgic_dist {
