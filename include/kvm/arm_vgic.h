@@ -80,6 +80,7 @@ struct vgic_ops {
 	u32	(*get_interrupt_status)(const struct kvm_vcpu *vcpu);
 	void	(*set_underflow)(struct kvm_vcpu *vcpu);
 	void	(*clear_underflow)(struct kvm_vcpu *vcpu);
+	void	(*enable)(struct kvm_vcpu *vcpu);
 };
 
 struct vgic_dist {
