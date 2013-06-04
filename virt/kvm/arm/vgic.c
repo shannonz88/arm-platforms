@@ -1028,11 +1028,18 @@ static u64 vgic_v2_get_elrsr(const struct kvm_vcpu *vcpu)
 	return *(u64 *)elrsr;
 }
 
+static u64 vgic_v2_get_eisr(const struct kvm_vcpu *vcpu)
+{
+	const u32 *eisr = vcpu->arch.vgic_cpu.vgic_v2.vgic_eisr;
+	return *(u64 *)eisr;
+}
+
 static const struct vgic_ops vgic_ops = {
 	.get_lr			= vgic_v2_get_lr,
 	.set_lr			= vgic_v2_set_lr,
 	.sync_lr_elrsr		= vgic_v2_sync_lr_elrsr,
 	.get_elrsr		= vgic_v2_get_elrsr,
+	.get_eisr		= vgic_v2_get_eisr,
 };
 
 static struct vgic_lr vgic_get_lr(const struct kvm_vcpu *vcpu, int lr)
@@ -1055,6 +1062,11 @@ static void vgic_sync_lr_elrsr(struct kvm_vcpu *vcpu, int lr,
 static inline u64 vgic_get_elrsr(struct kvm_vcpu *vcpu)
 {
 	return vgic_ops.get_elrsr(vcpu);
+}
+
+static inline u64 vgic_get_eisr(struct kvm_vcpu *vcpu)
+{
+	return vgic_ops.get_eisr(vcpu);
 }
 
 static void vgic_retire_lr(int lr_nr, int irq, struct kvm_vcpu *vcpu)
@@ -1263,10 +1275,11 @@ static bool vgic_process_maintenance(struct kvm_vcpu *vcpu)
 		 * Some level interrupts have been EOIed. Clear their
 		 * active bit.
 		 */
+		u64 eisr = vgic_get_eisr(vcpu);
+		unsigned long *eisr_ptr = (unsigned long *)&eisr;
 		int lr;
 
-		for_each_set_bit(lr, (unsigned long *)vgic_cpu->vgic_v2.vgic_eisr,
-				 vgic_cpu->nr_lr) {
+		for_each_set_bit(lr, eisr_ptr, vgic_cpu->nr_lr) {
 			struct vgic_lr vlr = vgic_get_lr(vcpu, lr);
 
 			vgic_irq_clear_active(vcpu, vlr.irq);
