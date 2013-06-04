@@ -77,6 +77,7 @@ struct vgic_ops {
 	void	(*clear_lr_state)(struct kvm_vcpu *, int lr);
 	u64	(*get_elrsr)(const struct kvm_vcpu *vcpu);
 	u64	(*get_eisr)(const struct kvm_vcpu *vcpu);
+	u32	(*get_interrupt_status)(const struct kvm_vcpu *vcpu);
 };
 
 struct vgic_dist {
@@ -154,6 +155,9 @@ struct vgic_cpu {
 };
 
 #define LR_EMPTY	0xff
+
+#define INT_STATUS_EOI		(1 << 0)
+#define INT_STATUS_UNDERFLOW	(1 << 1)
 
 struct kvm;
 struct kvm_vcpu;
