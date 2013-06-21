@@ -24,7 +24,6 @@
 #include <linux/irqreturn.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>
-#include <linux/irqchip/arm-gic.h>
 
 #define VGIC_NR_IRQS		128
 #define VGIC_NR_SGIS		16
@@ -70,6 +69,10 @@ struct vgic_bytemap {
 
 struct kvm_vcpu;
 
+enum vgic_type {
+	VGIC_V2,		/* Good ol' GICv2 */
+};
+
 struct vgic_ops {
 	int	(*get_lr_irq)(const struct kvm_vcpu *, int);
 	void	(*build_lr)(struct kvm_vcpu *, u8, int, int, bool);
@@ -84,6 +87,8 @@ struct vgic_ops {
 };
 
 struct vgic_params {
+	/* vgic type */
+	enum vgic_type	type;
 	/* Physical address of vgic virtual cpu interface */
 	phys_addr_t	vcpu_base;
 	/* Number of list registers */

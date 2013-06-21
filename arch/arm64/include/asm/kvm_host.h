@@ -199,4 +199,20 @@ static inline void __cpu_init_hyp_mode(phys_addr_t boot_pgd_ptr,
 		     hyp_stack_ptr, vector_ptr);
 }
 
+static inline void vgic_arch_setup(const struct vgic_params *vgic)
+{
+	extern char *__vgic_sr_vectors[2];
+
+	switch(vgic->type)
+	{
+	case VGIC_V2:
+		__vgic_sr_vectors[0] = __save_vgic_v2_state;
+		__vgic_sr_vectors[1] = __restore_vgic_v2_state;
+		break;
+
+	default:
+		BUG();
+	}
+}
+
 #endif /* __ARM64_KVM_HOST_H__ */

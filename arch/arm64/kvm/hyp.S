@@ -16,7 +16,6 @@
  */
 
 #include <linux/linkage.h>
-#include <linux/irqchip/arm-gic.h>
 
 #include <asm/assembler.h>
 #include <asm/memory.h>
@@ -375,90 +374,6 @@
 	msr	vttbr_el2, xzr
 .endm
 
-/*
- * Save the VGIC CPU state into memory
- * x0: Register pointing to VCPU struct
- * Do not corrupt x1!!!
- */
-.macro save_vgic_state
-	/* Get VGIC VCTRL base into x2 */
-	ldr	x2, [x0, #VCPU_KVM]
-	kern_hyp_va	x2
-	ldr	x2, [x2, #KVM_VGIC_VCTRL]
-	kern_hyp_va	x2
-	cbz	x2, 2f		// disabled
-
-	/* Compute the address of struct vgic_cpu */
-	add	x3, x0, #VCPU_VGIC_CPU
-
-	/* Save all interesting registers */
-	ldr	w4, [x2, #GICH_HCR]
-	ldr	w5, [x2, #GICH_VMCR]
-	ldr	w6, [x2, #GICH_MISR]
-	ldr	w7, [x2, #GICH_EISR0]
-	ldr	w8, [x2, #GICH_EISR1]
-	ldr	w9, [x2, #GICH_ELRSR0]
-	ldr	w10, [x2, #GICH_ELRSR1]
-	ldr	w11, [x2, #GICH_APR]
-
-	str	w4, [x3, #VGIC_V2_CPU_HCR]
-	str	w5, [x3, #VGIC_V2_CPU_VMCR]
-	str	w6, [x3, #VGIC_V2_CPU_MISR]
-	str	w7, [x3, #VGIC_V2_CPU_EISR]
-	str	w8, [x3, #(VGIC_V2_CPU_EISR + 4)]
-	str	w9, [x3, #VGIC_V2_CPU_ELRSR]
-	str	w10, [x3, #(VGIC_V2_CPU_ELRSR + 4)]
-	str	w11, [x3, #VGIC_V2_CPU_APR]
-
-	/* Clear GICH_HCR */
-	str	wzr, [x2, #GICH_HCR]
-
-	/* Save list registers */
-	add	x2, x2, #GICH_LR0
-	ldr	w4, [x3, #VGIC_CPU_NR_LR]
-	add	x3, x3, #VGIC_V2_CPU_LR
-1:	ldr	w5, [x2], #4
-	str	w5, [x3], #4
-	sub	w4, w4, #1
-	cbnz	w4, 1b
-2:
-.endm
-
-/*
- * Restore the VGIC CPU state from memory
- * x0: Register pointing to VCPU struct
- */
-.macro restore_vgic_state
-	/* Get VGIC VCTRL base into x2 */
-	ldr	x2, [x0, #VCPU_KVM]
-	kern_hyp_va	x2
-	ldr	x2, [x2, #KVM_VGIC_VCTRL]
-	kern_hyp_va	x2
-	cbz	x2, 2f		// disabled
-
-	/* Compute the address of struct vgic_cpu */
-	add	x3, x0, #VCPU_VGIC_CPU
-
-	/* We only restore a minimal set of registers */
-	ldr	w4, [x3, #VGIC_V2_CPU_HCR]
-	ldr	w5, [x3, #VGIC_V2_CPU_VMCR]
-	ldr	w6, [x3, #VGIC_V2_CPU_APR]
-
-	str	w4, [x2, #GICH_HCR]
-	str	w5, [x2, #GICH_VMCR]
-	str	w6, [x2, #GICH_APR]
-
-	/* Restore list registers */
-	add	x2, x2, #GICH_LR0
-	ldr	w4, [x3, #VGIC_CPU_NR_LR]
-	add	x3, x3, #VGIC_V2_CPU_LR
-1:	ldr	w5, [x3], #4
-	str	w5, [x2], #4
-	sub	w4, w4, #1
-	cbnz	w4, 1b
-2:
-.endm
-
 .macro save_timer_state
 	// x0: vcpu pointer
 	ldr	x2, [x0, #VCPU_KVM]
@@ -555,7 +470,10 @@ ENTRY(__kvm_vcpu_run)
 	activate_traps
 	activate_vm
 
-	restore_vgic_state
+	adr	x24, __vgic_sr_vectors
+	ldr	x24, [x24, #8]
+	kern_hyp_va	x24
+	blr	x24
 	restore_timer_state
 
 	// Guest context
@@ -582,7 +500,10 @@ __kvm_vcpu_return:
 	save_guest_32bit_state
 
 	save_timer_state
-	save_vgic_state
+	adr	x24, __vgic_sr_vectors
+	ldr	x24, [x24]
+	kern_hyp_va	x24
+	blr	x24
 
 	deactivate_traps
 	deactivate_vm
@@ -631,6 +552,11 @@ ENTRY(__kvm_flush_vm_context)
 	ret
 ENDPROC(__kvm_flush_vm_context)
 
+ENTRY(__vgic_sr_vectors)
+	.quad	__save_vgic_v2_state
+	.quad	__restore_vgic_v2_state
+ENDPROC(__vgic_sr_vectors)
+
 __kvm_hyp_panic:
 	// Guess the context by looking at VTTBR:
 	// If zero, then we're already a host.
@@ -639,6 +565,12 @@ __kvm_hyp_panic:
 	cbz	x0, 1f
 
 	mrs	x0, tpidr_el2
+
+	save_timer_state
+	adr	x24, __vgic_sr_vectors
+	ldr	x24, [x24]
+	kern_hyp_va	x24
+	blr	x24
 
 	deactivate_traps
 	deactivate_vm

@@ -152,7 +152,7 @@ int vgic_v2_probe(const struct vgic_ops **ops,
 
 	vgic_node = of_find_compatible_node(NULL, NULL, "arm,cortex-a15-gic");
 	if (!vgic_node) {
-		kvm_err("error: no compatible vgic node in DT\n");
+		kvm_err("error: no compatible GICv2 node in DT\n");
 		return -ENODEV;
 	}
 
@@ -165,15 +165,15 @@ int vgic_v2_probe(const struct vgic_ops **ops,
 
 	ret = of_address_to_resource(vgic_node, 2, &vctrl_res);
 	if (ret) {
-		kvm_err("Cannot obtain VCTRL resource\n");
-		goto out_free_irq;
+		kvm_err("Cannot obtain GICH resource\n");
+		goto out;
 	}
 
 	vgic->vctrl_base = of_iomap(vgic_node, 2);
 	if (!vgic->vctrl_base) {
-		kvm_err("Cannot ioremap VCTRL\n");
+		kvm_err("Cannot ioremap GICH\n");
 		ret = -ENOMEM;
-		goto out_free_irq;
+		goto out;
 	}
 
 	vgic->nr_lr = readl_relaxed(vgic->vctrl_base + GICH_VTR);
@@ -188,7 +188,7 @@ int vgic_v2_probe(const struct vgic_ops **ops,
 	}
 
 	if (of_address_to_resource(vgic_node, 3, &vcpu_res)) {
-		kvm_err("Cannot obtain VCPU resource\n");
+		kvm_err("Cannot obtain GICV resource\n");
 		ret = -ENXIO;
 		goto out_unmap;
 	}
@@ -197,14 +197,13 @@ int vgic_v2_probe(const struct vgic_ops **ops,
 	kvm_info("%s@%llx IRQ%d\n", vgic_node->name,
 		 vctrl_res.start, vgic->maint_irq);
 
+	vgic->type = VGIC_V2;
 	*ops = &vgic_v2_ops;
 	*params = vgic;
 	goto out;
 
 out_unmap:
 	iounmap(vgic->vctrl_base);
-out_free_irq:
-	free_percpu_irq(vgic->maint_irq, kvm_get_running_vcpus());
 out:
 	of_node_put(vgic_node);
 	return ret;
