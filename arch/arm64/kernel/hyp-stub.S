@@ -19,6 +19,7 @@
 
 #include <linux/init.h>
 #include <linux/linkage.h>
+#include <linux/irqchip/arm-gic-v3.h>
 
 #include <asm/assembler.h>
 #include <asm/ptrace.h>
@@ -51,16 +52,52 @@ ENDPROC(__hyp_stub_vectors)
 
 	.align 11
 
+#define sysreg_to_iss(op0, op1, crn, crm, op2)	\
+	(((op0 & 3) << 20) | ((op2 & 7 ) << 17) | \
+	 ((op1 & 7 ) << 14) | ((crn & 15) << 10) | \
+	 ((crm & 15) << 1))
+
 el1_sync:
+	// Hack alert: we don't have a stack, and we can't use the one
+	// from EL1 because our MMU is off. Thankfully, we have
+	// tpidr_el2, which is under our complete control, and
+	// tpidr_el0, which can be used as long as we haven't reached
+	// userspace. Oh hum...
+	msr	tpidr_el2, x1			// Preserve x1
+
 	mrs	x1, esr_el2
 	lsr	x1, x1, #26
 	cmp	x1, #0x16
-	b.ne	2f				// Not an HVC trap
+	b.ne	3f				// Not an HVC trap
+
+	// Handle getting/setting vbar_el2
 	cbz	x0, 1f
 	msr	vbar_el2, x0			// Set vbar_el2
 	b	2f
 1:	mrs	x0, vbar_el2			// Return vbar_el2
-2:	eret
+2:	mrs	x1, tpidr_el2			// Restore x1
+	eret
+
+3:	cmp	x1, #0x18			// MSR/MRS?
+	b.ne	2b
+
+	// Handle trapped sys reg access
+	msr	tpidr_el0, x0			// Preserve x0
+	mrs	x1, esr_el2
+	ldr	x0, =sysreg_to_iss(3, 7, 15, 15, 7)
+	and	x1, x1, x0
+	ldr	x0, =sysreg_to_iss(3, 0, 12, 12, 5)
+	eor	x0, x0, x1			// Check for ICC_SRE_EL1
+	cbnz	x0, 4f				// Something bad happened
+
+	// Set ICC_SRE_EL1 access enable
+	mrs	x1, ICC_SRE_EL2
+	orr	x1, x1, #(1 << 3)
+	msr	ICC_SRE_EL2, x1
+
+4:	mrs	x0, tpidr_el0			// Restore x0
+	mrs	x1, tpidr_el2			// Restore x1
+	eret
 ENDPROC(el1_sync)
 
 .macro invalid_vector	label
