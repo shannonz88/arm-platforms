@@ -195,6 +195,9 @@ bool vgic_handle_mmio(struct kvm_vcpu *vcpu, struct kvm_run *run,
 #define irqchip_in_kernel(k)	(!!((k)->arch.vgic.vctrl_base))
 #define vgic_initialized(k)	((k)->arch.vgic.ready)
 
+int vgic_v2_probe(const struct vgic_ops **ops,
+		  const struct vgic_params **params);
+
 #else
 static inline int kvm_vgic_hyp_init(void)
 {
