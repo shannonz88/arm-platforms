@@ -1337,6 +1337,8 @@ int kvm_vgic_hyp_init(void)
 
 	ret = vgic_v2_probe(&vgic_ops, &vgic);
 	if (ret)
+		ret = vgic_v3_probe(&vgic_ops, &vgic);
+	if (ret)
 		return ret;
 
 	ret = request_percpu_irq(vgic->maint_irq, vgic_maintenance_handler,

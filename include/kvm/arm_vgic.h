@@ -32,6 +32,7 @@
 #define VGIC_NR_SHARED_IRQS	(VGIC_NR_IRQS - VGIC_NR_PRIVATE_IRQS)
 #define VGIC_MAX_CPUS		KVM_MAX_VCPUS
 #define VGIC_MAX_LRS		(1 << 6)
+#define VGIC_V3_MAX_LRS		16
 
 /* Sanity checks... */
 #if (VGIC_MAX_CPUS > 8)
@@ -71,6 +72,7 @@ struct kvm_vcpu;
 
 enum vgic_type {
 	VGIC_V2,		/* Good ol' GICv2 */
+	VGIC_V3,		/* v2 on v3, really */
 };
 
 struct vgic_ops {
@@ -151,6 +153,20 @@ struct vgic_v2_cpu_if {
 	u32		vgic_lr[VGIC_MAX_LRS];
 };
 
+struct vgic_v3_cpu_if {
+#ifdef CONFIG_ARM_GIC_V3
+	u32		vgic_hcr;
+	u32		vgic_vmcr;
+	u32		vgic_vseir;
+	u32		vgic_misr;	/* Saved only */
+	u32		vgic_eisr;	/* Saved only */
+	u32		vgic_elrsr;	/* Saved only */
+	u32		vgic_ap0r[4];
+	u32		vgic_ap1r[4];
+	u64		vgic_lr[VGIC_V3_MAX_LRS];
+#endif
+};
+
 struct vgic_cpu {
 #ifdef CONFIG_KVM_ARM_VGIC
 	/* per IRQ to LR mapping */
@@ -169,6 +185,7 @@ struct vgic_cpu {
 	/* CPU vif control registers for world switch */
 	union {
 		struct vgic_v2_cpu_if	vgic_v2;
+		struct vgic_v3_cpu_if	vgic_v3;
 	};
 #endif
 };
@@ -202,6 +219,16 @@ bool vgic_handle_mmio(struct kvm_vcpu *vcpu, struct kvm_run *run,
 
 int vgic_v2_probe(const struct vgic_ops **ops,
 		  const struct vgic_params **params);
+#ifdef CONFIG_ARM_GIC_V3
+int vgic_v3_probe(const struct vgic_ops **ops,
+		  const struct vgic_params **params);
+#else
+static inline int vgic_v3_probe(const struct vgic_ops **ops,
+				const struct vgic_params **params)
+{
+	return -ENODEV;
+}
+#endif
 
 #else
 static inline int kvm_vgic_hyp_init(void)
