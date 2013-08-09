@@ -335,11 +335,6 @@
 .endm
 
 .macro activate_traps
-	ldr	x2, [x0, #VCPU_IRQ_LINES]
-	ldr	x1, [x0, #VCPU_HCR_EL2]
-	orr	x2, x2, x1
-	msr	hcr_el2, x2
-
 	ldr	x2, =(CPTR_EL2_TTA)
 	msr	cptr_el2, x2
 
@@ -353,8 +348,6 @@
 .endm
 
 .macro deactivate_traps
-	mov	x2, #HCR_RW
-	msr	hcr_el2, x2
 	msr	cptr_el2, xzr
 	msr	hstr_el2, xzr
 
