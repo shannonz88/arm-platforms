@@ -76,6 +76,9 @@
 	sub	w4, w4, #1
 	cbnz	w4, 1b
 2:
+	mov	x2, #HCR_RW
+	msr	hcr_el2, x2
+	isb
 .endm
 
 /*
@@ -83,6 +86,11 @@
  * x0: Register pointing to VCPU struct
  */
 .macro restore_vgic_v2_state
+	ldr	x2, [x0, #VCPU_IRQ_LINES]
+	ldr	x1, [x0, #VCPU_HCR_EL2]
+	orr	x2, x2, x1
+	msr	hcr_el2, x2
+
 	/* Get VGIC VCTRL base into x2 */
 	ldr	x2, [x0, #VCPU_KVM]
 	kern_hyp_va	x2
