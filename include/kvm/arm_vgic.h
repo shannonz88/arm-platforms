@@ -24,7 +24,6 @@
 #include <linux/irqreturn.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>
-#include <linux/irqchip/arm-gic.h>
 
 #define VGIC_NR_IRQS		128
 #define VGIC_NR_SGIS		16
@@ -33,6 +32,7 @@
 #define VGIC_NR_SHARED_IRQS	(VGIC_NR_IRQS - VGIC_NR_PRIVATE_IRQS)
 #define VGIC_MAX_CPUS		KVM_MAX_VCPUS
 #define VGIC_MAX_LRS		(1 << 6)
+#define VGIC_V3_MAX_LRS		16
 
 /* Sanity checks... */
 #if (VGIC_MAX_CPUS > 8)
@@ -66,6 +66,39 @@ struct vgic_bitmap {
 struct vgic_bytemap {
 	u32 percpu[VGIC_MAX_CPUS][VGIC_NR_PRIVATE_IRQS / 4];
 	u32 shared[VGIC_NR_SHARED_IRQS  / 4];
+};
+
+struct kvm_vcpu;
+
+enum vgic_type {
+	VGIC_V2,		/* Good ol' GICv2 */
+	VGIC_V3,		/* v2 on v3, really */
+};
+
+struct vgic_ops {
+	int	(*get_lr_irq)(const struct kvm_vcpu *, int);
+	void	(*build_lr)(struct kvm_vcpu *, u8, int, int, bool);
+	bool	(*match_lr_source_id)(const struct kvm_vcpu *, int, u8);
+	void	(*clear_lr_state)(struct kvm_vcpu *, int lr);
+	u64	(*get_elrsr)(const struct kvm_vcpu *vcpu);
+	u64	(*get_eisr)(const struct kvm_vcpu *vcpu);
+	u32	(*get_interrupt_status)(const struct kvm_vcpu *vcpu);
+	void	(*set_underflow)(struct kvm_vcpu *vcpu);
+	void	(*clear_underflow)(struct kvm_vcpu *vcpu);
+	void	(*enable)(struct kvm_vcpu *vcpu);
+};
+
+struct vgic_params {
+	/* vgic type */
+	enum vgic_type	type;
+	/* Physical address of vgic virtual cpu interface */
+	phys_addr_t	vcpu_base;
+	/* Number of list registers */
+	u32		nr_lr;
+	/* Interrupt number */
+	unsigned int	maint_irq;
+	/* Virtual control interface base address */
+	void __iomem	*vctrl_base;
 };
 
 struct vgic_dist {
@@ -110,6 +143,30 @@ struct vgic_dist {
 #endif
 };
 
+struct vgic_v2_cpu_if {
+	u32		vgic_hcr;
+	u32		vgic_vmcr;
+	u32		vgic_misr;	/* Saved only */
+	u32		vgic_eisr[2];	/* Saved only */
+	u32		vgic_elrsr[2];	/* Saved only */
+	u32		vgic_apr;
+	u32		vgic_lr[VGIC_MAX_LRS];
+};
+
+struct vgic_v3_cpu_if {
+#ifdef CONFIG_ARM_GIC_V3
+	u32		vgic_hcr;
+	u32		vgic_vmcr;
+	u32		vgic_vseir;
+	u32		vgic_misr;	/* Saved only */
+	u32		vgic_eisr;	/* Saved only */
+	u32		vgic_elrsr;	/* Saved only */
+	u32		vgic_ap0r[4];
+	u32		vgic_ap1r[4];
+	u64		vgic_lr[VGIC_V3_MAX_LRS];
+#endif
+};
+
 struct vgic_cpu {
 #ifdef CONFIG_KVM_ARM_VGIC
 	/* per IRQ to LR mapping */
@@ -126,17 +183,17 @@ struct vgic_cpu {
 	int		nr_lr;
 
 	/* CPU vif control registers for world switch */
-	u32		vgic_hcr;
-	u32		vgic_vmcr;
-	u32		vgic_misr;	/* Saved only */
-	u32		vgic_eisr[2];	/* Saved only */
-	u32		vgic_elrsr[2];	/* Saved only */
-	u32		vgic_apr;
-	u32		vgic_lr[VGIC_MAX_LRS];
+	union {
+		struct vgic_v2_cpu_if	vgic_v2;
+		struct vgic_v3_cpu_if	vgic_v3;
+	};
 #endif
 };
 
 #define LR_EMPTY	0xff
+
+#define INT_STATUS_EOI		(1 << 0)
+#define INT_STATUS_UNDERFLOW	(1 << 1)
 
 struct kvm;
 struct kvm_vcpu;
@@ -159,6 +216,19 @@ bool vgic_handle_mmio(struct kvm_vcpu *vcpu, struct kvm_run *run,
 
 #define irqchip_in_kernel(k)	(!!((k)->arch.vgic.vctrl_base))
 #define vgic_initialized(k)	((k)->arch.vgic.ready)
+
+int vgic_v2_probe(const struct vgic_ops **ops,
+		  const struct vgic_params **params);
+#ifdef CONFIG_ARM_GIC_V3
+int vgic_v3_probe(const struct vgic_ops **ops,
+		  const struct vgic_params **params);
+#else
+static inline int vgic_v3_probe(const struct vgic_ops **ops,
+				const struct vgic_params **params)
+{
+	return -ENODEV;
+}
+#endif
 
 #else
 static inline int kvm_vgic_hyp_init(void)

@@ -71,14 +71,6 @@
 #define VGIC_ADDR_UNDEF		(-1)
 #define IS_VGIC_ADDR_UNDEF(_x)  ((_x) == VGIC_ADDR_UNDEF)
 
-/* Physical address of vgic virtual cpu interface */
-static phys_addr_t vgic_vcpu_base;
-
-/* Virtual control interface base address */
-static void __iomem *vgic_vctrl_base;
-
-static struct device_node *vgic_node;
-
 #define ACCESS_READ_VALUE	(1 << 0)
 #define ACCESS_READ_RAZ		(0 << 0)
 #define ACCESS_READ_MASK(x)	((x) & (1 << 0))
@@ -92,9 +84,9 @@ static void vgic_retire_disabled_irqs(struct kvm_vcpu *vcpu);
 static void vgic_update_state(struct kvm *kvm);
 static void vgic_kick_vcpus(struct kvm *kvm);
 static void vgic_dispatch_sgi(struct kvm_vcpu *vcpu, u32 reg);
-static u32 vgic_nr_lr;
 
-static unsigned int vgic_maint_irq;
+static const struct vgic_ops *vgic_ops;
+static const struct vgic_params *vgic;
 
 static u32 *vgic_bitmap_get_reg(struct vgic_bitmap *x,
 				int cpuid, u32 offset)
@@ -826,10 +818,56 @@ static void vgic_update_state(struct kvm *kvm)
 	}
 }
 
-#define LR_CPUID(lr)	\
-	(((lr) & GICH_LR_PHYSID_CPUID) >> GICH_LR_PHYSID_CPUID_SHIFT)
-#define MK_LR_PEND(src, irq)	\
-	(GICH_LR_PENDING_BIT | ((src) << GICH_LR_PHYSID_CPUID_SHIFT) | (irq))
+static inline int vgic_get_lr_irq(const struct kvm_vcpu *vcpu, int lr)
+{
+	return vgic_ops->get_lr_irq(vcpu, lr);
+}
+
+static inline void vgic_build_lr(struct kvm_vcpu *vcpu, u8 source_id,
+				 int irq, int lr, bool is_edge)
+{
+	vgic_ops->build_lr(vcpu, source_id, irq, lr, is_edge);
+}
+
+static inline bool vgic_match_lr_source_id(const struct kvm_vcpu *vcpu, int lr, u8 source_id)
+{
+	return vgic_ops->match_lr_source_id(vcpu, lr, source_id);
+}
+
+static inline void vgic_clear_lr_state(struct kvm_vcpu *vcpu, int lr)
+{
+	vgic_ops->clear_lr_state(vcpu, lr);
+}
+
+static inline u64 vgic_get_elrsr(struct kvm_vcpu *vcpu)
+{
+	return vgic_ops->get_elrsr(vcpu);
+}
+
+static inline u64 vgic_get_eisr(struct kvm_vcpu *vcpu)
+{
+	return vgic_ops->get_eisr(vcpu);
+}
+
+static inline u32 vgic_get_interrupt_status(struct kvm_vcpu *vcpu)
+{
+	return vgic_ops->get_interrupt_status(vcpu);
+}
+
+static inline void vgic_set_underflow(struct kvm_vcpu *vcpu)
+{
+	vgic_ops->set_underflow(vcpu);
+}
+
+static inline void vgic_clear_underflow(struct kvm_vcpu *vcpu)
+{
+	vgic_ops->clear_underflow(vcpu);
+}
+
+static inline void vgic_enable(struct kvm_vcpu *vcpu)
+{
+	vgic_ops->enable(vcpu);
+}
 
 /*
  * An interrupt may have been disabled after being made pending on the
@@ -845,13 +883,13 @@ static void vgic_retire_disabled_irqs(struct kvm_vcpu *vcpu)
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 	int lr;
 
-	for_each_set_bit(lr, vgic_cpu->lr_used, vgic_cpu->nr_lr) {
-		int irq = vgic_cpu->vgic_lr[lr] & GICH_LR_VIRTUALID;
+	for_each_set_bit(lr, vgic_cpu->lr_used, vgic->nr_lr) {
+		int irq = vgic_get_lr_irq(vcpu, lr);
 
 		if (!vgic_irq_is_enabled(vcpu, irq)) {
 			vgic_cpu->vgic_irq_lr_map[irq] = LR_EMPTY;
 			clear_bit(lr, vgic_cpu->lr_used);
-			vgic_cpu->vgic_lr[lr] &= ~GICH_LR_STATE;
+			vgic_clear_lr_state(vcpu, lr);
 			if (vgic_irq_is_active(vcpu, irq))
 				vgic_irq_clear_active(vcpu, irq);
 		}
@@ -878,27 +916,25 @@ static bool vgic_queue_irq(struct kvm_vcpu *vcpu, u8 sgi_source_id, int irq)
 
 	/* Do we have an active interrupt for the same CPUID? */
 	if (lr != LR_EMPTY &&
-	    (LR_CPUID(vgic_cpu->vgic_lr[lr]) == sgi_source_id)) {
-		kvm_debug("LR%d piggyback for IRQ%d %x\n",
-			  lr, irq, vgic_cpu->vgic_lr[lr]);
+	    vgic_match_lr_source_id(vcpu, lr, sgi_source_id)) {
+		kvm_debug("LR%d piggyback for IRQ%d\n", lr, irq);
 		BUG_ON(!test_bit(lr, vgic_cpu->lr_used));
-		vgic_cpu->vgic_lr[lr] |= GICH_LR_PENDING_BIT;
+		vgic_build_lr(vcpu, sgi_source_id, irq, lr, true);
 		return true;
 	}
 
 	/* Try to use another LR for this interrupt */
 	lr = find_first_zero_bit((unsigned long *)vgic_cpu->lr_used,
-			       vgic_cpu->nr_lr);
-	if (lr >= vgic_cpu->nr_lr)
+			       vgic->nr_lr);
+	if (lr >= vgic->nr_lr)
 		return false;
 
 	kvm_debug("LR%d allocated for IRQ%d %x\n", lr, irq, sgi_source_id);
-	vgic_cpu->vgic_lr[lr] = MK_LR_PEND(sgi_source_id, irq);
 	vgic_cpu->vgic_irq_lr_map[irq] = lr;
 	set_bit(lr, vgic_cpu->lr_used);
 
-	if (!vgic_irq_is_edge(vcpu, irq))
-		vgic_cpu->vgic_lr[lr] |= GICH_LR_EOI;
+	vgic_build_lr(vcpu, sgi_source_id, irq, lr,
+		      vgic_irq_is_edge(vcpu, irq));
 
 	return true;
 }
@@ -996,9 +1032,9 @@ static void __kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 
 epilog:
 	if (overflow) {
-		vgic_cpu->vgic_hcr |= GICH_HCR_UIE;
+		vgic_set_underflow(vcpu);
 	} else {
-		vgic_cpu->vgic_hcr &= ~GICH_HCR_UIE;
+		vgic_clear_underflow(vcpu);
 		/*
 		 * We're about to run this VCPU, and we've consumed
 		 * everything the distributor had in store for
@@ -1011,24 +1047,25 @@ epilog:
 
 static bool vgic_process_maintenance(struct kvm_vcpu *vcpu)
 {
-	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
+	u32 status = vgic_get_interrupt_status(vcpu);
 	bool level_pending = false;
 
-	kvm_debug("MISR = %08x\n", vgic_cpu->vgic_misr);
+	kvm_debug("STATUS = %08x\n", status);
 
-	if (vgic_cpu->vgic_misr & GICH_MISR_EOI) {
+	if (status & INT_STATUS_EOI) {
 		/*
 		 * Some level interrupts have been EOIed. Clear their
 		 * active bit.
 		 */
+		u64 eisr = vgic_get_eisr(vcpu);
+		unsigned long *eisr_ptr = (unsigned long *)&eisr;
 		int lr, irq;
 
-		for_each_set_bit(lr, (unsigned long *)vgic_cpu->vgic_eisr,
-				 vgic_cpu->nr_lr) {
-			irq = vgic_cpu->vgic_lr[lr] & GICH_LR_VIRTUALID;
+		for_each_set_bit(lr, eisr_ptr, vgic->nr_lr) {
+			irq = vgic_get_lr_irq(vcpu, lr);
 
 			vgic_irq_clear_active(vcpu, irq);
-			vgic_cpu->vgic_lr[lr] &= ~GICH_LR_EOI;
+			vgic_clear_lr_state(vcpu, lr);
 
 			/* Any additional pending interrupt? */
 			if (vgic_dist_irq_is_pending(vcpu, irq)) {
@@ -1037,18 +1074,11 @@ static bool vgic_process_maintenance(struct kvm_vcpu *vcpu)
 			} else {
 				vgic_cpu_irq_clear(vcpu, irq);
 			}
-
-			/*
-			 * Despite being EOIed, the LR may not have
-			 * been marked as empty.
-			 */
-			set_bit(lr, (unsigned long *)vgic_cpu->vgic_elrsr);
-			vgic_cpu->vgic_lr[lr] &= ~GICH_LR_ACTIVE_BIT;
 		}
 	}
 
-	if (vgic_cpu->vgic_misr & GICH_MISR_U)
-		vgic_cpu->vgic_hcr &= ~GICH_HCR_UIE;
+	if (status & INT_STATUS_UNDERFLOW)
+		vgic_clear_underflow(vcpu);
 
 	return level_pending;
 }
@@ -1061,29 +1091,29 @@ static void __kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu)
 {
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
+	u64 elrsr = vgic_get_elrsr(vcpu);
+	unsigned long *elrsr_ptr = (unsigned long *)&elrsr;
 	int lr, pending;
 	bool level_pending;
 
 	level_pending = vgic_process_maintenance(vcpu);
 
 	/* Clear mappings for empty LRs */
-	for_each_set_bit(lr, (unsigned long *)vgic_cpu->vgic_elrsr,
-			 vgic_cpu->nr_lr) {
+	for_each_set_bit(lr, elrsr_ptr, vgic->nr_lr) {
 		int irq;
 
 		if (!test_and_clear_bit(lr, vgic_cpu->lr_used))
 			continue;
 
-		irq = vgic_cpu->vgic_lr[lr] & GICH_LR_VIRTUALID;
+		irq = vgic_get_lr_irq(vcpu, lr);
 
 		BUG_ON(irq >= VGIC_NR_IRQS);
 		vgic_cpu->vgic_irq_lr_map[irq] = LR_EMPTY;
 	}
 
 	/* Check if we still have something up our sleeve... */
-	pending = find_first_zero_bit((unsigned long *)vgic_cpu->vgic_elrsr,
-				      vgic_cpu->nr_lr);
-	if (level_pending || pending < vgic_cpu->nr_lr)
+	pending = find_first_zero_bit(elrsr_ptr, vgic->nr_lr);
+	if (level_pending || pending < vgic->nr_lr)
 		set_bit(vcpu->vcpu_id, &dist->irq_pending_on_cpu);
 }
 
@@ -1268,22 +1298,16 @@ int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 		vgic_cpu->vgic_irq_lr_map[i] = LR_EMPTY;
 	}
 
-	/*
-	 * By forcing VMCR to zero, the GIC will restore the binary
-	 * points to their reset values. Anything else resets to zero
-	 * anyway.
-	 */
-	vgic_cpu->vgic_vmcr = 0;
+	vgic_cpu->nr_lr = vgic->nr_lr;
 
-	vgic_cpu->nr_lr = vgic_nr_lr;
-	vgic_cpu->vgic_hcr = GICH_HCR_EN; /* Get the show on the road... */
+	vgic_enable(vcpu);
 
 	return 0;
 }
 
 static void vgic_init_maintenance_interrupt(void *info)
 {
-	enable_percpu_irq(vgic_maint_irq, 0);
+	enable_percpu_irq(vgic->maint_irq, 0);
 }
 
 static int vgic_cpu_notify(struct notifier_block *self,
@@ -1296,7 +1320,7 @@ static int vgic_cpu_notify(struct notifier_block *self,
 		break;
 	case CPU_DYING:
 	case CPU_DYING_FROZEN:
-		disable_percpu_irq(vgic_maint_irq);
+		disable_percpu_irq(vgic->maint_irq);
 		break;
 	}
 
@@ -1310,27 +1334,18 @@ static struct notifier_block vgic_cpu_nb = {
 int kvm_vgic_hyp_init(void)
 {
 	int ret;
-	struct resource vctrl_res;
-	struct resource vcpu_res;
 
-	vgic_node = of_find_compatible_node(NULL, NULL, "arm,cortex-a15-gic");
-	if (!vgic_node) {
-		kvm_err("error: no compatible vgic node in DT\n");
-		return -ENODEV;
-	}
+	ret = vgic_v2_probe(&vgic_ops, &vgic);
+	if (ret)
+		ret = vgic_v3_probe(&vgic_ops, &vgic);
+	if (ret)
+		return ret;
 
-	vgic_maint_irq = irq_of_parse_and_map(vgic_node, 0);
-	if (!vgic_maint_irq) {
-		kvm_err("error getting vgic maintenance irq from DT\n");
-		ret = -ENXIO;
-		goto out;
-	}
-
-	ret = request_percpu_irq(vgic_maint_irq, vgic_maintenance_handler,
+	ret = request_percpu_irq(vgic->maint_irq, vgic_maintenance_handler,
 				 "vgic", kvm_get_running_vcpus());
 	if (ret) {
-		kvm_err("Cannot register interrupt %d\n", vgic_maint_irq);
-		goto out;
+		kvm_err("Cannot register interrupt %d\n", vgic->maint_irq);
+		return ret;
 	}
 
 	ret = register_cpu_notifier(&vgic_cpu_nb);
@@ -1339,49 +1354,15 @@ int kvm_vgic_hyp_init(void)
 		goto out_free_irq;
 	}
 
-	ret = of_address_to_resource(vgic_node, 2, &vctrl_res);
-	if (ret) {
-		kvm_err("Cannot obtain VCTRL resource\n");
-		goto out_free_irq;
-	}
-
-	vgic_vctrl_base = of_iomap(vgic_node, 2);
-	if (!vgic_vctrl_base) {
-		kvm_err("Cannot ioremap VCTRL\n");
-		ret = -ENOMEM;
-		goto out_free_irq;
-	}
-
-	vgic_nr_lr = readl_relaxed(vgic_vctrl_base + GICH_VTR);
-	vgic_nr_lr = (vgic_nr_lr & 0x3f) + 1;
-
-	ret = create_hyp_io_mappings(vgic_vctrl_base,
-				     vgic_vctrl_base + resource_size(&vctrl_res),
-				     vctrl_res.start);
-	if (ret) {
-		kvm_err("Cannot map VCTRL into hyp\n");
-		goto out_unmap;
-	}
-
-	kvm_info("%s@%llx IRQ%d\n", vgic_node->name,
-		 vctrl_res.start, vgic_maint_irq);
 	on_each_cpu(vgic_init_maintenance_interrupt, NULL, 1);
 
-	if (of_address_to_resource(vgic_node, 3, &vcpu_res)) {
-		kvm_err("Cannot obtain VCPU resource\n");
-		ret = -ENXIO;
-		goto out_unmap;
-	}
-	vgic_vcpu_base = vcpu_res.start;
+	/* Callback into for arch code for setup */
+	vgic_arch_setup(vgic);
 
-	goto out;
+	return 0;
 
-out_unmap:
-	iounmap(vgic_vctrl_base);
 out_free_irq:
-	free_percpu_irq(vgic_maint_irq, kvm_get_running_vcpus());
-out:
-	of_node_put(vgic_node);
+	free_percpu_irq(vgic->maint_irq, kvm_get_running_vcpus());
 	return ret;
 }
 
@@ -1402,7 +1383,7 @@ int kvm_vgic_init(struct kvm *kvm)
 	}
 
 	ret = kvm_phys_addr_ioremap(kvm, kvm->arch.vgic.vgic_cpu_base,
-				    vgic_vcpu_base, KVM_VGIC_V2_CPU_SIZE);
+				    vgic->vcpu_base, KVM_VGIC_V2_CPU_SIZE);
 	if (ret) {
 		kvm_err("Unable to remap VGIC CPU to VCPU\n");
 		goto out;
@@ -1430,7 +1411,7 @@ int kvm_vgic_create(struct kvm *kvm)
 	}
 
 	spin_lock_init(&kvm->arch.vgic.lock);
-	kvm->arch.vgic.vctrl_base = vgic_vctrl_base;
+	kvm->arch.vgic.vctrl_base = vgic->vctrl_base;
 	kvm->arch.vgic.vgic_dist_base = VGIC_ADDR_UNDEF;
 	kvm->arch.vgic.vgic_cpu_base = VGIC_ADDR_UNDEF;
 
