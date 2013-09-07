@@ -116,8 +116,10 @@ static void *virtio_net_rx_thread(void *p)
 
 				memcpy_toiovecend(iov, buffer, copied, iovsize);
 				copied += iovsize;
-				if (has_virtio_feature(ndev, VIRTIO_NET_F_MRG_RXBUF))
-					hdr->num_buffers++;
+				if (has_virtio_feature(ndev, VIRTIO_NET_F_MRG_RXBUF)) {
+					u16 num_buffers = virtio_guest_to_host_u16(vq, hdr->num_buffers);
+					hdr->num_buffers = virtio_host_to_guest_u16(vq, num_buffers + 1);
+				}
 				virt_queue__set_used_elem(vq, head, iovsize);
 				if (copied == len)
 					break;
@@ -381,7 +383,7 @@ static u32 get_host_features(struct kvm *kvm, void *dev)
 		| 1UL << VIRTIO_RING_F_INDIRECT_DESC
 		| 1UL << VIRTIO_NET_F_CTRL_VQ
 		| 1UL << VIRTIO_NET_F_MRG_RXBUF
-		| 1UL << (ndev->queue_pairs > 1 ? VIRTIO_NET_F_MQ : 0);
+		| 1UL << (ndev->queue_pairs > 1 ? VIRTIO_NET_F_MQ : 0)
 		| VIRTIO_RING_ENDIAN;
 }
 
