@@ -514,7 +514,7 @@ out_free:
 
 static void virtio_ccw_set_config(struct virtio_device *vdev,
 				  unsigned int offset, const void *buf,
-				  unsigned len, unsigned acess_size)
+				  unsigned len, unsigned access_size)
 {
 	struct virtio_ccw_device *vcdev = to_vc_device(vdev);
 	struct ccw1 *ccw;
