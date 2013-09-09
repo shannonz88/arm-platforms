@@ -15,6 +15,9 @@ config ARM_GIC_V3
 	select IRQ_DOMAIN
 	select MULTI_IRQ_HANDLER
 
+config ARM_GIC_V3_ITS
+	bool
+
 config ARM_NVIC
 	bool
 	select IRQ_DOMAIN
