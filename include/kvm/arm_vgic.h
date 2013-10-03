@@ -26,7 +26,7 @@
 #include <linux/types.h>
 #include <linux/irqchip/arm-gic.h>
 
-#define VGIC_NR_IRQS		256
+#define VGIC_NR_IRQS_LEGACY	256
 #define VGIC_NR_SGIS		16
 #define VGIC_NR_PPIS		16
 #define VGIC_NR_PRIVATE_IRQS	(VGIC_NR_SGIS + VGIC_NR_PPIS)
@@ -38,11 +38,11 @@
 #error	Invalid number of CPU interfaces
 #endif
 
-#if (VGIC_NR_IRQS & 31)
+#if (VGIC_NR_IRQS_LEGACY & 31)
 #error "VGIC_NR_IRQS must be a multiple of 32"
 #endif
 
-#if (VGIC_NR_IRQS > VGIC_MAX_IRQS)
+#if (VGIC_NR_IRQS_LEGACY > VGIC_MAX_IRQS)
 #error "VGIC_NR_IRQS must be <= 1024"
 #endif
 
