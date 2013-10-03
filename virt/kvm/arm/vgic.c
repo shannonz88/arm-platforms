@@ -96,34 +96,54 @@ static u32 vgic_nr_lr;
 
 static unsigned int vgic_maint_irq;
 
+static int vgic_init_bitmap(struct vgic_bitmap *b, int nr_cpus, int nr_irqs)
+{
+	int nr_longs;
+
+	nr_longs = nr_cpus + BITS_TO_LONGS(nr_irqs - VGIC_NR_PRIVATE_IRQS);
+
+	b->bits = kzalloc(sizeof(unsigned long) * nr_longs, GFP_KERNEL);
+	if (!b->bits)
+		return -ENOMEM;
+
+	b->nr_cpus = nr_cpus;
+	return 0;
+}
+
+static void vgic_free_bitmap(struct vgic_bitmap *b)
+{
+	kfree(b->bits);
+}
+
 static u32 *vgic_bitmap_get_reg(struct vgic_bitmap *x,
 				int cpuid, u32 offset)
 {
 	offset >>= 2;
 	if (!offset)
-		return x->percpu[cpuid].reg;
+		return (u32 *)(x->bits + cpuid);
 	else
-		return x->shared.reg + offset - 1;
+		return (u32 *)(x->bits + x->nr_cpus) + offset - 1;
 }
 
 static int vgic_bitmap_get_irq_val(struct vgic_bitmap *x,
 				   int cpuid, int irq)
 {
 	if (irq < VGIC_NR_PRIVATE_IRQS)
-		return test_bit(irq, x->percpu[cpuid].reg_ul);
+		return test_bit(irq, x->bits + cpuid);
 
-	return test_bit(irq - VGIC_NR_PRIVATE_IRQS, x->shared.reg_ul);
+	return test_bit(irq - VGIC_NR_PRIVATE_IRQS, x->bits + x->nr_cpus);
 }
 
 static void vgic_bitmap_set_irq_val(struct vgic_bitmap *x, int cpuid,
 				    int irq, int val)
 {
-	unsigned long *reg;
+	unsigned long *reg = x->bits;
 
+	BUG_ON(!reg);
 	if (irq < VGIC_NR_PRIVATE_IRQS) {
-		reg = x->percpu[cpuid].reg_ul;
+		reg += cpuid;
 	} else {
-		reg =  x->shared.reg_ul;
+		reg += x->nr_cpus;
 		irq -= VGIC_NR_PRIVATE_IRQS;
 	}
 
@@ -135,24 +155,42 @@ static void vgic_bitmap_set_irq_val(struct vgic_bitmap *x, int cpuid,
 
 static unsigned long *vgic_bitmap_get_cpu_map(struct vgic_bitmap *x, int cpuid)
 {
-	if (unlikely(cpuid >= VGIC_MAX_CPUS))
-		return NULL;
-	return x->percpu[cpuid].reg_ul;
+	return x->bits + cpuid;
 }
 
 static unsigned long *vgic_bitmap_get_shared_map(struct vgic_bitmap *x)
 {
-	return x->shared.reg_ul;
+	return x->bits + x->nr_cpus;
+}
+
+static int vgic_init_bytemap(struct vgic_bytemap *x, int nr_cpus, int nr_irqs)
+{
+	int size;
+
+	size  = nr_cpus * VGIC_NR_PRIVATE_IRQS;
+	size += nr_irqs - VGIC_NR_PRIVATE_IRQS;
+
+	x->regs = kzalloc(size, GFP_KERNEL);
+	if (!x->regs)
+		return -ENOMEM;
+
+	x->nr_cpus = nr_cpus;
+	return 0;
+}
+
+static void vgic_free_bytemap(struct vgic_bytemap *b)
+{
+	kfree(b->regs);
 }
 
 static u32 *vgic_bytemap_get_reg(struct vgic_bytemap *x, int cpuid, u32 offset)
 {
-	offset >>= 2;
-	BUG_ON(offset > (VGIC_NR_IRQS / 4));
-	if (offset < 8)
-		return x->percpu[cpuid] + offset;
+	if (offset < 32)
+		offset += cpuid * VGIC_NR_PRIVATE_IRQS;
 	else
-		return x->shared + offset - 8;
+		offset += (x->nr_cpus - 1) * VGIC_NR_PRIVATE_IRQS;
+
+	return x->regs + (offset / sizeof(u32));
 }
 
 #define VGIC_CFG_LEVEL	0
@@ -733,6 +771,11 @@ bool vgic_handle_mmio(struct kvm_vcpu *vcpu, struct kvm_run *run,
 	return true;
 }
 
+static u8 *vgic_get_sgi_sources(struct vgic_dist *dist, int vcpu_id, int sgi)
+{
+	return dist->irq_sgi_sources + vcpu_id * VGIC_NR_SGIS + sgi;
+}
+
 static void vgic_dispatch_sgi(struct kvm_vcpu *vcpu, u32 reg)
 {
 	struct kvm *kvm = vcpu->kvm;
@@ -765,7 +808,7 @@ static void vgic_dispatch_sgi(struct kvm_vcpu *vcpu, u32 reg)
 		if (target_cpus & 1) {
 			/* Flag the SGI as pending */
 			vgic_dist_irq_set(vcpu, sgi);
-			dist->irq_sgi_sources[c][sgi] |= 1 << vcpu_id;
+			*vgic_get_sgi_sources(dist, c, sgi) |= 1 << vcpu_id;
 			kvm_debug("SGI%d from CPU%d to CPU%d\n", sgi, vcpu_id, c);
 		}
 
@@ -908,14 +951,14 @@ static bool vgic_queue_sgi(struct kvm_vcpu *vcpu, int irq)
 	int vcpu_id = vcpu->vcpu_id;
 	int c;
 
-	sources = dist->irq_sgi_sources[vcpu_id][irq];
+	sources = *vgic_get_sgi_sources(dist, vcpu_id, irq);
 
 	for_each_set_bit(c, &sources, VGIC_MAX_CPUS) {
 		if (vgic_queue_irq(vcpu, c, irq))
 			clear_bit(c, &sources);
 	}
 
-	dist->irq_sgi_sources[vcpu_id][irq] = sources;
+	*vgic_get_sgi_sources(dist, vcpu_id, irq) = sources;
 
 	/*
 	 * If the sources bitmap has been cleared it means that we
@@ -1243,14 +1286,43 @@ static irqreturn_t vgic_maintenance_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static void vgic_vcpu_free_maps(struct vgic_cpu *vgic_cpu)
+{
+	kfree(vgic_cpu->pending_shared);
+	kfree(vgic_cpu->vgic_irq_lr_map);
+}
+
+static int vgic_vcpu_init_maps(struct vgic_cpu *vgic_cpu, int nr_irqs)
+{
+	vgic_cpu->pending_shared = kzalloc(nr_irqs - VGIC_NR_PRIVATE_IRQS,
+					   GFP_KERNEL);
+	vgic_cpu->vgic_irq_lr_map = kzalloc(nr_irqs, GFP_KERNEL);
+
+	if (!vgic_cpu->pending_shared || !vgic_cpu->vgic_irq_lr_map) {
+		vgic_vcpu_free_maps(vgic_cpu);
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
+void kvm_vgic_vcpu_destroy(struct kvm_vcpu *vcpu)
+{
+	vgic_vcpu_free_maps(&vcpu->arch.vgic_cpu);
+}
+
 int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 {
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
-	int i;
+	int i, ret;
 
 	if (!irqchip_in_kernel(vcpu->kvm))
 		return 0;
+
+	ret = vgic_vcpu_init_maps(vgic_cpu, dist->nr_irqs);
+	if (ret)
+		return ret;
 
 	if (vcpu->vcpu_id >= VGIC_MAX_CPUS)
 		return -EBUSY;
@@ -1383,6 +1455,68 @@ out:
 	return ret;
 }
 
+static void vgic_free_maps(struct vgic_dist *dist)
+{
+	int i;
+
+	vgic_free_bitmap(&dist->irq_enabled);
+	vgic_free_bitmap(&dist->irq_state);
+	vgic_free_bitmap(&dist->irq_active);
+	vgic_free_bitmap(&dist->irq_cfg);
+	vgic_free_bytemap(&dist->irq_priority);
+	if (dist->irq_spi_target)
+		for (i = 0; i < dist->nr_cpus; i++)
+			vgic_free_bitmap(&dist->irq_spi_target[i]);
+	kfree(dist->irq_sgi_sources);
+	kfree(dist->irq_spi_cpu);
+	kfree(dist->irq_spi_target);
+}
+
+static int vgic_init_maps(struct vgic_dist *dist, int nr_cpus, int nr_irqs)
+{
+	int ret = 0, i;
+
+	dist->nr_cpus = nr_cpus;
+	dist->nr_irqs = nr_irqs;
+
+	ret  = vgic_init_bitmap(&dist->irq_enabled, nr_cpus, nr_irqs);
+	ret |= vgic_init_bitmap(&dist->irq_state, nr_cpus, nr_irqs);
+	ret |= vgic_init_bitmap(&dist->irq_active, nr_cpus, nr_irqs);
+	ret |= vgic_init_bitmap(&dist->irq_cfg, nr_cpus, nr_irqs);
+	ret |= vgic_init_bytemap(&dist->irq_priority, nr_cpus, nr_irqs);
+
+	if (!ret) {
+		dist->irq_sgi_sources = kzalloc(nr_cpus * VGIC_NR_SGIS,
+						GFP_KERNEL);
+		dist->irq_spi_cpu = kzalloc(nr_irqs - VGIC_NR_PRIVATE_IRQS,
+					    GFP_KERNEL);
+		dist->irq_spi_target = kzalloc(sizeof(*dist->irq_spi_target) * nr_cpus,
+					       GFP_KERNEL);
+		if (!dist->irq_sgi_sources ||
+		    !dist->irq_spi_cpu ||
+		    !dist->irq_spi_target) {
+			ret = -ENOMEM;
+			goto out;
+		}
+
+		for (i = 0; i < nr_cpus; i++)
+			ret |= vgic_init_bitmap(&dist->irq_spi_target[i],
+						nr_cpus, nr_irqs);
+
+	}
+
+out:
+	if (ret)
+		vgic_free_maps(dist);
+
+	return ret;
+}
+
+void kvm_vgic_destroy(struct kvm *kvm)
+{
+	vgic_free_maps(&kvm->arch.vgic);
+}
+
 int kvm_vgic_init(struct kvm *kvm)
 {
 	int ret = 0, i;
@@ -1416,7 +1550,7 @@ out:
 	return ret;
 }
 
-int kvm_vgic_create(struct kvm *kvm)
+int kvm_vgic_create(struct kvm *kvm, int nr_cpus, int nr_irqs)
 {
 	int ret = 0;
 
@@ -1431,6 +1565,10 @@ int kvm_vgic_create(struct kvm *kvm)
 	kvm->arch.vgic.vctrl_base = vgic_vctrl_base;
 	kvm->arch.vgic.vgic_dist_base = VGIC_ADDR_UNDEF;
 	kvm->arch.vgic.vgic_cpu_base = VGIC_ADDR_UNDEF;
+
+	ret = vgic_init_maps(&kvm->arch.vgic, nr_cpus, nr_irqs);
+	if (ret)
+		kvm_err("Unable to allocate maps\n");
 
 out:
 	mutex_unlock(&kvm->lock);
