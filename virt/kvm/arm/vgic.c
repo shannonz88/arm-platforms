@@ -954,7 +954,7 @@ static bool vgic_queue_sgi(struct kvm_vcpu *vcpu, int irq)
 
 	sources = *vgic_get_sgi_sources(dist, vcpu_id, irq);
 
-	for_each_set_bit(c, &sources, VGIC_MAX_CPUS) {
+	for_each_set_bit(c, &sources, dist->nr_cpus) {
 		if (vgic_queue_irq(vcpu, c, irq))
 			clear_bit(c, &sources);
 	}
@@ -1326,7 +1326,7 @@ int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 	if (ret)
 		return ret;
 
-	if (vcpu->vcpu_id >= VGIC_MAX_CPUS)
+	if (vcpu->vcpu_id >= dist->nr_cpus)
 		return -EBUSY;
 
 	for (i = 0; i < VGIC_NR_IRQS; i++) {
