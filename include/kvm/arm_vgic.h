@@ -31,6 +31,7 @@
 #define VGIC_NR_PPIS		16
 #define VGIC_NR_PRIVATE_IRQS	(VGIC_NR_SGIS + VGIC_NR_PPIS)
 #define VGIC_MAX_LRS		(1 << 6)
+#define VGIC_MAX_IRQS		1024
 
 /* Sanity checks... */
 #if (KVM_MAX_VCPUS > 8)
@@ -41,7 +42,7 @@
 #error "VGIC_NR_IRQS must be a multiple of 32"
 #endif
 
-#if (VGIC_NR_IRQS > 1024)
+#if (VGIC_NR_IRQS > VGIC_MAX_IRQS)
 #error "VGIC_NR_IRQS must be <= 1024"
 #endif
 
