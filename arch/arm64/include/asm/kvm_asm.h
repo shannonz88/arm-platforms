@@ -43,16 +43,20 @@
 #define	AMAIR_EL1	19	/* Aux Memory Attribute Indirection Register */
 #define	CNTKCTL_EL1	20	/* Timer Control Register (EL1) */
 #define	PAR_EL1		21	/* Physical Address Register */
+#define	MIDR_EL1	22	/* Main ID Register */
+#define	__NR_SR64	23	/* Number of 64bit System Registers */
+
 /* 32bit specific registers. Keep them at the end of the range */
-#define	DACR32_EL2	22	/* Domain Access Control Register */
-#define	IFSR32_EL2	23	/* Instruction Fault Status Register */
-#define	FPEXC32_EL2	24	/* Floating-Point Exception Control Register */
-#define	DBGVCR32_EL2	25	/* Debug Vector Catch Register */
-#define	TEECR32_EL1	26	/* ThumbEE Configuration Register */
-#define	TEEHBR32_EL1	27	/* ThumbEE Handler Base Register */
-#define	NR_SYS_REGS	28
+#define	DACR32_EL2	(__NR_SR64 + 0)	/* Domain Access Control Register */
+#define	IFSR32_EL2	(__NR_SR64 + 1)	/* Instruction Fault Status Register */
+#define	FPEXC32_EL2	(__NR_SR64 + 2)	/* Floating-Point Exception Control Register */
+#define	DBGVCR32_EL2	(__NR_SR64 + 3)	/* Debug Vector Catch Register */
+#define	TEECR32_EL1	(__NR_SR64 + 4)	/* ThumbEE Configuration Register */
+#define	TEEHBR32_EL1	(__NR_SR64 + 5)	/* ThumbEE Handler Base Register */
+#define	NR_SYS_REGS	(__NR_SR64 + 6)
 
 /* 32bit mapping */
+#define c0_MIDR		(MIDR_EL1 * 2)	/* Main ID Register */
 #define c0_MPIDR	(MPIDR_EL1 * 2)	/* MultiProcessor ID Register */
 #define c0_CSSELR	(CSSELR_EL1 * 2)/* Cache Size Selection Register */
 #define c1_SCTLR	(SCTLR_EL1 * 2)	/* System Control Register */

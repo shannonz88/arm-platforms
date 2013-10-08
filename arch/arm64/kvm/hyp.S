@@ -215,6 +215,7 @@ __kvm_hyp_code_start:
 	mrs	x22, 	amair_el1
 	mrs	x23, 	cntkctl_el1
 	mrs	x24,	par_el1
+	mrs	x25,	vpidr_el2
 
 	stp	x4, x5, [x3]
 	stp	x6, x7, [x3, #16]
@@ -226,7 +227,7 @@ __kvm_hyp_code_start:
 	stp	x18, x19, [x3, #112]
 	stp	x20, x21, [x3, #128]
 	stp	x22, x23, [x3, #144]
-	str	x24, [x3, #160]
+	stp	x24, x25, [x3, #160]
 .endm
 
 .macro restore_sysregs
@@ -245,7 +246,7 @@ __kvm_hyp_code_start:
 	ldp	x18, x19, [x3, #112]
 	ldp	x20, x21, [x3, #128]
 	ldp	x22, x23, [x3, #144]
-	ldr	x24, [x3, #160]
+	ldp	x24, x25, [x3, #160]
 
 	msr	vmpidr_el2,	x4
 	msr	csselr_el1,	x5
@@ -268,6 +269,7 @@ __kvm_hyp_code_start:
 	msr	amair_el1,	x22
 	msr	cntkctl_el1,	x23
 	msr	par_el1,	x24
+	msr	vpidr_el2,	x25
 .endm
 
 .macro skip_32bit_state tmp, target
