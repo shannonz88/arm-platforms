@@ -87,6 +87,8 @@ struct kvm_cpu_context {
 
 typedef struct kvm_cpu_context kvm_cpu_context_t;
 
+struct kvm_sys_reg_target_table;
+
 struct kvm_vcpu_arch {
 	struct kvm_cpu_context ctxt;
 
@@ -126,6 +128,7 @@ struct kvm_vcpu_arch {
 	/* Target CPU and feature flags */
 	int target;
 	DECLARE_BITMAP(features, KVM_VCPU_MAX_FEATURES);
+	struct kvm_sys_reg_target_table *target_table;
 
 	/* Detect first run of a vcpu */
 	bool has_run_once;

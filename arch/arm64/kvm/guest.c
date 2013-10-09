@@ -232,7 +232,8 @@ int kvm_vcpu_set_target(struct kvm_vcpu *vcpu,
 	if (init->target != phys_target)
 		return -EINVAL;
 
-	vcpu->arch.target = phys_target;
+	vcpu->arch.target = init->target;
+	vcpu->arch.target_table = kvm_get_target_table(init->target);
 	bitmap_zero(vcpu->arch.features, KVM_VCPU_MAX_FEATURES);
 
 	/* -ENOENT for unknown features, -EINVAL for invalid combinations. */
