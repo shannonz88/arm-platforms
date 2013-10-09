@@ -354,13 +354,12 @@ struct kvm_sys_reg_target_table *kvm_get_target_table(unsigned target)
 };
 
 /* Get specific register table for this target. */
-static const struct sys_reg_desc *get_target_table(unsigned target,
+static const struct sys_reg_desc *get_target_table(struct kvm_vcpu *vcpu,
 						   bool mode_is_64,
 						   size_t *num)
 {
-	struct kvm_sys_reg_target_table *table;
+	struct kvm_sys_reg_target_table *table = vcpu->arch.target_table;
 
-	table = target_tables[target];
 	if (mode_is_64) {
 		*num = table->table64.num;
 		return table->table64.table;
@@ -413,7 +412,7 @@ static void emulate_cp15(struct kvm_vcpu *vcpu,
 	size_t num;
 	const struct sys_reg_desc *table, *r;
 
-	table = get_target_table(vcpu->arch.target, false, &num);
+	table = get_target_table(vcpu, false, &num);
 
 	/* Search target-specific then generic table. */
 	r = find_reg(params, table, num);
@@ -514,7 +513,7 @@ static int emulate_sys_reg(struct kvm_vcpu *vcpu,
 	size_t num;
 	const struct sys_reg_desc *table, *r;
 
-	table = get_target_table(vcpu->arch.target, true, &num);
+	table = get_target_table(vcpu, true, &num);
 
 	/* Search target-specific then generic table. */
 	r = find_reg(params, table, num);
@@ -624,7 +623,7 @@ static const struct sys_reg_desc *index_to_sys_reg_desc(struct kvm_vcpu *vcpu,
 	if (!index_to_params(id, &params))
 		return NULL;
 
-	table = get_target_table(vcpu->arch.target, true, &num);
+	table = get_target_table(vcpu, true, &num);
 	r = find_reg(&params, table, num);
 	if (!r)
 		r = find_reg(&params, sys_reg_descs, ARRAY_SIZE(sys_reg_descs));
@@ -945,7 +944,7 @@ static int walk_sys_regs(struct kvm_vcpu *vcpu, u64 __user *uind)
 	size_t num;
 
 	/* We check for duplicates here, to allow arch-specific overrides. */
-	i1 = get_target_table(vcpu->arch.target, true, &num);
+	i1 = get_target_table(vcpu, true, &num);
 	end1 = i1 + num;
 	i2 = sys_reg_descs;
 	end2 = sys_reg_descs + ARRAY_SIZE(sys_reg_descs);
@@ -1057,7 +1056,7 @@ void kvm_reset_sys_regs(struct kvm_vcpu *vcpu)
 	/* Generic chip reset first (so target could override). */
 	reset_sys_reg_descs(vcpu, sys_reg_descs, ARRAY_SIZE(sys_reg_descs));
 
-	table = get_target_table(vcpu->arch.target, true, &num);
+	table = get_target_table(vcpu, true, &num);
 	reset_sys_reg_descs(vcpu, table, num);
 
 	for (num = 1; num < NR_SYS_REGS; num++)
