@@ -66,6 +66,8 @@ static const struct sys_reg_desc genericv8_cp15_regs[] = {
 };
 
 static struct kvm_sys_reg_target_table genericv8_target_table = {
+	.native_hcr_el2	= HCR_GUEST_FLAGS,
+	.alien_hcr_el2	= HCR_GUEST_FLAGS,
 	.table64 = {
 		.table = genericv8_sys_regs,
 		.num = ARRAY_SIZE(genericv8_sys_regs),

@@ -31,6 +31,8 @@ struct kvm_sys_reg_table {
 };
 
 struct kvm_sys_reg_target_table {
+	u64 native_hcr_el2;
+	u64 alien_hcr_el2;
 	struct kvm_sys_reg_table table64;
 	struct kvm_sys_reg_table table32;
 };
