@@ -348,6 +348,11 @@ void kvm_register_target_sys_reg_table(unsigned int target,
 	target_tables[target] = table;
 }
 
+struct kvm_sys_reg_target_table *kvm_get_target_table(unsigned target)
+{
+	return target_tables[target];
+};
+
 /* Get specific register table for this target. */
 static const struct sys_reg_desc *get_target_table(unsigned target,
 						   bool mode_is_64,

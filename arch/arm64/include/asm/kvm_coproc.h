@@ -37,6 +37,7 @@ struct kvm_sys_reg_target_table {
 
 void kvm_register_target_sys_reg_table(unsigned int target,
 				       struct kvm_sys_reg_target_table *table);
+struct kvm_sys_reg_target_table *kvm_get_target_table(unsigned target);
 
 int kvm_handle_cp14_load_store(struct kvm_vcpu *vcpu, struct kvm_run *run);
 int kvm_handle_cp14_access(struct kvm_vcpu *vcpu, struct kvm_run *run);
