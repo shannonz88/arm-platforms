@@ -92,4 +92,4 @@ static int __init sys_reg_genericv8_init(void)
 					  &genericv8_target_table);
 	return 0;
 }
-late_initcall(sys_reg_genericv8_init);
+subsys_initcall(sys_reg_genericv8_init);
