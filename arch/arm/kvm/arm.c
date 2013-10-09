@@ -505,6 +505,10 @@ static int kvm_vcpu_initialized(struct kvm_vcpu *vcpu)
 	return vcpu->arch.target >= 0;
 }
 
+void __weak kvm_vcpu_compute_hcr(int phys_target, struct kvm_vcpu *vcpu)
+{
+}
+
 /**
  * kvm_arch_vcpu_ioctl_run - the main VCPU run function to execute guest code
  * @vcpu:	The VCPU pointer
@@ -569,6 +573,8 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 			kvm_vgic_sync_hwstate(vcpu);
 			continue;
 		}
+
+		kvm_vcpu_compute_hcr(__get_cpu_var(kvm_phys_target), vcpu);
 
 		/**************************************************************
 		 * Enter the guest

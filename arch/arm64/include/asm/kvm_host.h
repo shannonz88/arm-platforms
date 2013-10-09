@@ -129,6 +129,8 @@ struct kvm_vcpu_arch {
 	int target;
 	DECLARE_BITMAP(features, KVM_VCPU_MAX_FEATURES);
 	struct kvm_sys_reg_target_table *target_table;
+	u64 clear_hcr_el2;
+	u64 set_hcr_el2;
 
 	/* Detect first run of a vcpu */
 	bool has_run_once;

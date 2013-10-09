@@ -38,8 +38,22 @@ struct kvm_stats_debugfs_item debugfs_entries[] = {
 
 int kvm_arch_vcpu_setup(struct kvm_vcpu *vcpu)
 {
-	vcpu->arch.hcr_el2 = HCR_GUEST_FLAGS;
 	return 0;
+}
+
+void kvm_vcpu_compute_hcr(int phys_target, struct kvm_vcpu *vcpu)
+{
+	u64 hcr_el2;
+
+	if (phys_target == vcpu->arch.target)
+		hcr_el2 = vcpu->arch.target_table->native_hcr_el2;
+	else
+		hcr_el2 = vcpu->arch.target_table->alien_hcr_el2;
+
+	hcr_el2 |= vcpu->arch.set_hcr_el2;
+	hcr_el2 &= ~vcpu->arch.clear_hcr_el2;
+
+	vcpu->arch.hcr_el2 = hcr_el2;
 }
 
 static u64 core_reg_offset_from_id(u64 id)
