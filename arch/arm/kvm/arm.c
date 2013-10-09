@@ -55,6 +55,9 @@ static unsigned long hyp_default_vectors;
 /* Per-CPU variable containing the currently running vcpu. */
 static DEFINE_PER_CPU(struct kvm_vcpu *, kvm_arm_running_vcpu);
 
+/* Per-CPU variable containing the type of the physical CPUs */
+static DEFINE_PER_CPU(int, kvm_phys_target);
+
 /* The VMID used in the VTTBR */
 static atomic64_t kvm_vmid_gen = ATOMIC64_INIT(1);
 static u8 kvm_next_vmid;
@@ -979,7 +982,9 @@ out_err:
 
 static void check_kvm_target_cpu(void *ret)
 {
-	*(int *)ret = kvm_target_cpu();
+	int target = kvm_target_cpu();
+	__get_cpu_var(kvm_phys_target) = target;
+	*(int *)ret = target;
 }
 
 /**
