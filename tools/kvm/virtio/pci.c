@@ -227,7 +227,7 @@ static struct ioport_operations virtio_pci__io_ops = {
 	.io_out	= virtio_pci__io_out,
 };
 
-static void virtio_pci__mmio_callback(u64 addr, u8 *data, u32 len, u8 is_write, void *ptr)
+static void virtio_pci__mmio_callback(struct kvm_cpu *vcpu, u64 addr, u8 *data, u32 len, u8 is_write, void *ptr)
 {
 	struct virtio_pci *vpci = ptr;
 	void *table;
