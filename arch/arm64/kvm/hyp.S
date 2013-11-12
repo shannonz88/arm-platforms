@@ -356,7 +356,7 @@ __kvm_hyp_code_start:
 	orr	x2, x2, x1
 	msr	hcr_el2, x2
 
-	ldr	x2, =(CPTR_EL2_TTA)
+	ldr	x2, =(CPTR_EL2_TTA | CPTR_EL2_TFP)
 	msr	cptr_el2, x2
 
 	ldr	x2, =(1 << 15)	// Trap CP15 Cr=15
@@ -564,7 +564,6 @@ ENTRY(__kvm_vcpu_run)
 	kern_hyp_va x2
 
 	save_host_regs
-	bl __save_fpsimd
 	bl __save_sysregs
 
 	activate_traps
@@ -577,7 +576,6 @@ ENTRY(__kvm_vcpu_run)
 	add	x2, x0, #VCPU_CONTEXT
 
 	bl __restore_sysregs
-	bl __restore_fpsimd
 	restore_guest_32bit_state
 	restore_guest_regs
 
