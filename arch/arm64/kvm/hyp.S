@@ -105,15 +105,27 @@
 .macro save_fpsimd
 	// x2: cpu context address
 	// x3, x4: tmp regs
+	// Don't bother saving FP if trap is enabled
+	mrs	x4, cptr_el2
+	tst	x4, #CPTR_EL2_TFP
+	b.ne	1f
+
 	add	x3, x2, #CPU_GP_REG_OFFSET(CPU_FP_REGS)
 	fpsimd_save x3, 4
+1:
 .endm
 
 .macro restore_fpsimd
 	// x2: cpu context address
 	// x3, x4: tmp regs
+	// Don't bother restoring FP if trap is enabled
+	mrs	x4, cptr_el2
+	tst	x4, #CPTR_EL2_TFP
+	b.ne	1f
+
 	add	x3, x2, #CPU_GP_REG_OFFSET(CPU_FP_REGS)
 	fpsimd_restore x3, 4
+1:
 .endm
 
 .macro save_guest_regs
