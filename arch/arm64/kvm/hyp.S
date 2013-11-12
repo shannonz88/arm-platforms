@@ -744,6 +744,8 @@ el1_trap:
 	 * x1: ESR
 	 * x2: ESR_EC
 	 */
+	cmp	x2, #ESR_EL2_EC_FP_ASIMD
+	b.eq	el1_fp_trap
 	cmp	x2, #ESR_EL2_EC_DABT
 	mov	x0, #ESR_EL2_EC_IABT
 	ccmp	x2, x0, #4, ne
@@ -803,6 +805,29 @@ el1_trap:
 3:	pop	x2, x3
 	pop	x0, x1
 
+	eret
+
+el1_fp_trap:
+	push	x4, lr		// Restoring FP uses x4 and lr
+	mrs	x0, tpidr_el2
+
+	// Disable trapping of FP/SIMD
+	mrs	x1, cptr_el2
+	bic	x1, x1, #CPTR_EL2_TFP
+	msr	cptr_el2, x1
+
+	// Save host FP context
+	ldr	x2, [x0, #VCPU_HOST_CONTEXT]
+	kern_hyp_va x2
+	bl	__save_fpsimd
+
+	// Restore gest FP context
+	add	x2, x0, #VCPU_CONTEXT
+	bl	__restore_fpsimd
+
+	pop	x4, lr
+	pop	x2, x3
+	pop	x0, x1
 	eret
 
 el1_irq:
