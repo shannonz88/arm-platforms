@@ -783,14 +783,14 @@
 .endm
 
 .macro deactivate_traps
-	mov	x2, #HCR_RW
-	msr	hcr_el2, x2
+	mov	x3, #HCR_RW
+	msr	hcr_el2, x3
 	msr	cptr_el2, xzr
 	msr	hstr_el2, xzr
 
-	mrs	x2, mdcr_el2
-	and	x2, x2, #MDCR_EL2_HPMN_MASK
-	msr	mdcr_el2, x2
+	mrs	x3, mdcr_el2
+	and	x3, x3, #MDCR_EL2_HPMN_MASK
+	msr	mdcr_el2, x3
 .endm
 
 .macro activate_vm
