@@ -978,14 +978,10 @@ __kvm_vcpu_return:
 	save_timer_state
 	save_vgic_state
 
-	deactivate_traps
-	deactivate_vm
-
 	// Host context
 	ldr	x2, [x0, #VCPU_HOST_CONTEXT]
 	kern_hyp_va x2
 
-	bl __restore_sysregs
 	bl __restore_fpsimd
 
 	skip_debug_state x3, 1f
@@ -995,6 +991,10 @@ __kvm_vcpu_return:
 	str	xzr, [x0, #VCPU_DEBUG_FLAGS]
 	bl	__restore_debug
 1:
+	deactivate_traps
+	deactivate_vm
+
+	bl __restore_sysregs
 	restore_host_regs
 
 	mov	x0, x1
