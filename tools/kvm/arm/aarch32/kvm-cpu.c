@@ -1,5 +1,6 @@
 #include "kvm/kvm-cpu.h"
 #include "kvm/kvm.h"
+#include "kvm/virtio.h"
 
 #include <asm/ptrace.h>
 
