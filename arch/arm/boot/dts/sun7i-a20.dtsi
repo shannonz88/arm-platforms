@@ -17,7 +17,7 @@
 	interrupt-parent = <&gic>;
 
 	aliases {
-		ethernet0 = &emac;
+		ethernet0 = &gmac;
 	};
 
 	cpus {
@@ -171,6 +171,13 @@
 				"apb1_uart2", "apb1_uart3", "apb1_uart4",
 				"apb1_uart5", "apb1_uart6", "apb1_uart7";
 		};
+
+		mac_phy: mac_phy {
+			#clock-cells = <0>;
+			compatible = "fixed-clock";
+			clock-frequency = <25000000>;
+			clock-output-names = "mac_phy";
+		};
 	};
 
 	soc@01c00000 {
@@ -256,6 +263,17 @@
 						"PA15", "PA16";
 				allwinner,function = "emac";
 				allwinner,drive = <0>;
+				allwinner,pull = <0>;
+			};
+
+			gmac_pins_a: gmac0@0 {
+				allwinner,pins = "PA0", "PA1", "PA2",
+						"PA3", "PA4", "PA5", "PA6",
+						"PA7", "PA8", "PA9", "PA10",
+						"PA11", "PA12", "PA13", "PA14",
+						"PA15", "PA16", "PA17";
+				allwinner,function = "gmac";
+				allwinner,drive = <3>;
 				allwinner,pull = <0>;
 			};
 		};
@@ -421,6 +439,19 @@
 				     <0 83 1>,
 				     <0 84 1>;
 			clocks = <&ahb_gates 28>;
+		};
+
+		gmac: ethernet@01c50000 {
+			compatible = "allwinner,sun7i-gmac", "snps,dwmac";
+			reg = <0x01c50000 0x10000>,
+			      <0x01c20164 0x4>;
+			interrupts = <0 85 1>;
+			interrupt-names = "macirq";
+			clocks = <&ahb_gates 49>, <&mac_phy>;
+			clock-names = "ahb_gmac", "stmmaceth";
+			snps,pbl = <2>;
+			snps,fixed-burst;
+			status = "disabled";
 		};
 
 		gic: interrupt-controller@01c81000 {
