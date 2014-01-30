@@ -169,12 +169,14 @@ static void unmap_range(struct kvm *kvm, pgd_t *pgdp,
 			pte = pte_offset_kernel(pmd, addr);
 			clear_pte_entry(kvm, pte, addr);
 			next = addr + PAGE_SIZE;
+		} else {
+			pte = NULL;
 		}
 
 		/*
 		 * If the pmd entry is to be cleared, walk back up the ladder
 		 */
-		if (kvm_pmd_huge(*pmd) || page_empty(pte)) {
+		if (kvm_pmd_huge(*pmd) || (pte && page_empty(pte))) {
 			clear_pmd_entry(kvm, pmd, addr);
 			next = pmd_addr_end(addr, end);
 			if (page_empty(pmd) && !page_empty(pud)) {
