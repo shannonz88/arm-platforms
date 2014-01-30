@@ -261,6 +261,11 @@ static inline int has_transparent_hugepage(void)
 	return 1;
 }
 
+#define pmd_addr_end(addr, end)						\
+({	u64 __boundary = ((addr) + PMD_SIZE) & PMD_MASK;		\
+	(__boundary - 1 < (end) - 1)? __boundary: (end);		\
+})
+
 #endif /* __ASSEMBLY__ */
 
 #endif /* _ASM_PGTABLE_3LEVEL_H */
