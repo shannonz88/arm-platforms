@@ -11,8 +11,9 @@
  */
 
 #include <linux/init.h>
-
+#include <linux/memblock.h>
 #include <asm/mach/arch.h>
+#include <asm/setup.h>
 
 static const char * const qcom_dt_match[] __initconst = {
 	"qcom,apq8064",
@@ -26,6 +27,25 @@ static const char * const qcom_dt_match[] __initconst = {
 	NULL
 };
 
+
+static long long qcom_dt_pv_fixup(void)
+{
+	struct memblock_region *reg;
+	int i = 0;
+
+	for_each_memblock(memory, reg) {
+		pr_info("region %d: %08x-%08x\n", i, reg->base, reg->base+reg->size-1);
+		if (reg->base == 0x80200000 || reg->base == 0x40200000) {
+			pr_info("augmenting region base\n");
+			reg->base -= 0x200000;
+			reg->size += 0x200000;
+		}
+		i++;
+	}
+	return 0;
+}
+
 DT_MACHINE_START(QCOM_DT, "Qualcomm (Flattened Device Tree)")
 	.dt_compat = qcom_dt_match,
+	.pv_fixup = qcom_dt_pv_fixup,
 MACHINE_END
