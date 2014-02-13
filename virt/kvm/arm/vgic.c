@@ -2183,6 +2183,28 @@ static int vgic_set_attr(struct kvm_device *dev, struct kvm_device_attr *attr)
 
 		return vgic_attr_regs_access(dev, attr, &reg, true);
 	}
+	case KVM_DEV_ARM_VGIC_GRP_NR_IRQS: {
+		u32 __user *uaddr = (u32 __user *)(long)attr->addr;
+		u32 val;
+		int ret = 0;
+
+		if (get_user(val, uaddr))
+			return -EFAULT;
+
+		if (val > 1024 || (val & 31))
+			return -EINVAL;
+
+		mutex_lock(&dev->kvm->lock);
+
+		if (vgic_initialized(dev->kvm) || dev->kvm->arch.vgic.nr_irqs)
+			ret = -EBUSY;
+		else
+			dev->kvm->arch.vgic.nr_irqs = val;
+
+		mutex_unlock(&dev->kvm->lock);
+
+		return ret;
+	}
 
 	}
 
@@ -2217,6 +2239,11 @@ static int vgic_get_attr(struct kvm_device *dev, struct kvm_device_attr *attr)
 		if (r)
 			return r;
 		r = put_user(reg, uaddr);
+		break;
+	}
+	case KVM_DEV_ARM_VGIC_GRP_NR_IRQS: {
+		u32 __user *uaddr = (u32 __user *)(long)attr->addr;
+		r = put_user(dev->kvm->arch.vgic.nr_irqs, uaddr);
 		break;
 	}
 
@@ -2255,6 +2282,8 @@ static int vgic_has_attr(struct kvm_device *dev, struct kvm_device_attr *attr)
 	case KVM_DEV_ARM_VGIC_GRP_CPU_REGS:
 		offset = attr->attr & KVM_DEV_ARM_VGIC_OFFSET_MASK;
 		return vgic_has_attr_regs(vgic_cpu_ranges, offset);
+	case KVM_DEV_ARM_VGIC_GRP_NR_IRQS:
+		return 0;
 	}
 	return -ENXIO;
 }
