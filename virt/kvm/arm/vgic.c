@@ -2246,6 +2246,12 @@ static int vgic_get_attr(struct kvm_device *dev, struct kvm_device_attr *attr)
 		r = put_user(dev->kvm->arch.vgic.nr_irqs, uaddr);
 		break;
 	}
+	case KVM_DEV_ARM_VGIC_GRP_ADDR_OFFSET: {
+		u32 __user *uaddr = (u32 __user *)(long)attr->addr;
+		u32 val = vgic->vcpu_base & ~PAGE_MASK;
+		r = put_user(val, uaddr);
+		break;
+	}
 
 	}
 
@@ -2283,6 +2289,7 @@ static int vgic_has_attr(struct kvm_device *dev, struct kvm_device_attr *attr)
 		offset = attr->attr & KVM_DEV_ARM_VGIC_OFFSET_MASK;
 		return vgic_has_attr_regs(vgic_cpu_ranges, offset);
 	case KVM_DEV_ARM_VGIC_GRP_NR_IRQS:
+	case KVM_DEV_ARM_VGIC_GRP_ADDR_OFFSET:
 		return 0;
 	}
 	return -ENXIO;
