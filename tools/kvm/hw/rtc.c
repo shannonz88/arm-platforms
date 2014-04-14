@@ -2,6 +2,7 @@
 
 #include "kvm/ioport.h"
 #include "kvm/kvm.h"
+#include "kvm/fdt.h"
 
 #include <time.h>
 
@@ -106,9 +107,33 @@ static bool cmos_ram_data_out(struct ioport *ioport, struct kvm *kvm, u16 port, 
 	return true;
 }
 
+#ifdef CONFIG_HAS_LIBFDT
+#define DEVICE_NAME_MAX_LEN 32
+static void rtc_generate_fdt_node(struct ioport *ioport, void *fdt,
+				  void (*generate_irq_prop)(void *fdt, u8 irq))
+{
+	char dev_name[DEVICE_NAME_MAX_LEN];
+	u64 addr = KVM_IOPORT_AREA + 0x70;
+	u64 reg_prop[] = {
+		cpu_to_fdt64(addr),
+		cpu_to_fdt64(2),
+	};
+
+	snprintf(dev_name, DEVICE_NAME_MAX_LEN, "rtc-cmos@%llx", addr);
+
+	_FDT(fdt_begin_node(fdt, dev_name));
+	_FDT(fdt_property_string(fdt, "compatible", "motorola,mc146818"));
+	_FDT(fdt_property(fdt, "reg", reg_prop, sizeof(reg_prop)));
+	_FDT(fdt_end_node(fdt));
+}
+#else
+#define rtc_generate_fdt_node	NULL
+#endif
+
 static struct ioport_operations cmos_ram_data_ioport_ops = {
-	.io_out		= cmos_ram_data_out,
-	.io_in		= cmos_ram_data_in,
+	.io_out			= cmos_ram_data_out,
+	.io_in			= cmos_ram_data_in,
+	.generate_fdt_node	= rtc_generate_fdt_node,
 };
 
 static bool cmos_ram_index_out(struct ioport *ioport, struct kvm *kvm, u16 port, void *data, int size)
