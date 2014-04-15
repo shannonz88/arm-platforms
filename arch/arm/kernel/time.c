@@ -32,13 +32,6 @@
 #include <asm/stacktrace.h>
 #include <asm/thread_info.h>
 
-#if defined(CONFIG_RTC_DRV_CMOS) || defined(CONFIG_RTC_DRV_CMOS_MODULE) || \
-    defined(CONFIG_NVRAM) || defined(CONFIG_NVRAM_MODULE)
-/* this needs a better home */
-DEFINE_SPINLOCK(rtc_lock);
-EXPORT_SYMBOL(rtc_lock);
-#endif	/* pc-style 'CMOS' RTC support */
-
 /* change this if you have some constant time drift */
 #define USECS_PER_JIFFY	(1000000/HZ)
 
