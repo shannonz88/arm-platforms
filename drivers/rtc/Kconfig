@@ -660,10 +660,11 @@ comment "Platform RTC drivers"
 
 config RTC_DRV_CMOS
 	tristate "PC-style 'CMOS'"
-	depends on X86 || ARM || M32R || PPC || MIPS || SPARC64
+	depends on X86 || ARM || M32R || PPC || MIPS || SPARC64 || ARM64
 	default y if X86
 	select RTC_DRV_CMOS_MMIO if ARM
-	select RTC_DRV_CMOS_PRIV_LOCK if ARM
+	select RTC_DRV_CMOS_MMIO_STRICT if ARM64
+	select RTC_DRV_CMOS_PRIV_LOCK if (ARM || ARM64)
 	help
 	  Say "yes" here to get direct support for the real time clock
 	  found in every PC or ACPI-based system, and some other boards.
