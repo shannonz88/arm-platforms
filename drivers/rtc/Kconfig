@@ -684,6 +684,9 @@ config RTC_DRV_CMOS_MMIO_STRICT
 	select RTC_DRV_CMOS_MMIO
 	bool
 
+config RTC_DRV_CMOS_PRIV_LOCK
+	bool
+
 config RTC_DRV_ALPHA
 	bool "Alpha PC-style CMOS"
 	depends on ALPHA

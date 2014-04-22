@@ -107,6 +107,22 @@ static inline void rtc_cmos_set_base(void __iomem *base)
 static void rtc_cmos_set_base(void __iomem *base) {}
 #endif
 
+#ifdef CONFIG_RTC_DRV_CMOS_PRIV_LOCK
+static DEFINE_SPINLOCK(rtc_private_lock);
+
+static unsigned long rtc_cmos_lock(void)
+{
+	unsigned long flags;
+	spin_lock_irqsave(&rtc_private_lock, flags);
+	return flags;
+}
+
+static void rtc_cmos_unlock(unsigned long flags)
+{
+	spin_unlock_irqrestore(&rtc_private_lock, flags);
+}
+#endif
+
 /* The RTC_INTR register may have e.g. RTC_PF set even if RTC_PIE is clear;
  * always mask it against the irq enable bits in RTC_CONTROL.  Bit values
  * are the same: PF==PIE, AF=AIE, UF=UIE; so RTC_IRQMASK works with both.

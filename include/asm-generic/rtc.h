@@ -43,6 +43,10 @@ static inline void do_cmos_write(u8 val, u8 reg)
 }
 #endif
 
+#ifdef CONFIG_RTC_DRV_CMOS_PRIV_LOCK
+static unsigned long rtc_cmos_lock(void);
+static void rtc_cmos_unlock(unsigned long flags);
+#else
 static inline unsigned long rtc_cmos_lock(void)
 {
 	unsigned long flags;
@@ -54,6 +58,7 @@ static inline void rtc_cmos_unlock(unsigned long flags)
 {
 	spin_unlock_irqrestore(&rtc_lock, flags);
 }
+#endif
 
 /*
  * Returns true if a clock update is in progress
