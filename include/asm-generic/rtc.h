@@ -37,6 +37,19 @@ static inline void do_cmos_write(u8 val, u8 reg)
 {
 	CMOS_WRITE(val, reg);
 }
+
+static inline unsigned long rtc_cmos_lock(void)
+{
+	unsigned long flags;
+	spin_lock_irqsave(&rtc_lock, flags);
+	return flags;
+}
+
+static inline void rtc_cmos_unlock(unsigned long flags)
+{
+	spin_unlock_irqrestore(&rtc_lock, flags);
+}
+
 /*
  * Returns true if a clock update is in progress
  */
@@ -45,9 +58,9 @@ static inline unsigned char rtc_is_updating(void)
 	unsigned char uip;
 	unsigned long flags;
 
-	spin_lock_irqsave(&rtc_lock, flags);
+	flags = rtc_cmos_lock();
 	uip = (do_cmos_read(RTC_FREQ_SELECT) & RTC_UIP);
-	spin_unlock_irqrestore(&rtc_lock, flags);
+	rtc_cmos_unlock(flags);
 	return uip;
 }
 
@@ -78,7 +91,7 @@ static inline unsigned int __get_rtc_time(struct rtc_time *time)
 	 * RTC has RTC_DAY_OF_WEEK, we ignore it, as it is only updated
 	 * by the RTC when initially set to a non-zero value.
 	 */
-	spin_lock_irqsave(&rtc_lock, flags);
+	flags = rtc_cmos_lock();
 	time->tm_sec = do_cmos_read(RTC_SECONDS);
 	time->tm_min = do_cmos_read(RTC_MINUTES);
 	time->tm_hour = do_cmos_read(RTC_HOURS);
@@ -89,7 +102,7 @@ static inline unsigned int __get_rtc_time(struct rtc_time *time)
 	real_year = do_cmos_read(RTC_DEC_YEAR);
 #endif
 	ctrl = do_cmos_read(RTC_CONTROL);
-	spin_unlock_irqrestore(&rtc_lock, flags);
+	rtc_cmos_unlock(flags);
 
 	if (!(ctrl & RTC_DM_BINARY) || RTC_ALWAYS_BCD)
 	{
@@ -142,7 +155,7 @@ static inline int __set_rtc_time(struct rtc_time *time)
 	if (yrs > 255)	/* They are unsigned */
 		return -EINVAL;
 
-	spin_lock_irqsave(&rtc_lock, flags);
+	flags = rtc_cmos_lock();
 #ifdef CONFIG_MACH_DECSTATION
 	real_yrs = yrs;
 	leap_yr = ((!((yrs + 1900) % 4) && ((yrs + 1900) % 100)) ||
@@ -163,7 +176,7 @@ static inline int __set_rtc_time(struct rtc_time *time)
 	 * whether the chip is in binary mode or not.
 	 */
 	if (yrs > 169) {
-		spin_unlock_irqrestore(&rtc_lock, flags);
+		rtc_cmos_unlock(flags);
 		return -EINVAL;
 	}
 
@@ -198,7 +211,7 @@ static inline int __set_rtc_time(struct rtc_time *time)
 	do_cmos_write(save_control, RTC_CONTROL);
 	do_cmos_write(save_freq_select, RTC_FREQ_SELECT);
 
-	spin_unlock_irqrestore(&rtc_lock, flags);
+	rtc_cmos_unlock(flags);
 
 	return 0;
 }
