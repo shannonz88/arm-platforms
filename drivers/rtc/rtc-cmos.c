@@ -70,6 +70,11 @@ static const char driver_name[] = "rtc_cmos";
 #ifdef CONFIG_RTC_DRV_CMOS_MMIO
 static void __iomem *rtc_cmos_base;
 
+#ifdef CONFIG_RTC_DRV_CMOS_MMIO_STRICT
+#define CMOS_READ(reg)		({BUG(); 0;})
+#define CMOS_WRITE(val,reg)	BUG();
+#endif
+
 static u8 do_cmos_read(u8 reg)
 {
 	u8 val;

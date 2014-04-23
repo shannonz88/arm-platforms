@@ -680,6 +680,10 @@ config RTC_DRV_CMOS
 config RTC_DRV_CMOS_MMIO
 	bool
 
+config RTC_DRV_CMOS_MMIO_STRICT
+	select RTC_DRV_CMOS_MMIO
+	bool
+
 config RTC_DRV_ALPHA
 	bool "Alpha PC-style CMOS"
 	depends on ALPHA
