@@ -171,11 +171,17 @@ static const struct vgic_ops vgic_v3_ops = {
 static bool vgic_v3_init_emul_compat(struct kvm *kvm, int type)
 {
 	struct vgic_vm_ops *vm_ops = &kvm->arch.vgic.vm_ops;
+	int nr_vcpus;
 
 	switch (type) {
 	case KVM_DEV_TYPE_ARM_VGIC_V2:
+		nr_vcpus = atomic_read(&kvm->online_vcpus);
+		if (nr_vcpus > 8)
+			return false;
+
 		vm_ops->get_lr = vgic_v3_get_lr;
 		vm_ops->set_lr = vgic_v3_set_lr;
+		kvm->arch.max_vcpus = 8;
 		return true;
 	}
 	return false;
