@@ -228,4 +228,6 @@ static inline void vgic_arch_setup(const struct vgic_params *vgic)
 	}
 }
 
+struct kvm_vcpu *kvm_mpidr_to_vcpu(struct kvm *kvm, unsigned long mpidr);
+
 #endif /* __ARM64_KVM_HOST_H__ */
