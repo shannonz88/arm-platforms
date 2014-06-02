@@ -171,11 +171,16 @@ static struct vgic_params vgic_v2_params;
 static bool vgic_v2_init_emul(struct kvm *kvm, int type)
 {
 	struct vgic_vm_ops *vm_ops = &kvm->arch.vgic.vm_ops;
+	int nr_vcpus;
 
 	switch (type) {
 	case KVM_DEV_TYPE_ARM_VGIC_V2:
+		nr_vcpus = atomic_read(&kvm->online_vcpus);
+		if (nr_vcpus > 8)
+			return false;
 		vm_ops->get_lr = vgic_v2_get_lr;
 		vm_ops->set_lr = vgic_v2_set_lr;
+		kvm->arch.max_vcpus = 8;
 		return true;
 	}
 
