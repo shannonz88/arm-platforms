@@ -157,8 +157,6 @@ static void vgic_v3_enable(struct kvm_vcpu *vcpu)
 }
 
 static const struct vgic_ops vgic_v3_ops = {
-	.get_lr			= vgic_v3_get_lr,
-	.set_lr			= vgic_v3_set_lr,
 	.sync_lr_elrsr		= vgic_v3_sync_lr_elrsr,
 	.get_elrsr		= vgic_v3_get_elrsr,
 	.get_eisr		= vgic_v3_get_eisr,
@@ -169,6 +167,19 @@ static const struct vgic_ops vgic_v3_ops = {
 	.set_vmcr		= vgic_v3_set_vmcr,
 	.enable			= vgic_v3_enable,
 };
+
+static bool vgic_v3_init_emul_compat(struct kvm *kvm, int type)
+{
+	struct vgic_vm_ops *vm_ops = &kvm->arch.vgic.vm_ops;
+
+	switch (type) {
+	case KVM_DEV_TYPE_ARM_VGIC_V2:
+		vm_ops->get_lr = vgic_v3_get_lr;
+		vm_ops->set_lr = vgic_v3_set_lr;
+		return true;
+	}
+	return false;
+}
 
 static struct vgic_params vgic_v3_params;
 
@@ -215,6 +226,7 @@ int vgic_v3_probe(struct device_node *vgic_node,
 		ret = -ENXIO;
 		goto out;
 	}
+	vgic->init_emul = vgic_v3_init_emul_compat;
 	vgic->vcpu_base = vcpu_res.start;
 	vgic->vctrl_base = NULL;
 	vgic->type = VGIC_V3;

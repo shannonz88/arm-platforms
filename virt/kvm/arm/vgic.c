@@ -99,6 +99,8 @@ static void vgic_set_vmcr(struct kvm_vcpu *vcpu, struct vgic_vmcr *vmcr);
 static const struct vgic_ops *vgic_ops;
 static const struct vgic_params *vgic;
 
+#define vgic_vm_op(kvm, fn) ((kvm)->arch.vgic.vm_ops.fn)
+
 static int vgic_init_bitmap(struct vgic_bitmap *b, int nr_cpus, int nr_irqs)
 {
 	int nr_longs;
@@ -650,11 +652,16 @@ static bool handle_mmio_sgi_reg(struct kvm_vcpu *vcpu,
  * to the distributor but the active state stays in the LRs, because we don't
  * track the active state on the distributor side.
  */
-static void vgic_unqueue_irqs(struct kvm_vcpu *vcpu)
+
+static void vgic_v2_unqueue_sgi(struct kvm_vcpu *vcpu, int irq, int source)
 {
 	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
+
+	*vgic_get_sgi_sources(dist, vcpu->vcpu_id, irq) |= 1 << source;
+}
+static void vgic_unqueue_irqs(struct kvm_vcpu *vcpu)
+{
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
-	int vcpu_id = vcpu->vcpu_id;
 	int i;
 
 	for_each_set_bit(i, vgic_cpu->lr_used, vgic_cpu->nr_lr) {
@@ -681,7 +688,8 @@ static void vgic_unqueue_irqs(struct kvm_vcpu *vcpu)
 		 */
 		vgic_dist_irq_set(vcpu, lr.irq);
 		if (lr.irq < VGIC_NR_SGIS)
-			*vgic_get_sgi_sources(dist, vcpu_id, lr.irq) |= 1 << lr.source;
+			vgic_vm_op(vcpu->kvm, unqueue_sgi)(vcpu, lr.irq,
+							   lr.source);
 		lr.state &= ~LR_STATE_PENDING;
 		vgic_set_lr(vcpu, i, lr);
 
@@ -1032,7 +1040,7 @@ bool vgic_handle_mmio(struct kvm_vcpu *vcpu, struct kvm_run *run,
 	if (!irqchip_in_kernel(vcpu->kvm))
 		return false;
 
-	return vgic_v2_handle_mmio(vcpu, run, mmio);
+	return vgic_vm_op(vcpu->kvm, handle_mmio)(vcpu, run, mmio);
 }
 
 static u8 *vgic_get_sgi_sources(struct vgic_dist *dist, int vcpu_id, int sgi)
@@ -1140,13 +1148,13 @@ static void vgic_update_state(struct kvm *kvm)
 
 static struct vgic_lr vgic_get_lr(const struct kvm_vcpu *vcpu, int lr)
 {
-	return vgic_ops->get_lr(vcpu, lr);
+	return vgic_vm_op(vcpu->kvm, get_lr)(vcpu, lr);
 }
 
 static void vgic_set_lr(struct kvm_vcpu *vcpu, int lr,
 			       struct vgic_lr vlr)
 {
-	vgic_ops->set_lr(vcpu, lr, vlr);
+	return vgic_vm_op(vcpu->kvm, set_lr)(vcpu, lr, vlr);
 }
 
 static void vgic_sync_lr_elrsr(struct kvm_vcpu *vcpu, int lr,
@@ -1284,7 +1292,7 @@ static bool vgic_queue_irq(struct kvm_vcpu *vcpu, u8 sgi_source_id, int irq)
 	return true;
 }
 
-static bool vgic_queue_sgi(struct kvm_vcpu *vcpu, int irq)
+static bool vgic_v2_queue_sgi(struct kvm_vcpu *vcpu, int irq)
 {
 	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
 	unsigned long sources;
@@ -1359,7 +1367,7 @@ static void __kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 
 	/* SGIs */
 	for_each_set_bit(i, vgic_cpu->pending_percpu, VGIC_NR_SGIS) {
-		if (!vgic_queue_sgi(vcpu, i))
+		if (!vgic_vm_op(vcpu->kvm, queue_sgi)(vcpu, i))
 			overflow = 1;
 	}
 
@@ -1865,6 +1873,28 @@ out:
 	return ret;
 }
 
+static int vgic_v2_init(struct kvm *kvm, const struct vgic_params *params)
+{
+	struct vgic_dist *dist = &kvm->arch.vgic;
+	int ret;
+
+	if (IS_VGIC_ADDR_UNDEF(dist->vgic_dist_base) ||
+	    IS_VGIC_ADDR_UNDEF(dist->vgic_cpu_base)) {
+		kvm_err("Need to set vgic distributor addresses first\n");
+		return -ENXIO;
+	}
+
+	ret = kvm_phys_addr_ioremap(kvm, dist->vgic_cpu_base,
+				    params->vcpu_base,
+				    KVM_VGIC_V2_CPU_SIZE);
+	if (ret) {
+		kvm_err("Unable to remap VGIC CPU to VCPU\n");
+		return ret;
+	}
+
+	return 0;
+}
+
 /**
  * kvm_vgic_init - Initialize global VGIC state before running any VCPUs
  * @kvm: pointer to the kvm struct
@@ -1887,25 +1917,15 @@ int kvm_vgic_init(struct kvm *kvm)
 	if (vgic_initialized(kvm))
 		goto out;
 
-	if (IS_VGIC_ADDR_UNDEF(kvm->arch.vgic.vgic_dist_base) ||
-	    IS_VGIC_ADDR_UNDEF(kvm->arch.vgic.vgic_cpu_base)) {
-		kvm_err("Need to set vgic cpu and dist addresses first\n");
-		ret = -ENXIO;
-		goto out;
-	}
-
 	ret = vgic_init_maps(kvm);
 	if (ret) {
 		kvm_err("Unable to allocate maps\n");
 		goto out;
 	}
 
-	ret = kvm_phys_addr_ioremap(kvm, kvm->arch.vgic.vgic_cpu_base,
-				    vgic->vcpu_base, KVM_VGIC_V2_CPU_SIZE);
-	if (ret) {
-		kvm_err("Unable to remap VGIC CPU to VCPU\n");
+	ret = vgic_vm_op(kvm, vgic_init)(kvm, vgic);
+	if (ret)
 		goto out;
-	}
 
 	kvm_for_each_vcpu(i, vcpu, kvm)
 		kvm_vgic_vcpu_init(vcpu);
@@ -1918,6 +1938,21 @@ out:
 	return ret;
 }
 
+static bool init_emulation_ops(struct kvm *kvm, int type)
+{
+	struct vgic_dist *dist = &kvm->arch.vgic;
+
+	switch (type) {
+	case KVM_DEV_TYPE_ARM_VGIC_V2:
+		dist->vm_ops.handle_mmio = vgic_v2_handle_mmio;
+		dist->vm_ops.queue_sgi = vgic_v2_queue_sgi;
+		dist->vm_ops.unqueue_sgi = vgic_v2_unqueue_sgi;
+		dist->vm_ops.vgic_init = vgic_v2_init;
+		return true;
+	}
+	return false;
+}
+
 int kvm_vgic_create(struct kvm *kvm, u32 type)
 {
 	int i, vcpu_lock_idx = -1, ret = 0;
@@ -1925,7 +1960,7 @@ int kvm_vgic_create(struct kvm *kvm, u32 type)
 
 	mutex_lock(&kvm->lock);
 
-	if (kvm->arch.vgic.vctrl_base) {
+	if (kvm->arch.vgic.in_kernel) {
 		ret = -EEXIST;
 		goto out;
 	}
@@ -1948,11 +1983,19 @@ int kvm_vgic_create(struct kvm *kvm, u32 type)
 		}
 	}
 
+	if (!vgic->init_emul(kvm, type)) {
+		ret = -ENODEV;
+		goto out;
+	}
+
 	spin_lock_init(&kvm->arch.vgic.lock);
 	kvm->arch.vgic.in_kernel = true;
+	kvm->arch.vgic.vgic_model = type;
 	kvm->arch.vgic.vctrl_base = vgic->vctrl_base;
 	kvm->arch.vgic.vgic_dist_base = VGIC_ADDR_UNDEF;
 	kvm->arch.vgic.vgic_cpu_base = VGIC_ADDR_UNDEF;
+
+	init_emulation_ops(kvm, type);
 
 out_unlock:
 	for (; vcpu_lock_idx >= 0; vcpu_lock_idx--) {

@@ -99,8 +99,6 @@ struct vgic_vmcr {
 };
 
 struct vgic_ops {
-	struct vgic_lr	(*get_lr)(const struct kvm_vcpu *, int);
-	void	(*set_lr)(struct kvm_vcpu *, int, struct vgic_lr);
 	void	(*sync_lr_elrsr)(struct kvm_vcpu *, int, struct vgic_lr);
 	u64	(*get_elrsr)(const struct kvm_vcpu *vcpu);
 	u64	(*get_eisr)(const struct kvm_vcpu *vcpu);
@@ -123,6 +121,17 @@ struct vgic_params {
 	unsigned int	maint_irq;
 	/* Virtual control interface base address */
 	void __iomem	*vctrl_base;
+	bool (*init_emul)(struct kvm *kvm, int type);
+};
+
+struct vgic_vm_ops {
+	struct vgic_lr	(*get_lr)(const struct kvm_vcpu *, int);
+	void	(*set_lr)(struct kvm_vcpu *, int, struct vgic_lr);
+	bool	(*handle_mmio)(struct kvm_vcpu *, struct kvm_run *,
+			       struct kvm_exit_mmio *);
+	bool	(*queue_sgi)(struct kvm_vcpu *vcpu, int irq);
+	void	(*unqueue_sgi)(struct kvm_vcpu *vcpu, int irq, int source);
+	int	(*vgic_init)(struct kvm *kvm, const struct vgic_params *params);
 };
 
 struct vgic_dist {
@@ -130,6 +139,9 @@ struct vgic_dist {
 	spinlock_t		lock;
 	bool			in_kernel;
 	bool			ready;
+
+	/* vGIC model the kernel emulates for the guest (GICv2 or GICv3) */
+	u32			vgic_model;
 
 	int			nr_cpus;
 	int			nr_irqs;
@@ -168,6 +180,8 @@ struct vgic_dist {
 
 	/* Bitmap indicating which CPU has something pending */
 	unsigned long		irq_pending_on_cpu;
+
+	struct vgic_vm_ops	vm_ops;
 #endif
 };
 

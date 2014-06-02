@@ -155,8 +155,6 @@ static void vgic_v2_enable(struct kvm_vcpu *vcpu)
 }
 
 static const struct vgic_ops vgic_v2_ops = {
-	.get_lr			= vgic_v2_get_lr,
-	.set_lr			= vgic_v2_set_lr,
 	.sync_lr_elrsr		= vgic_v2_sync_lr_elrsr,
 	.get_elrsr		= vgic_v2_get_elrsr,
 	.get_eisr		= vgic_v2_get_eisr,
@@ -169,6 +167,20 @@ static const struct vgic_ops vgic_v2_ops = {
 };
 
 static struct vgic_params vgic_v2_params;
+
+static bool vgic_v2_init_emul(struct kvm *kvm, int type)
+{
+	struct vgic_vm_ops *vm_ops = &kvm->arch.vgic.vm_ops;
+
+	switch (type) {
+	case KVM_DEV_TYPE_ARM_VGIC_V2:
+		vm_ops->get_lr = vgic_v2_get_lr;
+		vm_ops->set_lr = vgic_v2_set_lr;
+		return true;
+	}
+
+	return false;
+}
 
 /**
  * vgic_v2_probe - probe for a GICv2 compatible interrupt controller in DT
@@ -208,6 +220,7 @@ int vgic_v2_probe(struct device_node *vgic_node,
 		ret = -ENOMEM;
 		goto out;
 	}
+	vgic->init_emul = vgic_v2_init_emul;
 
 	vgic->nr_lr = readl_relaxed(vgic->vctrl_base + GICH_VTR);
 	vgic->nr_lr = (vgic->nr_lr & 0x3f) + 1;
