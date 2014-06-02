@@ -67,6 +67,7 @@ struct kvm_arch {
 
 	/* Interrupt controller */
 	struct vgic_dist	vgic;
+	int max_vcpus;
 };
 
 #define KVM_NR_MEM_OBJS     40
