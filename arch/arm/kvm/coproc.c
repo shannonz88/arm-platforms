@@ -205,6 +205,22 @@ done:
 	return true;
 }
 
+static bool access_gic_sgi(struct kvm_vcpu *vcpu,
+			   const struct coproc_params *p,
+			   const struct coproc_reg *r)
+{
+	u64 val;
+
+	if (!p->is_write)
+		return read_from_write_only(vcpu, p);
+
+	val = *vcpu_reg(vcpu, p->Rt1);
+	val |= (u64)*vcpu_reg(vcpu, p->Rt2) << 32;
+	vgic_v3_dispatch_sgi(vcpu, val);
+
+	return true;
+}
+
 /*
  * Generic accessor for VM registers. Only called as long as HCR_TVM
  * is set.
@@ -375,6 +391,9 @@ static const struct coproc_reg cp15_regs[] = {
 			access_vm_reg, reset_unknown, c10_AMAIR0},
 	{ CRn(10), CRm( 3), Op1( 0), Op2( 1), is32,
 			access_vm_reg, reset_unknown, c10_AMAIR1},
+
+	/* ICC_SGI1R */
+	{ CRm64(12), Op1( 0), is64, access_gic_sgi},
 
 	/* VBAR: swapped by interrupt.S. */
 	{ CRn(12), CRm( 0), Op1( 0), Op2( 0), is32,
