@@ -1445,6 +1445,8 @@ static bool init_emulation_ops(struct kvm *kvm, int type)
 	switch (type) {
 	case KVM_DEV_TYPE_ARM_VGIC_V2:
 		return vgic_v2_init_emulation_ops(kvm, type);
+	case KVM_DEV_TYPE_ARM_VGIC_V3:
+		return vgic_v3_init_emulation_ops(kvm, type);
 	}
 	return false;
 }
