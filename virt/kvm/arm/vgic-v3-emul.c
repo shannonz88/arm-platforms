@@ -798,7 +798,7 @@ void vgic_v3_dispatch_sgi(struct kvm_vcpu *vcpu, u64 reg)
 	 */
 	spin_lock(&dist->lock);
 	kvm_for_each_vcpu(c, c_vcpu, kvm) {
-		if (target_cpus == 0)
+		if (!mode && target_cpus == 0)
 			break;
 		if (mode && c == vcpu_id)       /* not to myself */
 			continue;
