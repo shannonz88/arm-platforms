@@ -35,8 +35,8 @@
 #define VGIC_MAX_IRQS		1024
 
 /* Sanity checks... */
-#if (KVM_MAX_VCPUS > 8)
-#error	Invalid number of CPU interfaces
+#if (KVM_MAX_VCPUS > 255)
+#error Too many KVM VCPUs, the VGIC only supports up to 255 VCPUs for now
 #endif
 
 #if (VGIC_NR_IRQS_LEGACY & 31)
