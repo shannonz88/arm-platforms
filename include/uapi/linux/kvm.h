@@ -949,6 +949,7 @@ struct kvm_device_attr {
 #define   KVM_DEV_VFIO_GROUP_DEL			2
 #define KVM_DEV_TYPE_ARM_VGIC_V2	5
 #define KVM_DEV_TYPE_FLIC		6
+#define KVM_DEV_TYPE_ARM_VGIC_V3	7
 
 /*
  * ioctls for VM fds

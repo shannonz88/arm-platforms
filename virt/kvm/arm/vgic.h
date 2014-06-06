@@ -34,6 +34,8 @@
 
 #define VCPU_NOT_ALLOCATED ((u8)-1)
 
+#define VCPU_NOT_ALLOCATED ((u8)-1)
+
 unsigned long *vgic_bitmap_get_shared_map(struct vgic_bitmap *x);
 
 void vgic_update_state(struct kvm *kvm);
@@ -112,3 +114,4 @@ int vgic_set_common_attr(struct kvm_device *dev, struct kvm_device_attr *attr);
 int vgic_get_common_attr(struct kvm_device *dev, struct kvm_device_attr *attr);
 
 bool vgic_v2_init_emulation_ops(struct kvm *kvm, int type);
+bool vgic_v3_init_emulation_ops(struct kvm *kvm, int type);

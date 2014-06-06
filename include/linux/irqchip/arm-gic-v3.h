@@ -31,6 +31,7 @@
 #define GICD_SETSPI_SR			0x0050
 #define GICD_CLRSPI_SR			0x0058
 #define GICD_SEIR			0x0068
+#define GICD_IGROUPR			0x0080
 #define GICD_ISENABLER			0x0100
 #define GICD_ICENABLER			0x0180
 #define GICD_ISPENDR			0x0200
@@ -39,13 +40,30 @@
 #define GICD_ICACTIVER			0x0380
 #define GICD_IPRIORITYR			0x0400
 #define GICD_ICFGR			0x0C00
+#define GICD_IGRPMODR			0x0D00
+#define GICD_NSACR			0x0E00
 #define GICD_IROUTER			0x6000
+#define GICD_IDREGS			0xFFD0
 #define GICD_PIDR2			0xFFE8
 
+/*
+ * Non-ARE distributor registers, needed to provide the RES0
+ * semantics for KVM's emulated GICv3
+ */
+#define GICD_ITARGETSR			0x0800
+#define GICD_SGIR			0x0F00
+#define GICD_CPENDSGIR			0x0F10
+#define GICD_SPENDSGIR			0x0F20
+
+
 #define GICD_CTLR_RWP			(1U << 31)
+#define GICD_CTLR_DS			(1U << 6)
 #define GICD_CTLR_ARE_NS		(1U << 4)
 #define GICD_CTLR_ENABLE_G1A		(1U << 1)
 #define GICD_CTLR_ENABLE_G1		(1U << 0)
+
+#define GICD_TYPER_LPIS			(1U << 17)
+#define GICD_TYPER_MBIS			(1U << 16)
 
 #define GICD_IROUTER_SPI_MODE_ONE	(0U << 31)
 #define GICD_IROUTER_SPI_MODE_ANY	(1U << 31)
@@ -53,6 +71,8 @@
 #define GIC_PIDR2_ARCH_MASK		0xf0
 #define GIC_PIDR2_ARCH_GICv3		0x30
 #define GIC_PIDR2_ARCH_GICv4		0x40
+
+#define GIC_V3_DIST_SIZE		0x10000
 
 /*
  * Re-Distributor registers, offsets from RD_base
@@ -72,6 +92,7 @@
 #define GICR_SYNCR			0x00C0
 #define GICR_MOVLPIR			0x0100
 #define GICR_MOVALLR			0x0110
+#define GICR_IDREGS			GICD_IDREGS
 #define GICR_PIDR2			GICD_PIDR2
 
 #define GICR_WAKER_ProcessorSleep	(1U << 1)
@@ -80,6 +101,7 @@
 /*
  * Re-Distributor registers, offsets from SGI_base
  */
+#define GICR_IGROUPR0			GICD_IGROUPR
 #define GICR_ISENABLER0			GICD_ISENABLER
 #define GICR_ICENABLER0			GICD_ICENABLER
 #define GICR_ISPENDR0			GICD_ISPENDR
@@ -88,9 +110,13 @@
 #define GICR_ICACTIVER0			GICD_ICACTIVER
 #define GICR_IPRIORITYR0		GICD_IPRIORITYR
 #define GICR_ICFGR0			GICD_ICFGR
+#define GICR_IGRPMODR0			GICD_IGRPMODR
+#define GICR_NSACR			GICD_NSACR
 
 #define GICR_TYPER_VLPIS		(1U << 1)
 #define GICR_TYPER_LAST			(1U << 4)
+
+#define GIC_V3_REDIST_SIZE		0x20000
 
 /*
  * CPU interface registers

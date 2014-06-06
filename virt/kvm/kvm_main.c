@@ -2286,6 +2286,9 @@ static int kvm_ioctl_create_device(struct kvm *kvm,
 	case KVM_DEV_TYPE_ARM_VGIC_V2:
 		ops = &kvm_arm_vgic_v2_ops;
 		break;
+	case KVM_DEV_TYPE_ARM_VGIC_V3:
+		ops = &kvm_arm_vgic_v3_ops;
+		break;
 #endif
 #ifdef CONFIG_S390
 	case KVM_DEV_TYPE_FLIC:

@@ -151,7 +151,11 @@ struct vgic_dist {
 
 	/* Distributor and vcpu interface mapping in the guest */
 	phys_addr_t		vgic_dist_base;
-	phys_addr_t		vgic_cpu_base;
+	/* GICv2 and GICv3 use different mapped register blocks */
+	union {
+		phys_addr_t		vgic_cpu_base;
+		phys_addr_t		vgic_redist_base;
+	};
 
 	/* Distributor enabled */
 	u32			enabled;
@@ -176,6 +180,10 @@ struct vgic_dist {
 
 	/* Target CPU for each IRQ */
 	u8			*irq_spi_cpu;
+
+	/* Target MPIDR for each IRQ (needed for GICv3 IROUTERn) only */
+	u32			*irq_spi_mpidr;
+
 	struct vgic_bitmap	*irq_spi_target;
 
 	/* Bitmap indicating which CPU has something pending */
@@ -253,6 +261,7 @@ void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu);
 void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu);
 int kvm_vgic_inject_irq(struct kvm *kvm, int cpuid, unsigned int irq_num,
 			bool level);
+void vgic_v3_dispatch_sgi(struct kvm_vcpu *vcpu, u64 reg);
 int kvm_vgic_vcpu_pending_irq(struct kvm_vcpu *vcpu);
 bool vgic_handle_mmio(struct kvm_vcpu *vcpu, struct kvm_run *run,
 		      struct kvm_exit_mmio *mmio);
