@@ -57,7 +57,7 @@ void vgic_unqueue_irqs(struct kvm_vcpu *vcpu);
 void vgic_reg_access(struct kvm_exit_mmio *mmio, u32 *reg,
 		     phys_addr_t offset, int mode);
 bool handle_mmio_raz_wi(struct kvm_vcpu *vcpu, struct kvm_exit_mmio *mmio,
-			phys_addr_t offset);
+			phys_addr_t offset, void *private);
 
 static inline
 u32 mmio_data_read(struct kvm_exit_mmio *mmio, u32 mask)
@@ -76,7 +76,7 @@ struct mmio_range {
 	unsigned long len;
 	int bits_per_irq;
 	bool (*handle_mmio)(struct kvm_vcpu *vcpu, struct kvm_exit_mmio *mmio,
-			    phys_addr_t offset);
+			    phys_addr_t offset, void *private);
 };
 
 #define IS_IN_RANGE(addr, alen, base, len) \
@@ -90,7 +90,8 @@ struct mmio_range *vgic_find_matching_range(const struct mmio_range *ranges,
 bool vgic_handle_mmio_range(struct kvm_vcpu *vcpu, struct kvm_run *run,
 			    struct kvm_exit_mmio *mmio,
 			    const struct mmio_range *ranges,
-			    unsigned long mmio_base);
+			    unsigned long mmio_base,
+			    void *private);
 
 bool vgic_handle_enable_reg(struct kvm *kvm, struct kvm_exit_mmio *mmio,
 			    phys_addr_t offset, int vcpu_id, int access);
