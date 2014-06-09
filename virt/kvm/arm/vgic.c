@@ -329,7 +329,8 @@ void vgic_reg_access(struct kvm_exit_mmio *mmio, u32 *reg,
 }
 
 bool handle_mmio_raz_wi(struct kvm_vcpu *vcpu,
-			       struct kvm_exit_mmio *mmio, phys_addr_t offset)
+			       struct kvm_exit_mmio *mmio, phys_addr_t offset,
+			       void *private)
 {
 	vgic_reg_access(mmio, NULL, offset,
 			ACCESS_READ_RAZ | ACCESS_WRITE_IGNORED);
@@ -538,7 +539,7 @@ static bool vgic_validate_access(const struct vgic_dist *dist,
  */
 static bool call_range_handler(struct kvm_vcpu *vcpu,
 			       struct kvm_exit_mmio *mmio,
-			       unsigned long offset,
+			       unsigned long offset, void *private,
 			       const struct mmio_range *range)
 {
 	u32 *data32 = (void *)mmio->data;
@@ -546,7 +547,7 @@ static bool call_range_handler(struct kvm_vcpu *vcpu,
 	bool ret;
 
 	if (likely(mmio->len <= 4))
-		return range->handle_mmio(vcpu, mmio, offset);
+		return range->handle_mmio(vcpu, mmio, offset, private);
 
 	/*
 	 * We assume that any access greater than 4 bytes is actually
@@ -559,14 +560,14 @@ static bool call_range_handler(struct kvm_vcpu *vcpu,
 	mmio32.phys_addr = mmio->phys_addr + 4;
 	if (mmio->is_write)
 		*(u32 *)mmio32.data = data32[1];
-	ret = range->handle_mmio(vcpu, &mmio32, offset + 4);
+	ret = range->handle_mmio(vcpu, &mmio32, offset + 4, private);
 	if (!mmio->is_write)
 		data32[1] = *(u32 *)mmio32.data;
 
 	mmio32.phys_addr = mmio->phys_addr;
 	if (mmio->is_write)
 		*(u32 *)mmio32.data = data32[0];
-	ret |= range->handle_mmio(vcpu, &mmio32, offset);
+	ret |= range->handle_mmio(vcpu, &mmio32, offset, private);
 	if (!mmio->is_write)
 		data32[0] = *(u32 *)mmio32.data;
 
@@ -586,7 +587,7 @@ static bool call_range_handler(struct kvm_vcpu *vcpu,
 bool vgic_handle_mmio_range(struct kvm_vcpu *vcpu, struct kvm_run *run,
 			    struct kvm_exit_mmio *mmio,
 			    const struct mmio_range *ranges,
-			    unsigned long mmio_base)
+			    unsigned long mmio_base, void *private)
 {
 	const struct mmio_range *range;
 	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
@@ -604,7 +605,8 @@ bool vgic_handle_mmio_range(struct kvm_vcpu *vcpu, struct kvm_run *run,
 	spin_lock(&vcpu->kvm->arch.vgic.lock);
 	offset -= range->base;
 	if (vgic_validate_access(dist, range, offset)) {
-		updated_state = call_range_handler(vcpu, mmio, offset, range);
+		updated_state = call_range_handler(vcpu, mmio, offset, private,
+						   range);
 	} else {
 		if (!mmio->is_write)
 			memset(mmio->data, 0, mmio->len);
