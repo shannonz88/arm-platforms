@@ -41,7 +41,8 @@ static u8 *vgic_get_sgi_sources(struct vgic_dist *dist, int vcpu_id, int sgi)
 }
 
 static bool handle_mmio_misc(struct kvm_vcpu *vcpu,
-			     struct kvm_exit_mmio *mmio, phys_addr_t offset)
+			     struct kvm_exit_mmio *mmio, phys_addr_t offset,
+			     void *private)
 {
 	u32 reg;
 	u32 word_offset = offset & 3;
@@ -77,7 +78,7 @@ static bool handle_mmio_misc(struct kvm_vcpu *vcpu,
 
 static bool handle_mmio_set_enable_reg(struct kvm_vcpu *vcpu,
 				       struct kvm_exit_mmio *mmio,
-				       phys_addr_t offset)
+				       phys_addr_t offset, void *private)
 {
 	return vgic_handle_enable_reg(vcpu->kvm, mmio, offset,
 				      vcpu->vcpu_id, ACCESS_WRITE_SETBIT);
@@ -85,7 +86,7 @@ static bool handle_mmio_set_enable_reg(struct kvm_vcpu *vcpu,
 
 static bool handle_mmio_clear_enable_reg(struct kvm_vcpu *vcpu,
 					 struct kvm_exit_mmio *mmio,
-					 phys_addr_t offset)
+					 phys_addr_t offset, void *private)
 {
 	return vgic_handle_enable_reg(vcpu->kvm, mmio, offset,
 				      vcpu->vcpu_id, ACCESS_WRITE_CLEARBIT);
@@ -93,7 +94,7 @@ static bool handle_mmio_clear_enable_reg(struct kvm_vcpu *vcpu,
 
 static bool handle_mmio_set_pending_reg(struct kvm_vcpu *vcpu,
 					struct kvm_exit_mmio *mmio,
-					phys_addr_t offset)
+					phys_addr_t offset, void *private)
 {
 	return vgic_handle_set_pending_reg(vcpu->kvm, mmio, offset,
 					   vcpu->vcpu_id);
@@ -101,7 +102,7 @@ static bool handle_mmio_set_pending_reg(struct kvm_vcpu *vcpu,
 
 static bool handle_mmio_clear_pending_reg(struct kvm_vcpu *vcpu,
 					  struct kvm_exit_mmio *mmio,
-					  phys_addr_t offset)
+					  phys_addr_t offset, void *private)
 {
 	return vgic_handle_clear_pending_reg(vcpu->kvm, mmio, offset,
 					     vcpu->vcpu_id);
@@ -109,7 +110,7 @@ static bool handle_mmio_clear_pending_reg(struct kvm_vcpu *vcpu,
 
 static bool handle_mmio_priority_reg(struct kvm_vcpu *vcpu,
 				     struct kvm_exit_mmio *mmio,
-				     phys_addr_t offset)
+				     phys_addr_t offset, void *private)
 {
 	u32 *reg = vgic_bytemap_get_reg(&vcpu->kvm->arch.vgic.irq_priority,
 					vcpu->vcpu_id, offset);
@@ -168,7 +169,7 @@ static void vgic_set_target_reg(struct kvm *kvm, u32 val, int irq)
 
 static bool handle_mmio_target_reg(struct kvm_vcpu *vcpu,
 				   struct kvm_exit_mmio *mmio,
-				   phys_addr_t offset)
+				   phys_addr_t offset, void *private)
 {
 	u32 reg;
 
@@ -198,7 +199,8 @@ static bool handle_mmio_target_reg(struct kvm_vcpu *vcpu,
 }
 
 static bool handle_mmio_cfg_reg(struct kvm_vcpu *vcpu,
-				struct kvm_exit_mmio *mmio, phys_addr_t offset)
+				struct kvm_exit_mmio *mmio, phys_addr_t offset,
+				void *private)
 {
 	u32 *reg;
 
@@ -209,7 +211,8 @@ static bool handle_mmio_cfg_reg(struct kvm_vcpu *vcpu,
 }
 
 static bool handle_mmio_sgi_reg(struct kvm_vcpu *vcpu,
-				struct kvm_exit_mmio *mmio, phys_addr_t offset)
+				struct kvm_exit_mmio *mmio, phys_addr_t offset,
+				void *private)
 {
 	u32 reg;
 
@@ -285,7 +288,7 @@ static bool write_set_clear_sgi_pend_reg(struct kvm_vcpu *vcpu,
 
 static bool handle_mmio_sgi_set(struct kvm_vcpu *vcpu,
 				struct kvm_exit_mmio *mmio,
-				phys_addr_t offset)
+				phys_addr_t offset, void *private)
 {
 	if (!mmio->is_write)
 		return read_set_clear_sgi_pend_reg(vcpu, mmio, offset);
@@ -295,7 +298,7 @@ static bool handle_mmio_sgi_set(struct kvm_vcpu *vcpu,
 
 static bool handle_mmio_sgi_clear(struct kvm_vcpu *vcpu,
 				  struct kvm_exit_mmio *mmio,
-				  phys_addr_t offset)
+				  phys_addr_t offset, void *private)
 {
 	if (!mmio->is_write)
 		return read_set_clear_sgi_pend_reg(vcpu, mmio, offset);
@@ -403,7 +406,8 @@ static bool vgic_v2_handle_mmio(struct kvm_vcpu *vcpu, struct kvm_run *run,
 		return true;
 	}
 
-	return vgic_handle_mmio_range(vcpu, run, mmio, vgic_dist_ranges, base);
+	return vgic_handle_mmio_range(vcpu, run, mmio,
+				      vgic_dist_ranges, base, NULL);
 }
 
 static void vgic_dispatch_sgi(struct kvm_vcpu *vcpu, u32 reg)
@@ -527,7 +531,8 @@ bool vgic_v2_init_emulation_ops(struct kvm *kvm, int type)
 }
 
 static bool handle_cpu_mmio_misc(struct kvm_vcpu *vcpu,
-				 struct kvm_exit_mmio *mmio, phys_addr_t offset)
+				 struct kvm_exit_mmio *mmio, phys_addr_t offset,
+				 void *private)
 {
 	bool updated = false;
 	struct vgic_vmcr vmcr;
@@ -568,14 +573,16 @@ static bool handle_cpu_mmio_misc(struct kvm_vcpu *vcpu,
 }
 
 static bool handle_mmio_abpr(struct kvm_vcpu *vcpu,
-			     struct kvm_exit_mmio *mmio, phys_addr_t offset)
+			     struct kvm_exit_mmio *mmio, phys_addr_t offset,
+			     void *private)
 {
-	return handle_cpu_mmio_misc(vcpu, mmio, GIC_CPU_ALIAS_BINPOINT);
+	return handle_cpu_mmio_misc(vcpu, mmio, GIC_CPU_ALIAS_BINPOINT,
+				    private);
 }
 
 static bool handle_cpu_mmio_ident(struct kvm_vcpu *vcpu,
 				  struct kvm_exit_mmio *mmio,
-				  phys_addr_t offset)
+				  phys_addr_t offset, void *private)
 {
 	u32 reg;
 
@@ -695,7 +702,7 @@ static int vgic_attr_regs_access(struct kvm_device *dev,
 		vgic_unqueue_irqs(tmp_vcpu);
 
 	offset -= r->base;
-	r->handle_mmio(vcpu, &mmio, offset);
+	r->handle_mmio(vcpu, &mmio, offset, NULL);
 
 	if (!is_write)
 		*reg = mmio_data_read(&mmio, ~0);
