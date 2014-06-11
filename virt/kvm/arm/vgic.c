@@ -400,35 +400,54 @@ static bool handle_mmio_raz_wi(struct kvm_vcpu *vcpu,
 	return false;
 }
 
-static bool handle_mmio_set_enable_reg(struct kvm_vcpu *vcpu,
-				       struct kvm_exit_mmio *mmio,
-				       phys_addr_t offset)
+static bool vgic_handle_enable_reg(struct kvm *kvm, struct kvm_exit_mmio *mmio,
+				   phys_addr_t offset, int vcpu_id, int access)
 {
-	u32 *reg = vgic_bitmap_get_reg(&vcpu->kvm->arch.vgic.irq_enabled,
-				       vcpu->vcpu_id, offset);
-	vgic_reg_access(mmio, reg, offset,
-			ACCESS_READ_VALUE | ACCESS_WRITE_SETBIT);
+	u32 *reg;
+	int mode = ACCESS_READ_VALUE | access;
+	struct kvm_vcpu *target_vcpu = kvm_get_vcpu(kvm, vcpu_id);
+
+	reg = vgic_bitmap_get_reg(&kvm->arch.vgic.irq_enabled, vcpu_id, offset);
+	vgic_reg_access(mmio, reg, offset, mode);
 	if (mmio->is_write) {
-		vgic_update_state(vcpu->kvm);
+		if (access & ACCESS_WRITE_CLEARBIT) {
+			if (offset < 4) /* Force SGI enabled */
+				*reg |= 0xffff;
+			vgic_retire_disabled_irqs(target_vcpu);
+		}
+		vgic_update_state(kvm);
 		return true;
 	}
 
 	return false;
 }
 
+static bool handle_mmio_set_enable_reg(struct kvm_vcpu *vcpu,
+				       struct kvm_exit_mmio *mmio,
+				       phys_addr_t offset)
+{
+	return vgic_handle_enable_reg(vcpu->kvm, mmio, offset,
+				      vcpu->vcpu_id, ACCESS_WRITE_SETBIT);
+}
+
 static bool handle_mmio_clear_enable_reg(struct kvm_vcpu *vcpu,
 					 struct kvm_exit_mmio *mmio,
 					 phys_addr_t offset)
 {
-	u32 *reg = vgic_bitmap_get_reg(&vcpu->kvm->arch.vgic.irq_enabled,
-				       vcpu->vcpu_id, offset);
-	vgic_reg_access(mmio, reg, offset,
-			ACCESS_READ_VALUE | ACCESS_WRITE_CLEARBIT);
+	return vgic_handle_enable_reg(vcpu->kvm, mmio, offset,
+				      vcpu->vcpu_id, ACCESS_WRITE_CLEARBIT);
+}
+
+static bool vgic_handle_pending_reg(struct kvm *kvm, struct kvm_exit_mmio *mmio,
+				    phys_addr_t offset, int vcpu_id, int access)
+{
+	u32 *reg;
+	int mode = ACCESS_READ_VALUE | access;
+
+	reg = vgic_bitmap_get_reg(&kvm->arch.vgic.irq_state, vcpu_id, offset);
+	vgic_reg_access(mmio, reg, offset, mode);
 	if (mmio->is_write) {
-		if (offset < 4) /* Force SGI enabled */
-			*reg |= 0xffff;
-		vgic_retire_disabled_irqs(vcpu);
-		vgic_update_state(vcpu->kvm);
+		vgic_update_state(kvm);
 		return true;
 	}
 
@@ -439,31 +458,16 @@ static bool handle_mmio_set_pending_reg(struct kvm_vcpu *vcpu,
 					struct kvm_exit_mmio *mmio,
 					phys_addr_t offset)
 {
-	u32 *reg = vgic_bitmap_get_reg(&vcpu->kvm->arch.vgic.irq_state,
-				       vcpu->vcpu_id, offset);
-	vgic_reg_access(mmio, reg, offset,
-			ACCESS_READ_VALUE | ACCESS_WRITE_SETBIT);
-	if (mmio->is_write) {
-		vgic_update_state(vcpu->kvm);
-		return true;
-	}
-
-	return false;
+	return vgic_handle_pending_reg(vcpu->kvm, mmio, offset,
+				       vcpu->vcpu_id, ACCESS_WRITE_SETBIT);
 }
 
 static bool handle_mmio_clear_pending_reg(struct kvm_vcpu *vcpu,
 					  struct kvm_exit_mmio *mmio,
 					  phys_addr_t offset)
 {
-	u32 *reg = vgic_bitmap_get_reg(&vcpu->kvm->arch.vgic.irq_state,
-				       vcpu->vcpu_id, offset);
-	vgic_reg_access(mmio, reg, offset,
-			ACCESS_READ_VALUE | ACCESS_WRITE_CLEARBIT);
-	if (mmio->is_write) {
-		vgic_update_state(vcpu->kvm);
-		return true;
-	}
-
+	return vgic_handle_pending_reg(vcpu->kvm, mmio, offset,
+				       vcpu->vcpu_id, ACCESS_WRITE_CLEARBIT);
 	return false;
 }
 
@@ -589,14 +593,10 @@ static u16 vgic_cfg_compress(u32 val)
  * LSB is always 0. As such, we only keep the upper bit, and use the
  * two above functions to compress/expand the bits
  */
-static bool handle_mmio_cfg_reg(struct kvm_vcpu *vcpu,
-				struct kvm_exit_mmio *mmio, phys_addr_t offset)
+static bool vgic_handle_cfg_reg(u32 *reg, struct kvm_exit_mmio *mmio,
+				phys_addr_t offset)
 {
 	u32 val;
-	u32 *reg;
-
-	reg = vgic_bitmap_get_reg(&vcpu->kvm->arch.vgic.irq_cfg,
-				  vcpu->vcpu_id, offset >> 1);
 
 	if (offset & 4)
 		val = *reg >> 16;
@@ -623,6 +623,17 @@ static bool handle_mmio_cfg_reg(struct kvm_vcpu *vcpu,
 	}
 
 	return false;
+}
+
+static bool handle_mmio_cfg_reg(struct kvm_vcpu *vcpu,
+				struct kvm_exit_mmio *mmio, phys_addr_t offset)
+{
+	u32 *reg;
+
+	reg = vgic_bitmap_get_reg(&vcpu->kvm->arch.vgic.irq_cfg,
+				  vcpu->vcpu_id, offset >> 1);
+
+	return vgic_handle_cfg_reg(reg, mmio, offset);
 }
 
 static bool handle_mmio_sgi_reg(struct kvm_vcpu *vcpu,
