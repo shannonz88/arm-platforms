@@ -103,13 +103,13 @@ static enum hrtimer_restart kvm_timer_expire(struct hrtimer *hrt)
 }
 
 /**
- * kvm_timer_flush_hwstate - prepare to move the virt timer to the cpu
+ * kvm_timer_disarm - cancel any background timer
  * @vcpu: The vcpu pointer
  *
  * Disarm any pending soft timers, since the world-switch code will write the
  * virtual timer state back to the physical CPU.
  */
-void kvm_timer_flush_hwstate(struct kvm_vcpu *vcpu)
+void kvm_timer_disarm(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 
@@ -119,6 +119,14 @@ void kvm_timer_flush_hwstate(struct kvm_vcpu *vcpu)
 	 * populate the CPU timer again.
 	 */
 	timer_disarm(timer);
+}
+
+/**
+ * kvm_timer_flush_hwstate - prepare to move the virt timer to the cpu
+ * @vcpu: The vcpu pointer
+ */
+void kvm_timer_flush_hwstate(struct kvm_vcpu *vcpu)
+{
 }
 
 /**
