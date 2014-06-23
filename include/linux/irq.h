@@ -315,6 +315,8 @@ static inline irq_hw_number_t irqd_to_hwirq(struct irq_data *d)
  *				any other callback related to this irq
  * @irq_release_resources:	optional to release resources acquired with
  *				irq_request_resources
+ * @irq_get_irqchip_state:	return the internal state of an interrupt
+ * @irq_set_irqchip_state:	set the internal state of a interrupt
  * @flags:		chip specific flags
  */
 struct irq_chip {
@@ -351,6 +353,9 @@ struct irq_chip {
 	int		(*irq_request_resources)(struct irq_data *data);
 	void		(*irq_release_resources)(struct irq_data *data);
 
+	int		(*irq_get_irqchip_state)(struct irq_data *data, int state);
+	void		(*irq_set_irqchip_state)(struct irq_data *data, int state, int val);
+
 	unsigned long	flags;
 };
 
@@ -374,6 +379,15 @@ enum {
 	IRQCHIP_SKIP_SET_WAKE		= (1 <<  4),
 	IRQCHIP_ONESHOT_SAFE		= (1 <<  5),
 	IRQCHIP_EOI_THREADED		= (1 <<  6),
+};
+
+/*
+ * irq_get_irqchip_state/irq_set_irqchip_state specific flags
+ */
+enum {
+	IRQCHIP_STATE_PENDING,
+	IRQCHIP_STATE_ACTIVE,
+	IRQCHIP_STATE_MASKED,
 };
 
 /* This include will go away once we isolated irq_desc usage to core code */
