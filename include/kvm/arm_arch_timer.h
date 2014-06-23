@@ -53,6 +53,9 @@ struct arch_timer_cpu {
 	/* Background timer active */
 	bool				armed;
 
+	/* Is interrupt active at the distributor level */
+	bool				irq_active;
+
 	/* Timer IRQ */
 	const struct kvm_irq_level	*irq;
 #endif
@@ -64,8 +67,10 @@ int kvm_timer_init(struct kvm *kvm);
 void kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu,
 			  const struct kvm_irq_level *irq);
 void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu);
+void kvm_timer_prepare_flush(struct kvm_vcpu *vcpu);
 void kvm_timer_flush_hwstate(struct kvm_vcpu *vcpu);
 void kvm_timer_sync_hwstate(struct kvm_vcpu *vcpu);
+void kvm_timer_finish_sync(struct kvm_vcpu *vcpu);
 void kvm_timer_vcpu_terminate(struct kvm_vcpu *vcpu);
 
 u64 kvm_arm_timer_get_reg(struct kvm_vcpu *, u64 regid);
@@ -85,8 +90,10 @@ static inline int kvm_timer_init(struct kvm *kvm)
 static inline void kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu,
 					const struct kvm_irq_level *irq) {}
 static inline void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu) {}
+static void kvm_timer_prepare_flush(struct kvm_vcpu *vcpu) {}
 static inline void kvm_timer_flush_hwstate(struct kvm_vcpu *vcpu) {}
 static inline void kvm_timer_sync_hwstate(struct kvm_vcpu *vcpu) {}
+static inline void kvm_timer_finish_sync(struct kvm_vcpu *vcpu) {}
 static inline void kvm_timer_vcpu_terminate(struct kvm_vcpu *vcpu) {}
 
 static inline int kvm_arm_timer_set_reg(struct kvm_vcpu *vcpu, u64 regid, u64 value)

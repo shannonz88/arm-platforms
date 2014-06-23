@@ -63,7 +63,7 @@ static void kvm_timer_inject_irq(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 
-	timer->cntv_ctl |= ARCH_TIMER_CTRL_IT_MASK;
+	timer->irq_active = true;
 	kvm_vgic_inject_irq(vcpu->kvm, vcpu->vcpu_id,
 			    timer->irq->irq,
 			    timer->irq->level);
@@ -101,13 +101,13 @@ static enum hrtimer_restart kvm_timer_expire(struct hrtimer *hrt)
 }
 
 /**
- * kvm_timer_flush_hwstate - prepare to move the virt timer to the cpu
+ * kvm_timer_prepare_flush - prepare to move the virt timer to the cpu
  * @vcpu: The vcpu pointer
  *
- * Disarm any pending soft timers, since the world-switch code will write the
- * virtual timer state back to the physical CPU.
+ * Disarm any pending soft timers, since the world-switch code will
+ * write the virtual timer state back to the physical CPU.
  */
-void kvm_timer_flush_hwstate(struct kvm_vcpu *vcpu)
+void kvm_timer_prepare_flush(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 
@@ -120,13 +120,48 @@ void kvm_timer_flush_hwstate(struct kvm_vcpu *vcpu)
 }
 
 /**
+ * kvm_timer_flush_hwstate - sync the timer interrupt state
+ * @vcpu: The vcpu pointer
+ *
+ * Set the timer "active" state into the GIC, before the world switch
+ * writes back the rest of the state. Must be called with preemption
+ * disable, or we may end-up with the state set on the wrong physical
+ * CPU.
+ */
+void kvm_timer_flush_hwstate(struct kvm_vcpu *vcpu)
+{
+	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+
+	if (timer->irq_active)
+		irq_set_irqchip_state(host_vtimer_irq, IRQCHIP_STATE_ACTIVE,
+				      timer->irq_active);
+}
+
+/**
+ * kvm_timer_sync_hwstate - sync timer state from cpu
+ * @vcpu: The vcpu pointer
+ *
+ * Snapshot the timer "active" state from the GIC, and clear it if
+ * active.
+ */
+void kvm_timer_sync_hwstate(struct kvm_vcpu *vcpu)
+{
+	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+
+	timer->irq_active = irq_get_irqchip_state(host_vtimer_irq,
+						  IRQCHIP_STATE_ACTIVE);
+	if (timer->irq_active)
+		irq_set_irqchip_state(host_vtimer_irq, IRQCHIP_STATE_ACTIVE, 0);
+}
+
+/**
  * kvm_timer_sync_hwstate - sync timer state from cpu
  * @vcpu: The vcpu pointer
  *
  * Check if the virtual timer was armed and either schedule a corresponding
  * soft timer or inject directly if already expired.
  */
-void kvm_timer_sync_hwstate(struct kvm_vcpu *vcpu)
+void kvm_timer_finish_sync(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 	cycle_t cval, now;
@@ -166,6 +201,12 @@ void kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu,
 	 * vcpu timer irq number when the vcpu is reset.
 	 */
 	timer->irq = irq;
+
+	/*
+	 * Tell the VGIC that the virtual interrupt is tied to a
+	 * physical interrupt. We do that once per VCPU.
+	 */
+	vgic_map_phys_irq(vcpu, irq->irq, host_vtimer_irq);
 }
 
 void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu)
@@ -290,6 +331,10 @@ int kvm_timer_hyp_init(void)
 	}
 
 	kvm_info("%s IRQ%d\n", np->name, ppi);
+
+	/* Tell the GIC we're forwarding the interrupt to a guest */
+	irqd_set_irq_forwarded(irq_get_irq_data(host_vtimer_irq));
+
 	on_each_cpu(kvm_timer_init_interrupt, NULL, 1);
 
 	goto out;
@@ -305,6 +350,7 @@ void kvm_timer_vcpu_terminate(struct kvm_vcpu *vcpu)
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 
 	timer_disarm(timer);
+	vgic_unmap_phys_irq(vcpu, timer->irq->irq, host_vtimer_irq);
 }
 
 int kvm_timer_init(struct kvm *kvm)
