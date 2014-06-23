@@ -143,6 +143,12 @@ struct vgic_vm_ops {
 	int	(*vgic_init)(struct kvm *kvm, const struct vgic_params *params);
 };
 
+struct irq_phys_map {
+	struct rb_node		node;
+	u32			virt_irq;
+	u32			phys_irq;
+};
+
 struct vgic_dist {
 #ifdef CONFIG_KVM_ARM_VGIC
 	spinlock_t		lock;
@@ -233,6 +239,8 @@ struct vgic_dist {
 	unsigned long		*irq_pending_on_cpu;
 
 	struct vgic_vm_ops	vm_ops;
+
+	struct rb_root		irq_phys_map;
 #endif
 };
 
@@ -280,6 +288,8 @@ struct vgic_cpu {
 		struct vgic_v2_cpu_if	vgic_v2;
 		struct vgic_v3_cpu_if	vgic_v3;
 	};
+
+	struct rb_root	irq_phys_map;
 #endif
 };
 
@@ -308,6 +318,9 @@ void vgic_v3_dispatch_sgi(struct kvm_vcpu *vcpu, u64 reg);
 int kvm_vgic_vcpu_pending_irq(struct kvm_vcpu *vcpu);
 bool vgic_handle_mmio(struct kvm_vcpu *vcpu, struct kvm_run *run,
 		      struct kvm_exit_mmio *mmio);
+int vgic_map_phys_irq(struct kvm_vcpu *vcpu, int virt_irq, int phys_irq);
+int vgic_get_phys_irq(struct kvm_vcpu *vcpu, int virt_irq);
+int vgic_unmap_phys_irq(struct kvm_vcpu *vcpu, int virt_irq, int phys_irq);
 
 #define irqchip_in_kernel(k)	(!!((k)->arch.vgic.in_kernel))
 #define vgic_initialized(k)	((k)->arch.vgic.ready)
