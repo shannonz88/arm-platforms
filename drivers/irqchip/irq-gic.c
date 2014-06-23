@@ -46,6 +46,7 @@
 #include <asm/irq.h>
 #include <asm/exception.h>
 #include <asm/smp_plat.h>
+#include <asm/virt.h>
 
 #include "irq-gic-common.h"
 #include "irqchip.h"
@@ -81,6 +82,8 @@ static DEFINE_RAW_SPINLOCK(irq_controller_lock);
  */
 #define NR_GIC_CPU_IF 8
 static u8 gic_cpu_map[NR_GIC_CPU_IF] __read_mostly;
+
+static struct static_key supports_deactivate = STATIC_KEY_INIT_TRUE;
 
 #ifndef MAX_GIC_NR
 #define MAX_GIC_NR	1
@@ -137,6 +140,14 @@ static inline unsigned int gic_irq(struct irq_data *d)
 	return d->hwirq;
 }
 
+static inline bool primary_gic_irq(struct irq_data *d)
+{
+	if (MAX_GIC_NR > 1)
+		return irq_data_get_irq_chip_data(d) == &gic_data[0];
+
+	return true;
+}
+
 /*
  * Routines to acknowledge, disable and enable interrupts
  */
@@ -164,7 +175,14 @@ static void gic_unmask_irq(struct irq_data *d)
 
 static void gic_eoi_irq(struct irq_data *d)
 {
-	writel_relaxed(gic_irq(d), gic_cpu_base(d) + GIC_CPU_EOI);
+	u32 deact_offset = GIC_CPU_EOI;
+
+	if (static_key_true(&supports_deactivate)) {
+		if (primary_gic_irq(d))
+			deact_offset = GIC_CPU_DEACTIVATE;
+	}
+
+	writel_relaxed(gic_irq(d), gic_cpu_base(d) + deact_offset);
 }
 
 static int gic_irq_set_irqchip_state(struct irq_data *d,
@@ -272,11 +290,15 @@ static void __exception_irq_entry gic_handle_irq(struct pt_regs *regs)
 		irqnr = irqstat & GICC_IAR_INT_ID_MASK;
 
 		if (likely(irqnr > 15 && irqnr < 1021)) {
+			if (static_key_true(&supports_deactivate))
+				writel_relaxed(irqstat, cpu_base + GIC_CPU_EOI);
 			handle_domain_irq(gic->domain, irqnr, regs);
 			continue;
 		}
 		if (irqnr < 16) {
 			writel_relaxed(irqstat, cpu_base + GIC_CPU_EOI);
+			if (static_key_true(&supports_deactivate))
+				writel_relaxed(irqstat, cpu_base + GIC_CPU_DEACTIVATE);
 #ifdef CONFIG_SMP
 			handle_IPI(irqnr, regs);
 #endif
@@ -359,6 +381,10 @@ static void gic_cpu_if_up(void)
 {
 	void __iomem *cpu_base = gic_data_cpu_base(&gic_data[0]);
 	u32 bypass = 0;
+	u32 mode = 0;
+
+	if (static_key_true(&supports_deactivate))
+		mode = GIC_CPU_CTRL_EOImodeNS;
 
 	/*
 	* Preserve bypass disable bits to be written back later
@@ -366,7 +392,7 @@ static void gic_cpu_if_up(void)
 	bypass = readl(cpu_base + GIC_CPU_CTRL);
 	bypass &= GICC_DIS_BYPASS_MASK;
 
-	writel_relaxed(bypass | GICC_ENABLE, cpu_base + GIC_CPU_CTRL);
+	writel_relaxed(bypass | mode | GICC_ENABLE, cpu_base + GIC_CPU_CTRL);
 }
 
 
@@ -986,6 +1012,8 @@ void __init gic_init_bases(unsigned int gic_nr, int irq_start,
 		register_cpu_notifier(&gic_cpu_notifier);
 #endif
 		set_handle_irq(gic_handle_irq);
+		if (static_key_true(&supports_deactivate))
+			pr_info ("GIC: Using split EOI/Deactivate mode\n");
 	}
 
 	gic_dist_init(gic);
@@ -1001,6 +1029,7 @@ gic_of_init(struct device_node *node, struct device_node *parent)
 {
 	void __iomem *cpu_base;
 	void __iomem *dist_base;
+	struct resource cpu_res;
 	u32 percpu_offset;
 	int irq;
 
@@ -1012,6 +1041,16 @@ gic_of_init(struct device_node *node, struct device_node *parent)
 
 	cpu_base = of_iomap(node, 1);
 	WARN(!cpu_base, "unable to map gic cpu registers\n");
+
+	of_address_to_resource(node, 1, &cpu_res);
+
+	/*
+	 * Disable split EOI/Deactivate if either HYP is not available
+	 * or the CPU interface is too small.
+	 */
+	if (gic_cnt == 0 && (!is_hyp_mode_available() ||
+			     resource_size(&cpu_res) < SZ_8K))
+		static_key_slow_dec(&supports_deactivate);
 
 	if (of_property_read_u32(node, "cpu-offset", &percpu_offset))
 		percpu_offset = 0;
@@ -1130,6 +1169,14 @@ gic_v2_acpi_init(struct acpi_table_header *table)
 		iounmap(cpu_base);
 		return -ENOMEM;
 	}
+
+	/*
+	 * Disable split EOI/Deactivate if HYP is not available. ACPI
+	 * guarantees that we'll always have a GICv2, so the CPU
+	 * interface will always be the right size.
+	 */
+	if (!is_hyp_mode_available())
+		static_key_slow_dec(&supports_deactivate);
 
 	/*
 	 * Initialize zero GIC instance (no multi-GIC support). Also, set GIC
