@@ -59,7 +59,7 @@ static struct vgic_lr vgic_v3_get_lr(const struct kvm_vcpu *vcpu, int lr)
 		lr_desc.state |= LR_STATE_PENDING;
 	if (val & ICH_LR_ACTIVE_BIT)
 		lr_desc.state |= LR_STATE_ACTIVE;
-	if (val & ICH_LR_EOI)
+	if (!(val & ICH_LR_HW) && (val & ICH_LR_EOI))
 		lr_desc.state |= LR_EOI_INT;
 
 	return lr_desc;
@@ -68,8 +68,9 @@ static struct vgic_lr vgic_v3_get_lr(const struct kvm_vcpu *vcpu, int lr)
 static void vgic_v3_set_lr(struct kvm_vcpu *vcpu, int lr,
 			   struct vgic_lr lr_desc)
 {
-	u64 lr_val = (((u32)lr_desc.source << GICH_LR_PHYSID_CPUID_SHIFT) |
-		      lr_desc.irq);
+	u64 lr_val;
+
+	lr_val = lr_desc.irq;
 
 	if (lr_desc.state & LR_STATE_PENDING)
 		lr_val |= ICH_LR_PENDING_BIT;
@@ -77,6 +78,18 @@ static void vgic_v3_set_lr(struct kvm_vcpu *vcpu, int lr,
 		lr_val |= ICH_LR_ACTIVE_BIT;
 	if (lr_desc.state & LR_EOI_INT)
 		lr_val |= ICH_LR_EOI;
+
+	if (lr_desc.irq < VGIC_NR_SGIS) {
+		lr_val |= (u32)lr_desc.source << GICH_LR_PHYSID_CPUID_SHIFT;
+	} else {
+		int phys_irq = vgic_get_phys_irq(vcpu, lr_desc.irq);
+
+		if (phys_irq >= 0) {
+			lr_val &= ~ICH_LR_EOI;
+			lr_val |= ((u64)phys_irq) << ICH_LR_PHYS_ID_SHIFT;
+			lr_val |= ICH_LR_HW;
+		}
+	}
 
 	vcpu->arch.vgic_cpu.vgic_v3.vgic_lr[LR_INDEX(lr)] = lr_val;
 }
