@@ -44,6 +44,7 @@
 #include <asm/irq.h>
 #include <asm/exception.h>
 #include <asm/smp_plat.h>
+#include <asm/virt.h>
 
 #include "irq-gic-common.h"
 #include "irqchip.h"
@@ -92,6 +93,10 @@ struct irq_chip gic_arch_extn = {
 	.irq_set_type	= NULL,
 	.irq_set_wake	= NULL,
 };
+
+static struct irq_chip *gic_chip;
+
+static bool supports_deactivate = false;
 
 #ifndef MAX_GIC_NR
 #define MAX_GIC_NR	1
@@ -182,6 +187,12 @@ static void gic_eoi_irq(struct irq_data *d)
 	}
 
 	writel_relaxed(gic_irq(d), gic_cpu_base(d) + GIC_CPU_EOI);
+}
+
+static void gic_eoi_dir_irq(struct irq_data *d)
+{
+	gic_eoi_irq(d);
+	writel_relaxed(gic_irq(d), gic_cpu_base(d) + GIC_CPU_DEACTIVATE);
 }
 
 static int gic_set_type(struct irq_data *d, unsigned int type)
@@ -276,6 +287,8 @@ static void __exception_irq_entry gic_handle_irq(struct pt_regs *regs)
 		}
 		if (irqnr < 16) {
 			writel_relaxed(irqstat, cpu_base + GIC_CPU_EOI);
+			if (supports_deactivate)
+				writel_relaxed(irqstat, cpu_base + GIC_CPU_DEACTIVATE);
 #ifdef CONFIG_SMP
 			handle_IPI(irqnr, regs);
 #endif
@@ -312,11 +325,24 @@ static void gic_handle_cascade_irq(unsigned int irq, struct irq_desc *desc)
 	chained_irq_exit(chip, desc);
 }
 
-static struct irq_chip gic_chip = {
+static struct irq_chip gicv1_chip = {
 	.name			= "GIC",
 	.irq_mask		= gic_mask_irq,
 	.irq_unmask		= gic_unmask_irq,
 	.irq_eoi		= gic_eoi_irq,
+	.irq_set_type		= gic_set_type,
+	.irq_retrigger		= gic_retrigger,
+#ifdef CONFIG_SMP
+	.irq_set_affinity	= gic_set_affinity,
+#endif
+	.irq_set_wake		= gic_set_wake,
+};
+
+static struct irq_chip gicv2_chip = {
+	.name			= "GIC",
+	.irq_mask		= gic_mask_irq,
+	.irq_unmask		= gic_unmask_irq,
+	.irq_eoi		= gic_eoi_dir_irq,
 	.irq_set_type		= gic_set_type,
 	.irq_retrigger		= gic_retrigger,
 #ifdef CONFIG_SMP
@@ -376,6 +402,16 @@ static void __init gic_dist_init(struct gic_chip_data *gic)
 	writel_relaxed(1, base + GIC_DIST_CTRL);
 }
 
+static void gic_cpu_if_up(void)
+{
+	void __iomem *cpu_base = gic_data_cpu_base(&gic_data[0]);
+	u32 val = 0;
+
+	if (supports_deactivate)
+		val = GIC_CPU_CTRL_EOImodeNS;
+	writel_relaxed(val | 1, cpu_base + GIC_CPU_CTRL);
+}
+
 static void gic_cpu_init(struct gic_chip_data *gic)
 {
 	void __iomem *dist_base = gic_data_dist_base(gic);
@@ -401,7 +437,7 @@ static void gic_cpu_init(struct gic_chip_data *gic)
 	gic_cpu_config(dist_base, NULL);
 
 	writel_relaxed(0xf0, base + GIC_CPU_PRIMASK);
-	writel_relaxed(1, base + GIC_CPU_CTRL);
+	gic_cpu_if_up();
 }
 
 void gic_cpu_if_down(void)
@@ -542,7 +578,7 @@ static void gic_cpu_restore(unsigned int gic_nr)
 		writel_relaxed(0xa0a0a0a0, dist_base + GIC_DIST_PRI + i * 4);
 
 	writel_relaxed(0xf0, cpu_base + GIC_CPU_PRIMASK);
-	writel_relaxed(1, cpu_base + GIC_CPU_CTRL);
+	gic_cpu_if_up();
 }
 
 static int gic_notifier(struct notifier_block *self, unsigned long cmd,	void *v)
@@ -769,11 +805,11 @@ static int gic_irq_domain_map(struct irq_domain *d, unsigned int irq,
 {
 	if (hw < 32) {
 		irq_set_percpu_devid(irq);
-		irq_set_chip_and_handler(irq, &gic_chip,
+		irq_set_chip_and_handler(irq, gic_chip,
 					 handle_percpu_devid_irq);
 		set_irq_flags(irq, IRQF_VALID | IRQF_NOAUTOEN);
 	} else {
-		irq_set_chip_and_handler(irq, &gic_chip,
+		irq_set_chip_and_handler(irq, gic_chip,
 					 handle_fasteoi_irq);
 		set_irq_flags(irq, IRQF_VALID | IRQF_PROBE);
 
@@ -952,6 +988,11 @@ void __init gic_init_bases(unsigned int gic_nr, int irq_start,
 
 	gic_irqs -= hwirq_base; /* calculate # of irqs to allocate */
 
+	if (!supports_deactivate)
+		gic_chip = &gicv1_chip;
+	else
+		gic_chip = &gicv2_chip;
+
 	if (of_property_read_u32(node, "arm,routable-irqs",
 				 &nr_routable_irqs)) {
 		irq_base = irq_alloc_descs(irq_start, 16, gic_irqs,
@@ -981,7 +1022,7 @@ void __init gic_init_bases(unsigned int gic_nr, int irq_start,
 		set_handle_irq(gic_handle_irq);
 	}
 
-	gic_chip.flags |= gic_arch_extn.flags;
+	gic_chip->flags |= gic_arch_extn.flags;
 	gic_dist_init(gic);
 	gic_cpu_init(gic);
 	gic_pm_init(gic);
@@ -995,6 +1036,7 @@ gic_of_init(struct device_node *node, struct device_node *parent)
 {
 	void __iomem *cpu_base;
 	void __iomem *dist_base;
+	struct resource cpu_res;
 	u32 percpu_offset;
 	int irq;
 
@@ -1006,6 +1048,14 @@ gic_of_init(struct device_node *node, struct device_node *parent)
 
 	cpu_base = of_iomap(node, 1);
 	WARN(!cpu_base, "unable to map gic cpu registers\n");
+
+	of_address_to_resource(node, 1, &cpu_res);
+	if (is_hyp_mode_available()) {
+		if (resource_size(&cpu_res) >= SZ_8K)
+			supports_deactivate = true;
+		else
+			pr_warn("GIC: CPU interface size is %x, DT is probably wrong\n", (int)resource_size(&cpu_res));
+	}
 
 	if (of_property_read_u32(node, "cpu-offset", &percpu_offset))
 		percpu_offset = 0;
