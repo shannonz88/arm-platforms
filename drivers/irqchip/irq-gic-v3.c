@@ -30,6 +30,7 @@
 #include <asm/cputype.h>
 #include <asm/exception.h>
 #include <asm/smp_plat.h>
+#include <asm/virt.h>
 
 #include "irq-gic-common.h"
 #include "irqchip.h"
@@ -45,6 +46,7 @@ struct gic_chip_data {
 };
 
 static struct gic_chip_data gic_data __read_mostly;
+static bool supports_deactivate = false;
 
 #define gic_data_rdist()		(this_cpu_ptr(gic_data.rdist))
 #define gic_data_rdist_rd_base()	(*gic_data_rdist())
@@ -289,6 +291,16 @@ static void gic_eoi_irq(struct irq_data *d)
 	gic_write_eoir(gic_irq(d));
 }
 
+static void gic_priority_drop_irq(struct irq_data *d)
+{
+	gic_write_eoir(gic_irq(d));
+}
+
+static void gic_deactivate_irq(struct irq_data *d)
+{
+	gic_write_dir(gic_irq(d));
+}
+
 static int gic_set_type(struct irq_data *d, unsigned int type)
 {
 	unsigned int irq = gic_irq(d);
@@ -345,6 +357,8 @@ static asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs
 		}
 		if (irqnr < 16) {
 			gic_write_eoir(irqnr);
+			if (supports_deactivate)
+				gic_write_dir(irqnr);
 #ifdef CONFIG_SMP
 			handle_IPI(irqnr, regs);
 #else
@@ -441,8 +455,13 @@ static void gic_cpu_sys_reg_init(void)
 	/* Set priority mask register */
 	gic_write_pmr(DEFAULT_PMR_VALUE);
 
-	/* EOI deactivates interrupt too (mode 0) */
-	gic_write_ctlr(ICC_CTLR_EL1_EOImode_drop_dir);
+	if (supports_deactivate) {
+		/* EOI drops priority only (mode 1) */
+		gic_write_ctlr(ICC_CTLR_EL1_EOImode_drop);
+	} else {
+		/* EOI deactivates interrupt too (mode 0) */
+		gic_write_ctlr(ICC_CTLR_EL1_EOImode_drop_dir);
+	}
 
 	/* ... and let's hit the road... */
 	gic_write_grpen1(1);
@@ -737,6 +756,13 @@ static int __init gic_of_init(struct device_node *node, struct device_node *pare
 
 	if (of_property_read_u64(node, "redistributor-stride", &redist_stride))
 		redist_stride = 0;
+
+	if (is_hyp_mode_available()) {
+		supports_deactivate = true;
+		gic_chip.flags			= IRQCHIP_EOI_THREADED,
+		gic_chip.irq_priority_drop	= gic_priority_drop_irq;
+		gic_chip.irq_eoi		= gic_deactivate_irq;
+	}
 
 	gic_data.dist_base = dist_base;
 	gic_data.redist_base = redist_base;
