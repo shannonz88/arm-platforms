@@ -1770,3 +1770,77 @@ int request_percpu_irq(unsigned int irq, irq_handler_t handler,
 
 	return retval;
 }
+
+/**
+ *	irq_get_fwd_state - return the state of a forwarded interrupt.
+ *	@irq: Interrupt line that is forwarded to a VM
+ *	@state: One of IRQ_FWD_STATE_* the caller wants to know about
+ *
+ *	This call snapshots the state of a forwarded interrupt,
+ *	returning the bit corresponding to the requested state.
+ *
+ *	This function should be called with preemption disabled if the
+ *	interrupt controller has per-cpu registers.
+ */
+int irq_get_fwd_state(unsigned int irq, int state)
+{
+	struct irq_desc *desc;
+	struct irq_data *data;
+	struct irq_chip *chip;
+	int val;
+
+	desc = irq_to_desc(irq);
+	if (!desc)
+		return -EINVAL;
+
+	data = irq_desc_get_irq_data(desc);
+	if (!irqd_irq_forwarded(data))
+		return -EINVAL;
+
+	chip = irq_desc_get_chip(desc);
+	if (!chip->irq_get_fwd_state)
+		return -EINVAL;
+
+	chip_bus_lock(desc);
+	val = chip->irq_get_fwd_state(data, state);
+	chip_bus_sync_unlock(desc);
+
+	return val;
+}
+
+/**
+ *	irq_set_fwd_state - set the state of a forwarded interrupt.
+ *	@irq: Interrupt line that is forwarded to a VM
+ *	@state: State to be restored (one of IRQ_FWD_STATE_*)
+ *	@val: value corresponding to @state
+ *
+ *	This call sets the state of a forwarded interrupt, depending
+ *	on the value of @state.
+ *
+ *	This function should be called with preemption disabled if the
+ *	interrupt controller has per-cpu registers.
+ */
+int irq_set_fwd_state(unsigned int irq, int state, int val)
+{
+	struct irq_desc *desc;
+	struct irq_data *data;
+	struct irq_chip *chip;
+
+	desc = irq_to_desc(irq);
+	if (!desc)
+		return -EINVAL;
+
+	data = irq_desc_get_irq_data(desc);
+	if (!irqd_irq_forwarded(data))
+		return -EINVAL;
+
+	chip = irq_desc_get_chip(desc);
+	if (!chip->irq_set_fwd_state)
+		return -EINVAL;
+
+	chip_bus_lock(desc);
+	chip->irq_set_fwd_state(data, state, val);
+	chip_bus_sync_unlock(desc);
+
+	return 0;
+}
