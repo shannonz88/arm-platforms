@@ -484,7 +484,7 @@ static void eoi_irq(struct irq_desc *desc, struct irq_chip *chip)
 {
 	if (chip->irq_priority_drop)
 		chip->irq_priority_drop(&desc->irq_data);
-	if (chip->irq_eoi)
+	if (!irqd_irq_forwarded(&desc->irq_data) && chip->irq_eoi)
 		chip->irq_eoi(&desc->irq_data);
 }
 
