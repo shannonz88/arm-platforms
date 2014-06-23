@@ -586,7 +586,8 @@ static void its_unmask_irq(struct irq_data *d)
 static void its_eoi_irq(struct irq_data *d)
 {
 	gic_write_eoir(d->hwirq);
-	gic_write_dir(d->hwirq);
+	if (!irqd_irq_forwarded(d))
+		gic_write_dir(d->hwirq);
 }
 
 static int its_set_affinity(struct irq_data *d, const struct cpumask *mask_val,

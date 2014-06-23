@@ -228,6 +228,56 @@ static void gic_unmask_irq(struct irq_data *d)
 	gic_poke_irq(d, GICD_ISENABLER);
 }
 
+static void gic_irq_set_fwd_state(struct irq_data *d, int state, int val)
+{
+	u32 reg;
+
+	switch (state) {
+	case IRQ_FWD_STATE_PENDING:
+		reg = val ? GICD_ISPENDR : GICD_ICPENDR;
+		break;
+
+	case IRQ_FWD_STATE_ACTIVE:
+		reg = val ? GICD_ISACTIVER : GICD_ICACTIVER;
+		break;
+
+	case IRQ_FWD_STATE_MASKED:
+		reg = val ? GICD_ICENABLER : GICD_ISENABLER;
+		break;
+
+	default:
+		WARN_ON(1);
+		return;
+	}
+
+	gic_poke_irq(d, reg);
+}
+
+static int gic_irq_get_fwd_state(struct irq_data *d, int state)
+{
+	int val;
+
+	switch (state) {
+	case IRQ_FWD_STATE_PENDING:
+		val = gic_peek_irq(d, GICD_ISPENDR);
+		break;
+
+	case IRQ_FWD_STATE_ACTIVE:
+		val = gic_peek_irq(d, GICD_ISACTIVER);
+		break;
+
+	case IRQ_FWD_STATE_MASKED:
+		val = !gic_peek_irq(d, GICD_ISENABLER);
+		break;
+
+	default:
+		WARN_ON(1);
+		val = 0;
+	}
+
+	return val;
+}
+
 static void gic_eoi_irq(struct irq_data *d)
 {
 	gic_write_eoir(gic_irq(d));
@@ -236,7 +286,8 @@ static void gic_eoi_irq(struct irq_data *d)
 static void gic_eoi_dir_irq(struct irq_data *d)
 {
 	gic_write_eoir(gic_irq(d));
-	gic_write_dir(gic_irq(d));
+	if (!irqd_irq_forwarded(d))
+		gic_write_dir(gic_irq(d));
 }
 
 static int gic_set_type(struct irq_data *d, unsigned int type)
@@ -570,6 +621,8 @@ static struct irq_chip gic_chip = {
 	.irq_eoi		= gic_eoi_irq,
 	.irq_set_type		= gic_set_type,
 	.irq_set_affinity	= gic_set_affinity,
+	.irq_get_fwd_state	= gic_irq_get_fwd_state,
+	.irq_set_fwd_state	= gic_irq_set_fwd_state,
 };
 
 static struct irq_chip *its_chip;
