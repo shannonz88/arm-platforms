@@ -30,6 +30,7 @@
 #include <asm/cputype.h>
 #include <asm/exception.h>
 #include <asm/smp_plat.h>
+#include <asm/virt.h>
 
 #include "irq-gic-common.h"
 #include "irqchip.h"
@@ -50,6 +51,7 @@ struct gic_chip_data {
 };
 
 static struct gic_chip_data gic_data __read_mostly;
+static struct static_key supports_deactivate = STATIC_KEY_INIT_TRUE;
 
 #define gic_data_rdist()		(this_cpu_ptr(gic_data.rdists.rdist))
 #define gic_data_rdist_rd_base()	(gic_data_rdist()->rd_base)
@@ -293,7 +295,14 @@ static int gic_irq_get_irqchip_state(struct irq_data *d,
 
 static void gic_eoi_irq(struct irq_data *d)
 {
-	gic_write_eoir(gic_irq(d));
+	if (static_key_true(&supports_deactivate)) {
+		/* No need to deactivate an LPI */
+		if (gic_irq(d) >= 8192)
+			return;
+		gic_write_dir(gic_irq(d));
+	} else {
+		gic_write_eoir(gic_irq(d));
+	}
 }
 
 static int gic_set_type(struct irq_data *d, unsigned int type)
@@ -343,15 +352,26 @@ static asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs
 
 		if (likely(irqnr > 15 && irqnr < 1020) || irqnr >= 8192) {
 			int err;
+
+			if (static_key_true(&supports_deactivate))
+				gic_write_eoir(irqnr);
+
 			err = handle_domain_irq(gic_data.domain, irqnr, regs);
 			if (err) {
 				WARN_ONCE(true, "Unexpected interrupt received!\n");
-				gic_write_eoir(irqnr);
+				if (static_key_true(&supports_deactivate)) {
+					if (irqnr < 8192)
+						gic_write_dir(irqnr);
+				} else {
+					gic_write_eoir(irqnr);
+				}
 			}
 			continue;
 		}
 		if (irqnr < 16) {
 			gic_write_eoir(irqnr);
+			if (static_key_true(&supports_deactivate))
+				gic_write_dir(irqnr);
 #ifdef CONFIG_SMP
 			handle_IPI(irqnr, regs);
 #else
@@ -451,8 +471,13 @@ static void gic_cpu_sys_reg_init(void)
 	/* Set priority mask register */
 	gic_write_pmr(DEFAULT_PMR_VALUE);
 
-	/* EOI deactivates interrupt too (mode 0) */
-	gic_write_ctlr(ICC_CTLR_EL1_EOImode_drop_dir);
+	if (static_key_true(&supports_deactivate)) {
+		/* EOI drops priority only (mode 1) */
+		gic_write_ctlr(ICC_CTLR_EL1_EOImode_drop);
+	} else {
+		/* EOI deactivates interrupt too (mode 0) */
+		gic_write_ctlr(ICC_CTLR_EL1_EOImode_drop_dir);
+	}
 
 	/* ... and let's hit the road... */
 	gic_write_grpen1(1);
@@ -819,6 +844,12 @@ static int __init gic_of_init(struct device_node *node, struct device_node *pare
 
 	if (of_property_read_u64(node, "redistributor-stride", &redist_stride))
 		redist_stride = 0;
+
+	if (!is_hyp_mode_available())
+		static_key_slow_dec(&supports_deactivate);
+
+	if (static_key_true(&supports_deactivate))
+		pr_info("GIC: Using split EOI/Deactivate mode\n");
 
 	gic_data.dist_base = dist_base;
 	gic_data.redist_regions = rdist_regs;
