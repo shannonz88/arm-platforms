@@ -53,6 +53,9 @@ struct arch_timer_cpu {
 	/* Background timer active */
 	bool				armed;
 
+	/* Is interrupt active at the distributor level */
+	bool				irq_active;
+
 	/* Timer IRQ */
 	const struct kvm_irq_level	*irq;
 #endif

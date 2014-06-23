@@ -64,7 +64,7 @@ static void kvm_timer_inject_irq(struct kvm_vcpu *vcpu)
 	int ret;
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 
-	timer->cntv_ctl |= ARCH_TIMER_CTRL_IT_MASK;
+	timer->irq_active = true;
 	ret = kvm_vgic_inject_irq(vcpu->kvm, vcpu->vcpu_id,
 				  timer->irq->irq,
 				  timer->irq->level);
@@ -102,6 +102,11 @@ static enum hrtimer_restart kvm_timer_expire(struct hrtimer *hrt)
 	return HRTIMER_NORESTART;
 }
 
+static void kvm_timer_barf(const char *str)
+{
+	kvm_err("unable to %s timer IRQ state", str);
+}
+
 /**
  * kvm_timer_disarm - cancel any background timer
  * @vcpu: The vcpu pointer
@@ -124,9 +129,25 @@ void kvm_timer_disarm(struct kvm_vcpu *vcpu)
 /**
  * kvm_timer_flush_hwstate - prepare to move the virt timer to the cpu
  * @vcpu: The vcpu pointer
+ *
+ * Synchronize the GIC state with the state of the timer: if an
+ * interrupt is about to be injected in the guest, we must mark it
+ * active on the host, in order to avoid it firing when entering the
+ * guest, causing an immediate exit.
  */
 void kvm_timer_flush_hwstate(struct kvm_vcpu *vcpu)
 {
+	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+
+	if (timer->irq_active) {
+		int ret;
+
+		ret = irq_set_irqchip_state(host_vtimer_irq,
+					    IRQCHIP_STATE_ACTIVE,
+					    timer->irq_active);
+		if (ret)
+			kvm_timer_barf("restore");
+	}
 }
 
 /**
@@ -140,7 +161,28 @@ void kvm_timer_sync_hwstate(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 	cycle_t cval, now;
+	int ret;
 	u64 ns;
+
+	if (timer->irq_active) {
+		/*
+		 * If the interrupt was active on the previous run,
+		 * snapshot it before resetting it.
+		 */
+		ret = irq_get_irqchip_state(host_vtimer_irq,
+					    IRQCHIP_STATE_ACTIVE,
+					    &timer->irq_active);
+		if (ret)
+			kvm_timer_barf("retrieve");
+
+		if (timer->irq_active) {
+			ret = irq_set_irqchip_state(host_vtimer_irq,
+						    IRQCHIP_STATE_ACTIVE,
+						    false);
+			if (ret)
+				kvm_timer_barf("reset");
+		}
+	}
 
 	if ((timer->cntv_ctl & ARCH_TIMER_CTRL_IT_MASK) ||
 		!(timer->cntv_ctl & ARCH_TIMER_CTRL_ENABLE))
@@ -177,6 +219,12 @@ void kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu,
 	 * vcpu timer irq number when the vcpu is reset.
 	 */
 	timer->irq = irq;
+
+	/*
+	 * Tell the VGIC that the virtual interrupt is tied to a
+	 * physical interrupt. We do that once per VCPU.
+	 */
+	vgic_map_phys_irq(vcpu, irq->irq, host_vtimer_irq);
 }
 
 void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu)
@@ -316,6 +364,7 @@ void kvm_timer_vcpu_terminate(struct kvm_vcpu *vcpu)
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 
 	timer_disarm(timer);
+	vgic_unmap_phys_irq(vcpu, timer->irq->irq, host_vtimer_irq);
 }
 
 void kvm_timer_enable(struct kvm *kvm)
