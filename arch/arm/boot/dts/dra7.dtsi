@@ -50,7 +50,7 @@
 		#interrupt-cells = <3>;
 		arm,routable-irqs = <192>;
 		reg = <0x48211000 0x1000>,
-		      <0x48212000 0x1000>,
+		      <0x48212000 0x2000>,
 		      <0x48214000 0x2000>,
 		      <0x48216000 0x2000>;
 		interrupts = <GIC_PPI 9 (GIC_CPU_MASK_SIMPLE(2) | IRQ_TYPE_LEVEL_HIGH)>;
