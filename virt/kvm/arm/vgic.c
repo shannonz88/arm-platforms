@@ -1873,7 +1873,7 @@ out:
 static int vgic_v2_init(struct kvm *kvm, const struct vgic_params *params)
 {
 	struct vgic_dist *dist = &kvm->arch.vgic;
-	int ret;
+	int ret, i;
 
 	if (IS_VGIC_ADDR_UNDEF(dist->vgic_dist_base) ||
 	    IS_VGIC_ADDR_UNDEF(dist->vgic_cpu_base)) {
@@ -1888,6 +1888,9 @@ static int vgic_v2_init(struct kvm *kvm, const struct vgic_params *params)
 		kvm_err("Unable to remap VGIC CPU to VCPU\n");
 		return ret;
 	}
+
+	for (i = VGIC_NR_PRIVATE_IRQS; i < dist->nr_irqs; i += 4)
+		vgic_set_target_reg(kvm, 0, i);
 
 	return 0;
 }
