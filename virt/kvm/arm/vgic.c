@@ -1863,9 +1863,6 @@ static int vgic_init_maps(struct kvm *kvm)
 		}
 	}
 
-	for (i = VGIC_NR_PRIVATE_IRQS; i < dist->nr_irqs; i += 4)
-		vgic_set_target_reg(kvm, 0, i);
-
 out:
 	if (ret)
 		kvm_vgic_destroy(kvm);
