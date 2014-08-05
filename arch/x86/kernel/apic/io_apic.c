@@ -938,7 +938,19 @@ static int irq_trigger(int idx)
 	return trigger;
 }
 
-static int alloc_irq_from_domain(struct irq_domain *domain, u32 gsi, int pin)
+void ioapic_set_alloc_attr(struct irq_alloc_info *info, int node,
+			   int trigger, int polarity)
+{
+	init_irq_alloc_info(info, NULL);
+	info->type = X86_IRQ_ALLOC_TYPE_IOAPIC;
+	info->ioapic_node = node;
+	info->ioapic_trigger = trigger;
+	info->ioapic_polarity = polarity;
+	info->ioapic_valid = 1;
+}
+
+static int alloc_irq_from_domain(struct irq_domain *domain, u32 gsi, int pin,
+				 struct irq_alloc_info *info)
 {
 	int irq = -1;
 	int ioapic = (int)(long)domain->host_data;
@@ -971,7 +983,7 @@ static int alloc_irq_from_domain(struct irq_domain *domain, u32 gsi, int pin)
 }
 
 static int mp_map_pin_to_irq(u32 gsi, int idx, int ioapic, int pin,
-			     unsigned int flags)
+			     unsigned int flags, struct irq_alloc_info *ainfo)
 {
 	int irq;
 	struct irq_domain *domain = mp_ioapic_irqdomain(ioapic);
@@ -1008,7 +1020,7 @@ static int mp_map_pin_to_irq(u32 gsi, int idx, int ioapic, int pin,
 	} else {
 		irq = irq_find_mapping(domain, pin);
 		if (irq <= 0 && (flags & IOAPIC_MAP_ALLOC))
-			irq = alloc_irq_from_domain(domain, gsi, pin);
+			irq = alloc_irq_from_domain(domain, gsi, pin, ainfo);
 	}
 
 	if (flags & IOAPIC_MAP_ALLOC) {
@@ -1058,10 +1070,11 @@ static int pin_2_irq(int idx, int ioapic, int pin, unsigned int flags)
 	}
 #endif
 
-	return  mp_map_pin_to_irq(gsi, idx, ioapic, pin, flags);
+	return  mp_map_pin_to_irq(gsi, idx, ioapic, pin, flags, NULL);
 }
 
-int mp_map_gsi_to_irq(u32 gsi, unsigned int flags)
+int mp_map_gsi_to_irq(u32 gsi, unsigned int flags,
+		      struct irq_alloc_info *info)
 {
 	int ioapic, pin, idx;
 
@@ -1074,7 +1087,7 @@ int mp_map_gsi_to_irq(u32 gsi, unsigned int flags)
 	if ((flags & IOAPIC_MAP_CHECK) && idx < 0)
 		return -1;
 
-	return mp_map_pin_to_irq(gsi, idx, ioapic, pin, flags);
+	return mp_map_pin_to_irq(gsi, idx, ioapic, pin, flags, info);
 }
 
 void mp_unmap_irq(int irq)

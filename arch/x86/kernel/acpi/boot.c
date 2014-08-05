@@ -404,6 +404,7 @@ static int mp_register_gsi(struct device *dev, u32 gsi, int trigger,
 			   int polarity)
 {
 	int irq, node;
+	struct irq_alloc_info info;
 
 	if (acpi_irq_model != ACPI_IRQ_MODEL_IOAPIC)
 		return gsi;
@@ -420,7 +421,8 @@ static int mp_register_gsi(struct device *dev, u32 gsi, int trigger,
 		return -1;
 	}
 
-	irq = mp_map_gsi_to_irq(gsi, IOAPIC_MAP_ALLOC);
+	ioapic_set_alloc_attr(&info, node, trigger, polarity);
+	irq = mp_map_gsi_to_irq(gsi, IOAPIC_MAP_ALLOC, &info);
 	if (irq < 0)
 		return irq;
 
@@ -440,7 +442,7 @@ static void mp_unregister_gsi(u32 gsi)
 	if (acpi_gbl_FADT.sci_interrupt == gsi)
 		return;
 
-	irq = mp_map_gsi_to_irq(gsi, 0);
+	irq = mp_map_gsi_to_irq(gsi, 0, NULL);
 	if (irq > 0)
 		mp_unmap_irq(irq);
 }
@@ -620,7 +622,7 @@ int acpi_gsi_to_irq(u32 gsi, unsigned int *irqp)
 	int irq;
 
 	down_read(&acpi_ioapic_rwsem);
-	irq = mp_map_gsi_to_irq(gsi, IOAPIC_MAP_ALLOC | IOAPIC_MAP_CHECK);
+	irq = mp_map_gsi_to_irq(gsi, IOAPIC_MAP_ALLOC | IOAPIC_MAP_CHECK, NULL);
 	up_read(&acpi_ioapic_rwsem);
 	if (irq >= 0) {
 		*irqp = irq;
