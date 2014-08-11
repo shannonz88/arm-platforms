@@ -25,26 +25,25 @@
 #include <linux/spinlock.h>
 #include <linux/types.h>
 
-#define VGIC_NR_IRQS		256
+#define VGIC_NR_IRQS_LEGACY	256
 #define VGIC_NR_SGIS		16
 #define VGIC_NR_PPIS		16
 #define VGIC_NR_PRIVATE_IRQS	(VGIC_NR_SGIS + VGIC_NR_PPIS)
-#define VGIC_NR_SHARED_IRQS	(VGIC_NR_IRQS - VGIC_NR_PRIVATE_IRQS)
-#define VGIC_MAX_CPUS		KVM_MAX_VCPUS
 
 #define VGIC_V2_MAX_LRS		(1 << 6)
 #define VGIC_V3_MAX_LRS		16
+#define VGIC_MAX_IRQS		1024
 
 /* Sanity checks... */
-#if (VGIC_MAX_CPUS > 8)
-#error	Invalid number of CPU interfaces
+#if (KVM_MAX_VCPUS > 255)
+#error Too many KVM VCPUs, the VGIC only supports up to 255 VCPUs for now
 #endif
 
-#if (VGIC_NR_IRQS & 31)
+#if (VGIC_NR_IRQS_LEGACY & 31)
 #error "VGIC_NR_IRQS must be a multiple of 32"
 #endif
 
-#if (VGIC_NR_IRQS > 1024)
+#if (VGIC_NR_IRQS_LEGACY > VGIC_MAX_IRQS)
 #error "VGIC_NR_IRQS must be <= 1024"
 #endif
 
@@ -54,19 +53,24 @@
  * - a bunch of shared interrupts (SPI)
  */
 struct vgic_bitmap {
-	union {
-		u32 reg[VGIC_NR_PRIVATE_IRQS / 32];
-		DECLARE_BITMAP(reg_ul, VGIC_NR_PRIVATE_IRQS);
-	} percpu[VGIC_MAX_CPUS];
-	union {
-		u32 reg[VGIC_NR_SHARED_IRQS / 32];
-		DECLARE_BITMAP(reg_ul, VGIC_NR_SHARED_IRQS);
-	} shared;
+	/*
+	 * - One UL per VCPU for private interrupts (assumes UL is at
+	 * least 32 bits)
+	 * - As many UL as necessary for shared interrupts.
+	 */
+	int nr_cpus;
+	unsigned long *private;
+	unsigned long *shared;
 };
 
 struct vgic_bytemap {
-	u32 percpu[VGIC_MAX_CPUS][VGIC_NR_PRIVATE_IRQS / 4];
-	u32 shared[VGIC_NR_SHARED_IRQS  / 4];
+	/*
+	 * - 8 u32 per VCPU for private interrupts
+	 * - As many u32 as necessary for shared interrupts.
+	 */
+	int nr_cpus;
+	u32 *private;
+	u32 *shared;
 };
 
 struct kvm_vcpu;
@@ -95,8 +99,6 @@ struct vgic_vmcr {
 };
 
 struct vgic_ops {
-	struct vgic_lr	(*get_lr)(const struct kvm_vcpu *, int);
-	void	(*set_lr)(struct kvm_vcpu *, int, struct vgic_lr);
 	void	(*sync_lr_elrsr)(struct kvm_vcpu *, int, struct vgic_lr);
 	u64	(*get_elrsr)(const struct kvm_vcpu *vcpu);
 	u64	(*get_eisr)(const struct kvm_vcpu *vcpu);
@@ -119,6 +121,17 @@ struct vgic_params {
 	unsigned int	maint_irq;
 	/* Virtual control interface base address */
 	void __iomem	*vctrl_base;
+	bool (*init_emul)(struct kvm *kvm, int type);
+};
+
+struct vgic_vm_ops {
+	struct vgic_lr	(*get_lr)(const struct kvm_vcpu *, int);
+	void	(*set_lr)(struct kvm_vcpu *, int, struct vgic_lr);
+	bool	(*handle_mmio)(struct kvm_vcpu *, struct kvm_run *,
+			       struct kvm_exit_mmio *);
+	bool	(*queue_sgi)(struct kvm_vcpu *vcpu, int irq);
+	void	(*unqueue_sgi)(struct kvm_vcpu *vcpu, int irq, int source);
+	int	(*vgic_init)(struct kvm *kvm, const struct vgic_params *params);
 };
 
 struct vgic_dist {
@@ -127,12 +140,22 @@ struct vgic_dist {
 	bool			in_kernel;
 	bool			ready;
 
+	/* vGIC model the kernel emulates for the guest (GICv2 or GICv3) */
+	u32			vgic_model;
+
+	int			nr_cpus;
+	int			nr_irqs;
+
 	/* Virtual control interface mapping */
 	void __iomem		*vctrl_base;
 
 	/* Distributor and vcpu interface mapping in the guest */
 	phys_addr_t		vgic_dist_base;
-	phys_addr_t		vgic_cpu_base;
+	/* GICv2 and GICv3 use different mapped register blocks */
+	union {
+		phys_addr_t		vgic_cpu_base;
+		phys_addr_t		vgic_redist_base;
+	};
 
 	/* Distributor enabled */
 	u32			enabled;
@@ -152,15 +175,21 @@ struct vgic_dist {
 	/* Level/edge triggered */
 	struct vgic_bitmap	irq_cfg;
 
-	/* Source CPU per SGI and target CPU */
-	u8			irq_sgi_sources[VGIC_MAX_CPUS][VGIC_NR_SGIS];
+	/* Source CPU per SGI and target CPU : 16 bytes per CPU */
+	u8			*irq_sgi_sources;
 
 	/* Target CPU for each IRQ */
-	u8			irq_spi_cpu[VGIC_NR_SHARED_IRQS];
-	struct vgic_bitmap	irq_spi_target[VGIC_MAX_CPUS];
+	u8			*irq_spi_cpu;
+
+	/* Target MPIDR for each IRQ (needed for GICv3 IROUTERn) only */
+	u32			*irq_spi_mpidr;
+
+	struct vgic_bitmap	*irq_spi_target;
 
 	/* Bitmap indicating which CPU has something pending */
 	unsigned long		irq_pending_on_cpu;
+
+	struct vgic_vm_ops	vm_ops;
 #endif
 };
 
@@ -178,6 +207,7 @@ struct vgic_v3_cpu_if {
 #ifdef CONFIG_ARM_GIC_V3
 	u32		vgic_hcr;
 	u32		vgic_vmcr;
+	u32		vgic_sre;	/* Restored only, change ignored */
 	u32		vgic_misr;	/* Saved only */
 	u32		vgic_eisr;	/* Saved only */
 	u32		vgic_elrsr;	/* Saved only */
@@ -190,11 +220,11 @@ struct vgic_v3_cpu_if {
 struct vgic_cpu {
 #ifdef CONFIG_KVM_ARM_VGIC
 	/* per IRQ to LR mapping */
-	u8		vgic_irq_lr_map[VGIC_NR_IRQS];
+	u8		*vgic_irq_lr_map;
 
 	/* Pending interrupts on this VCPU */
 	DECLARE_BITMAP(	pending_percpu, VGIC_NR_PRIVATE_IRQS);
-	DECLARE_BITMAP(	pending_shared, VGIC_NR_SHARED_IRQS);
+	unsigned long	*pending_shared;
 
 	/* Bitmap of used/free list registers */
 	DECLARE_BITMAP(	lr_used, VGIC_V2_MAX_LRS);
@@ -224,12 +254,14 @@ struct kvm_exit_mmio;
 int kvm_vgic_addr(struct kvm *kvm, unsigned long type, u64 *addr, bool write);
 int kvm_vgic_hyp_init(void);
 int kvm_vgic_init(struct kvm *kvm);
-int kvm_vgic_create(struct kvm *kvm);
-int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu);
+int kvm_vgic_create(struct kvm *kvm, u32 type);
+void kvm_vgic_destroy(struct kvm *kvm);
+void kvm_vgic_vcpu_destroy(struct kvm_vcpu *vcpu);
 void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu);
 void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu);
 int kvm_vgic_inject_irq(struct kvm *kvm, int cpuid, unsigned int irq_num,
 			bool level);
+void vgic_v3_dispatch_sgi(struct kvm_vcpu *vcpu, u64 reg);
 int kvm_vgic_vcpu_pending_irq(struct kvm_vcpu *vcpu);
 bool vgic_handle_mmio(struct kvm_vcpu *vcpu, struct kvm_run *run,
 		      struct kvm_exit_mmio *mmio);
@@ -274,7 +306,7 @@ static inline int kvm_vgic_init(struct kvm *kvm)
 	return 0;
 }
 
-static inline int kvm_vgic_create(struct kvm *kvm)
+static inline int kvm_vgic_create(struct kvm *kvm, u32 type)
 {
 	return 0;
 }

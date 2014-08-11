@@ -58,6 +58,9 @@ struct kvm_arch {
 	/* VTTBR value associated with above pgd and vmid */
 	u64    vttbr;
 
+	/* The maximum number of vCPUs depends on the used GIC model */
+	int max_vcpus;
+
 	/* Interrupt controller */
 	struct vgic_dist	vgic;
 
@@ -243,5 +246,7 @@ static inline void vgic_arch_setup(const struct vgic_params *vgic)
 		BUG();
 	}
 }
+
+struct kvm_vcpu *kvm_mpidr_to_vcpu(struct kvm *kvm, unsigned long mpidr);
 
 #endif /* __ARM64_KVM_HOST_H__ */
