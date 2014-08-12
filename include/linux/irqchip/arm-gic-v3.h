@@ -322,6 +322,7 @@ static inline void gic_write_dir(u64 irq)
 	isb();
 }
 
+struct irq_domain;
 int its_cpu_init(void);
 struct irq_chip *its_init(struct device_node *node, struct rdist *rdist,
 			  struct irq_domain *domain);
