@@ -75,9 +75,6 @@ static inline void __iomem *gic_dist_base(struct irq_data *d)
 	if (d->hwirq <= 1023)		/* SPI -> dist_base */
 		return gic_data.dist_base;
 
-	if (d->hwirq >= 8192)
-		BUG();		/* LPI Detected!!! */
-
 	return NULL;
 }
 
@@ -278,14 +275,14 @@ static asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs
 	do {
 		irqnr = gic_read_iar();
 
-		if (likely(irqnr > 15 && irqnr < 1020)) {
+		if (likely(irqnr > 15 && irqnr < 1020) || irqnr >= 8192) {
 			u64 irq = irq_find_mapping(gic_data.domain, irqnr);
 			if (likely(irq)) {
 				handle_IRQ(irq, regs);
 				continue;
 			}
 
-			WARN_ONCE(true, "Unexpected SPI received!\n");
+			WARN_ONCE(true, "Unexpected interrupt received!\n");
 			gic_write_eoir(irqnr);
 		}
 		if (irqnr < 16) {
@@ -381,6 +378,11 @@ static int gic_populate_rdist(void)
 	return -ENODEV;
 }
 
+static int gic_dist_supports_lpis(void)
+{
+	return !!(readl_relaxed(gic_data.dist_base + GICD_TYPER) & GICD_TYPER_LPIS);
+}
+
 static void gic_cpu_init(void)
 {
 	void __iomem *rbase;
@@ -394,6 +396,10 @@ static void gic_cpu_init(void)
 	rbase = gic_data_rdist_sgi_base();
 
 	gic_cpu_config(rbase, gic_redist_wait_for_rwp);
+
+	/* Give LPIs a spin */
+	if (IS_ENABLED(CONFIG_ARM_GIC_V3_ITS) && gic_dist_supports_lpis())
+		its_cpu_init();
 
 	/* Enable system registers */
 	gic_enable_sre();
@@ -550,6 +556,10 @@ static struct irq_chip gic_chip = {
 	.irq_set_affinity	= gic_set_affinity,
 };
 
+static struct irq_chip *its_chip;
+
+#define GIC_ID_NR		(1U << gic_data.rdists.id_bits)
+
 static int gic_irq_domain_map(struct irq_domain *d, unsigned int irq,
 			      irq_hw_number_t hw)
 {
@@ -569,6 +579,19 @@ static int gic_irq_domain_map(struct irq_domain *d, unsigned int irq,
 					 handle_fasteoi_irq);
 		set_irq_flags(irq, IRQF_VALID | IRQF_PROBE);
 	}
+	/* Nothing */
+	if (hw >= gic_data.irq_nr && hw < 8192)
+		return -EPERM;
+	/* LPIs */
+	if (hw >= 8192 && hw < GIC_ID_NR) {
+		if (!its_chip)
+			return -EPERM;
+		irq_set_chip_and_handler(irq, its_chip, handle_fasteoi_irq);
+		set_irq_flags(irq, IRQF_VALID);
+	}
+	/* Off limits */
+	if (hw >= GIC_ID_NR)
+		return -EPERM;
 	irq_set_chip_data(irq, d->host_data);
 	return 0;
 }
@@ -683,6 +706,9 @@ static int __init gic_of_init(struct device_node *node, struct device_node *pare
 	}
 
 	set_handle_irq(gic_handle_irq);
+
+	if (IS_ENABLED(CONFIG_ARM_GIC_V3_ITS) && gic_dist_supports_lpis())
+		its_chip = its_init(node, &gic_data.rdists, gic_data.domain);
 
 	gic_smp_init();
 	gic_dist_init();
