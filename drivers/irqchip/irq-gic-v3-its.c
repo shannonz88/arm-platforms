@@ -91,6 +91,16 @@ struct its_device {
 	u32			device_id;
 };
 
+/*
+ * Temporary structure used to pass around the various MSI domain
+ * setup functions.
+ */
+struct its_msi_alloc_info {
+	struct pci_dev		*pdev;
+	struct its_device	*its_dev;
+	irq_hw_number_t		msi_hwirq;
+};
+
 static LIST_HEAD(its_nodes);
 static DEFINE_SPINLOCK(its_lock);
 static struct device_node *gic_root_node;
@@ -587,12 +597,95 @@ static int its_set_affinity(struct irq_data *d, const struct cpumask *mask_val,
 	return IRQ_SET_MASK_OK;
 }
 
+static void its_irq_compose_msi_msg(struct irq_data *d, struct msi_msg *msg)
+{
+	struct its_device *its_dev = irq_data_get_irq_chip_data(d);
+	struct its_node *its;
+	u64 addr;
+
+	its = its_dev->its;
+	addr = its->phys_base + GITS_TRANSLATER;
+
+	msg->address_lo		= addr & ((1UL << 32) - 1);
+	msg->address_hi		= addr >> 32;
+	msg->data		= its_get_event_id(d);
+}
+
 static struct irq_chip its_irq_chip = {
 	.name			= "ITS",
 	.irq_mask		= its_mask_irq,
 	.irq_unmask		= its_unmask_irq,
 	.irq_eoi		= its_eoi_irq,
 	.irq_set_affinity	= its_set_affinity,
+	.irq_compose_msi_msg	= its_irq_compose_msi_msg,
+};
+
+static void its_mask_msi_irq(struct irq_data *d)
+{
+	mask_msi_irq(d);
+	irq_chip_mask_parent(d);
+}
+
+static void its_unmask_msi_irq(struct irq_data *d)
+{
+	unmask_msi_irq(d);
+	irq_chip_unmask_parent(d);
+}
+
+static struct irq_chip its_msi_irq_chip = {
+	.name			= "PCI-MSI",
+	.irq_unmask		= its_unmask_msi_irq,
+	.irq_mask		= its_mask_msi_irq,
+	.irq_eoi		= irq_chip_eoi_parent,
+	.irq_set_affinity	= irq_chip_set_affinity_parent,
+	.irq_write_msi_msg	= pci_msi_domain_write_msg,
+};
+
+static void its_pci_msi_generate_hwirq(struct msi_domain_info *minfo, void *arg,
+				       struct msi_desc *desc)
+{
+	struct its_msi_alloc_info *info = arg;
+
+	info->msi_hwirq = pci_msi_domain_calc_hwirq(info->pdev, desc);
+}
+
+static irq_hw_number_t its_pci_msi_get_hwirq(struct msi_domain_info *minfo,
+					     void *arg)
+{
+	struct its_msi_alloc_info *info = arg;
+
+	return info->msi_hwirq;
+}
+
+static int its_pci_msi_init(struct irq_domain *domain,
+			    struct msi_domain_info *minfo, unsigned int virq,
+			    irq_hw_number_t hwirq, void *arg)
+{
+	irq_domain_set_info(domain, virq, hwirq, minfo->chip, NULL,
+			    handle_fasteoi_irq, NULL, NULL);
+
+	return 0;
+}
+
+static void its_pci_msi_free(struct irq_domain *domain,
+			     struct msi_domain_info *info, unsigned int virq)
+{
+	struct msi_desc *desc = irq_get_msi_desc(virq);
+
+	if (desc)
+		desc->irq = 0;
+}
+
+static struct msi_domain_ops its_pci_msi_ops = {
+	.calc_hwirq = its_pci_msi_generate_hwirq,
+	.get_hwirq = its_pci_msi_get_hwirq,
+	.msi_init = its_pci_msi_init,
+	.msi_free = its_pci_msi_free,
+};
+
+static struct msi_domain_info its_pci_msi_domain_info = {
+	.ops	= &its_pci_msi_ops,
+	.chip	= &its_msi_irq_chip,
 };
 
 /*
@@ -1055,3 +1148,136 @@ static void its_free_device(struct its_device *its_dev)
 	kfree(its_dev->itt);
 	kfree(its_dev);
 }
+
+static int its_alloc_device_irq(struct its_device *dev, irq_hw_number_t *hwirq)
+{
+	int idx;
+
+	idx = find_first_zero_bit(dev->lpi_map, dev->nr_lpis);
+	if (idx == dev->nr_lpis)
+		return -ENOSPC;
+
+	*hwirq = dev->lpi_base + idx;
+	set_bit(idx, dev->lpi_map);
+
+	/* Map the GIC irq ID to the device */
+	its_send_mapvi(dev, *hwirq, idx);
+
+	return 0;
+}
+
+static int its_irq_gic_domain_alloc(struct irq_domain *domain,
+				    unsigned int virq,
+				    irq_hw_number_t hwirq)
+{
+	struct of_phandle_args args;
+
+	args.np = domain->parent->of_node;
+	args.args_count = 3;
+	args.args[0] = GIC_IRQ_TYPE_LPI;
+	args.args[1] = hwirq;
+	args.args[2] = IRQ_TYPE_EDGE_RISING;
+
+	return irq_domain_alloc_irqs_parent(domain, virq, 1, &args);
+}
+
+static int its_msi_prepare_alloc_irqs(struct irq_domain *domain,
+				      struct device *dev, unsigned int nvec,
+				      int type)
+{
+	struct pci_dev *pdev;
+	struct msi_chip *chip;
+	struct its_node *its;
+	u32 dev_id;
+	struct its_device *its_dev;
+	struct its_msi_alloc_info info;
+
+	if (!dev_is_pci(dev))
+		return -EINVAL;
+
+	pdev = to_pci_dev(dev);
+	chip = pdev->bus->msi;
+	its = container_of(chip, struct its_node, msi_chip);
+	dev_id = PCI_DEVID(pdev->bus->number, pdev->devfn);
+
+	its_dev = its_find_device(its, dev_id);
+	if (WARN_ON(its_dev))
+		return -EINVAL;
+
+	its_dev = its_create_device(its, dev_id, nvec);
+	if (!its_dev)
+		return -ENOMEM;
+
+	dev_dbg(&pdev->dev, "ITT %d entries, %d bits\n", nvec, ilog2(nvec));
+
+	info.pdev = pdev;
+	info.its_dev = its_dev;
+	return pci_msi_domain_alloc_irqs(chip->domain, type, pdev, &info);
+}
+
+static int its_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
+				unsigned int nr_irqs, void *arg)
+{
+	struct its_msi_alloc_info *info = arg;
+	struct its_device *its_dev = info->its_dev;
+	irq_hw_number_t hwirq;
+	int err;
+	int i;
+
+	for (i = 0; i < nr_irqs; i++) {
+		err = its_alloc_device_irq(its_dev, &hwirq);
+		if (err)
+			return err;
+
+		err = its_irq_gic_domain_alloc(domain, virq, hwirq);
+		if (err)
+			return err;
+
+		irq_domain_set_hwirq_and_chip(domain, virq + i,
+					      hwirq, &its_irq_chip, its_dev);
+		dev_dbg(&info->pdev->dev, "ID:%d pID:%d vID:%d\n",
+			(int)(hwirq - its_dev->lpi_base), (int)hwirq, virq + i);
+	}
+
+	return 0;
+}
+
+static void its_irq_domain_free(struct irq_domain *domain, unsigned int virq,
+				unsigned int nr_irqs)
+{
+	struct irq_data *d = irq_get_irq_data(virq);
+	struct its_device *its_dev = irq_data_get_irq_chip_data(d);
+	int i;
+
+	for (i = 0; i < nr_irqs; i++) {
+		int event = its_get_event_id(d);
+
+		/* Stop the delivery of interrupts */
+		its_send_discard(its_dev, event);
+
+		/* Mark interrupt index as unused, and clear the mapping */
+		clear_bit(event, its_dev->lpi_map);
+
+		irq_set_handler(virq + i, NULL);
+		irq_domain_set_hwirq_and_chip(domain, virq + i, 0, NULL, NULL);
+	}
+
+	/* If all interrupts have been freed, start mopping the floor */
+	if (bitmap_empty(its_dev->lpi_map, its_dev->nr_lpis)) {
+		its_lpi_free(its_dev->lpi_map,
+			     its_dev->lpi_base,
+			     its_dev->nr_lpis);
+
+		/* Unmap device/itt */
+		its_send_mapd(its_dev, 0);
+		its_free_device(its_dev);
+	}
+
+	irq_domain_free_irqs_parent(domain, virq, nr_irqs);
+}
+
+static const struct irq_domain_ops its_domain_ops = {
+	.alloc			= its_irq_domain_alloc,
+	.free			= its_irq_domain_free,
+	.prepare_alloc_irqs	= its_msi_prepare_alloc_irqs,
+};
