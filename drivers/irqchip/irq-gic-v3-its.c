@@ -1078,3 +1078,110 @@ static void its_free_device(struct its_device *its_dev)
 	kfree(its_dev->itt);
 	kfree(its_dev);
 }
+
+static int its_alloc_device_irq(struct its_device *dev, u32 id,
+				int *hwirq, unsigned int *irq)
+{
+	int idx;
+
+	idx = find_first_zero_bit(dev->lpi_map, dev->nr_lpis);
+	if (idx == dev->nr_lpis)
+		return -ENOSPC;
+
+	*hwirq = dev->lpi_base + idx;
+	*irq = irq_create_mapping(lpi_domain, *hwirq);
+	if (!*irq)
+		return -ENOSPC;	/* Don't kill the device, though */
+
+	set_bit(idx, dev->lpi_map);
+
+	/* Map the GIC irq ID to the device */
+	its_send_mapvi(dev, *hwirq, id);
+
+	return 0;
+}
+
+/* FIXME: Use proper API once it is available in the kernel... */
+#define PCI_REQUESTER_ID(dev)	PCI_DEVID((dev)->bus->number, (dev)->devfn)
+
+static int its_msi_get_vec_count(struct pci_dev *pdev, struct msi_desc *desc)
+{
+#ifdef CONFIG_PCI_MSI
+	if (desc->msi_attrib.is_msix)
+		return pci_msix_vec_count(pdev);
+	else
+		return pci_msi_vec_count(pdev);
+#else
+	return -EINVAL;
+#endif
+}
+
+static int its_msi_setup_irq(struct msi_chip *chip,
+			     struct pci_dev *pdev,
+			     struct msi_desc *desc)
+{
+	struct its_node *its = container_of(chip, struct its_node, msi_chip);
+	struct its_device *its_dev;
+	struct msi_msg msg;
+	unsigned int irq;
+	u64 addr;
+	int hwirq;
+	int err;
+	u32 dev_id = PCI_REQUESTER_ID(pdev);
+	u32 vec_nr;
+
+	its_dev = its_find_device(its, dev_id);
+	if (!its_dev) {
+		int nvec = its_msi_get_vec_count(pdev, desc);
+		if (WARN_ON(nvec <= 0))
+			return nvec;
+		its_dev = its_create_device(its, dev_id, nvec);
+		dev_info(&pdev->dev, "ITT %d entries, %d bits\n", nvec, ilog2(nvec));
+	}
+	if (!its_dev)
+		return -ENOMEM;
+	vec_nr = its_msi_get_entry_nr(desc);
+	err = its_alloc_device_irq(its_dev, vec_nr, &hwirq, &irq);
+	if (err)
+		return err;
+
+	dev_info(&pdev->dev, "ID:%d pID:%d vID:%d\n", its_msi_get_entry_nr(desc), hwirq, irq);
+	irq_set_msi_desc(irq, desc);
+	irq_set_handler_data(irq, its_dev);
+
+	addr = its->phys_base + GITS_TRANSLATER;
+
+	msg.address_lo		= addr & ((1UL << 32) - 1);
+	msg.address_hi		= addr >> 32;
+	msg.data		= vec_nr;
+
+	write_msi_msg(irq, &msg);
+	return 0;
+}
+
+static void its_msi_teardown_irq(struct msi_chip *chip, unsigned int irq)
+{
+	struct irq_data *d = irq_get_irq_data(irq);
+	struct its_device *its_dev = irq_data_get_irq_handler_data(d);
+
+	BUG_ON(d->hwirq < its_dev->lpi_base ||		/* OMG! */
+	       d->hwirq > (its_dev->lpi_base + its_dev->nr_lpis));
+
+	/* Stop the delivery of interrupts */
+	its_send_discard(its_dev, its_msi_get_entry_nr(d->msi_desc));
+
+	/* Mark interrupt index as unused, and clear the mapping */
+	clear_bit(d->hwirq - its_dev->lpi_base, its_dev->lpi_map);
+	irq_dispose_mapping(irq);
+
+	/* If all interrupts have been freed, start mopping the floor */
+	if (bitmap_empty(its_dev->lpi_map, its_dev->nr_lpis)) {
+		its_lpi_free(its_dev->lpi_map,
+			     its_dev->lpi_base,
+			     its_dev->nr_lpis);
+
+		/* Unmap device/itt */
+		its_send_mapd(its_dev, 0);
+		its_free_device(its_dev);
+	}
+}
