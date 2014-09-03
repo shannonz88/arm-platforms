@@ -22,6 +22,7 @@
 #ifndef __X86_IRQ_REMAPPING_H
 #define __X86_IRQ_REMAPPING_H
 
+#include <linux/irqdomain.h>
 #include <asm/io_apic.h>
 
 struct IO_APIC_route_entry;
@@ -30,6 +31,7 @@ struct irq_chip;
 struct msi_msg;
 struct pci_dev;
 struct irq_cfg;
+struct irq_alloc_info;
 
 #ifdef CONFIG_IRQ_REMAP
 
@@ -57,6 +59,42 @@ extern bool setup_remapped_irq(int irq,
 			       struct irq_chip *chip);
 
 void irq_remap_modify_chip_defaults(struct irq_chip *chip);
+
+extern struct irq_domain *irq_remapping_get_ir_irq_domain(
+				struct irq_alloc_info *info);
+extern struct irq_domain *irq_remapping_get_irq_domain(
+				struct irq_alloc_info *info);
+extern int irq_remapping_get_ioapic_entry(struct irq_data *irq_data,
+					  struct IR_IO_APIC_route_entry *entry);
+extern int irq_remapping_get_msi_entry(struct irq_data *irq_data,
+				       struct msi_msg *entry);
+extern void irq_remapping_print_chip(struct irq_data *data, struct seq_file *p);
+
+/*
+ * Create MSI/MSIx irqdomain for interrupt remapping device, use @parent as
+ * parent irqdomain.
+ */
+static inline struct irq_domain *
+arch_create_msi_irq_domain(struct irq_domain *parent)
+{
+	return NULL;
+}
+
+/* Get parent irqdomain for interrupt remapping irqdomain */
+static inline struct irq_domain *arch_get_ir_parent_domain(void)
+{
+	return x86_vector_domain;
+}
+
+static inline void irq_remapping_domain_set_remapped(struct irq_domain *domain)
+{
+	domain->flags |= IRQ_DOMAIN_FLAG_ARCH1;
+}
+
+static inline bool irq_remapping_domain_is_remapped(struct irq_domain *domain)
+{
+	return domain->flags & IRQ_DOMAIN_FLAG_ARCH1;
+}
 
 #else  /* CONFIG_IRQ_REMAP */
 
@@ -101,6 +139,41 @@ static inline bool setup_remapped_irq(int irq,
 {
 	return false;
 }
+
+static inline struct irq_domain *
+irq_remapping_get_ir_irq_domain(struct irq_alloc_info *info)
+{
+	return NULL;
+}
+
+static inline struct irq_domain *
+irq_remapping_get_irq_domain(struct irq_alloc_info *info)
+{
+	return NULL;
+}
+
+static inline int irq_remapping_get_ioapic_entry(struct irq_data *irq_data,
+				struct IR_IO_APIC_route_entry *entry)
+{
+	return -ENOSYS;
+}
+
+static inline int irq_remapping_get_msi_entry(struct irq_data *irq_data,
+					      struct msi_msg *entry)
+{
+	return -ENOSYS;
+}
+
+static inline void irq_remapping_domain_set_remapped(struct irq_domain *domain)
+{
+}
+
+static inline bool irq_remapping_domain_is_remapped(struct irq_domain *domain)
+{
+	return false;
+}
+
+#define	irq_remapping_print_chip	NULL
 #endif /* CONFIG_IRQ_REMAP */
 
 extern int dmar_alloc_hwirq(void);
