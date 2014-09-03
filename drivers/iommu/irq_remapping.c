@@ -377,7 +377,7 @@ void panic_if_irq_remap(const char *msg)
 		panic(msg);
 }
 
-static void ir_ack_apic_edge(struct irq_data *data)
+void ir_ack_apic_edge(struct irq_data *data)
 {
 	ack_APIC_irq();
 }
@@ -386,6 +386,19 @@ static void ir_ack_apic_level(struct irq_data *data)
 {
 	ack_APIC_irq();
 	eoi_ioapic_irq(data->irq, irqd_cfg(data));
+}
+
+void irq_remapping_print_chip(struct irq_data *data, struct seq_file *p)
+{
+	/*
+	 * Assume interrupt is remapped if the parent irqdomain isn't the
+	 * vector domain, which is true for MSI, HPET and IOAPIC on x86
+	 * platforms.
+	 */
+	if (data->domain && data->domain->parent != arch_get_ir_parent_domain())
+		seq_printf(p, " IR-%s", data->chip->name);
+	else
+		seq_printf(p, " %s", data->chip->name);
 }
 
 static void ir_print_prefix(struct irq_data *data, struct seq_file *p)
@@ -408,4 +421,37 @@ bool setup_remapped_irq(int irq, struct irq_cfg *cfg, struct irq_chip *chip)
 	irq_set_status_flags(irq, IRQ_MOVE_PCNTXT);
 	irq_remap_modify_chip_defaults(chip);
 	return true;
+}
+
+/**
+ * irq_remapping_get_ir_irq_domain - Get the irqdomain associated the IOMMU
+ *				     device serving @info
+ * @info: interrupt allocation information, used to find the IOMMU device
+ *
+ * It's used to get parent irqdomain for HPET and IOAPIC domains.
+ * Returns pointer to IRQ domain, or NULL on failure.
+ */
+struct irq_domain *
+irq_remapping_get_ir_irq_domain(struct irq_alloc_info *info)
+{
+	if (!remap_ops || !remap_ops->get_ir_irq_domain)
+		return NULL;
+
+	return remap_ops->get_ir_irq_domain(info);
+}
+
+/**
+ * irq_remapping_get_irq_domain - Get the irqdomain serving the MSI interrupt
+ * @info: interrupt allocation information, used to find the IOMMU device
+ *
+ * It's used to get irqdomain for MSI/MSIx interrupt allocation.
+ * Returns pointer to IRQ domain, or NULL on failure.
+ */
+struct irq_domain *
+irq_remapping_get_irq_domain(struct irq_alloc_info *info)
+{
+	if (!remap_ops || !remap_ops->get_irq_domain)
+		return NULL;
+
+	return remap_ops->get_irq_domain(info);
 }
