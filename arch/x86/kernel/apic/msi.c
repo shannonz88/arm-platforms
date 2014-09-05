@@ -35,16 +35,12 @@ static void msi_reset_irq_data_and_handler(struct irq_domain *domain, int virq)
 	irq_set_handler(virq, NULL);
 }
 
-void native_compose_msi_msg(struct pci_dev *pdev,
-			    unsigned int irq, unsigned int dest,
-			    struct msi_msg *msg, u8 hpet_id)
+static void native_compose_msi_msg(struct irq_cfg *cfg, struct msi_msg *msg)
 {
-	struct irq_cfg *cfg = irq_cfg(irq);
-
 	msg->address_hi = MSI_ADDR_BASE_HI;
 
 	if (x2apic_enabled())
-		msg->address_hi |= MSI_ADDR_EXT_DEST_ID(dest);
+		msg->address_hi |= MSI_ADDR_EXT_DEST_ID(cfg->dest_apicid);
 
 	msg->address_lo =
 		MSI_ADDR_BASE_LO |
@@ -54,7 +50,7 @@ void native_compose_msi_msg(struct pci_dev *pdev,
 		((apic->irq_delivery_mode != dest_LowestPrio) ?
 			MSI_ADDR_REDIRECTION_CPU :
 			MSI_ADDR_REDIRECTION_LOWPRI) |
-		MSI_ADDR_DEST_ID(dest);
+		MSI_ADDR_DEST_ID(cfg->dest_apicid);
 
 	msg->data =
 		MSI_DATA_TRIGGER_EDGE |
@@ -73,31 +69,6 @@ static void msi_update_msg(struct msi_msg *msg, struct irq_data *irq_data)
 	msg->data |= MSI_DATA_VECTOR(cfg->vector);
 	msg->address_lo &= ~MSI_ADDR_DEST_ID_MASK;
 	msg->address_lo |= MSI_ADDR_DEST_ID(cfg->dest_apicid);
-}
-
-static int msi_compose_msg(struct pci_dev *pdev, unsigned int irq,
-			   struct msi_msg *msg, u8 hpet_id)
-{
-	struct irq_cfg *cfg;
-	int err;
-	unsigned dest;
-
-	if (disable_apic)
-		return -ENXIO;
-
-	cfg = irq_cfg(irq);
-	err = assign_irq_vector(irq, cfg, apic->target_cpus());
-	if (err)
-		return err;
-
-	err = apic->cpu_mask_to_apicid_and(cfg->domain,
-					   apic->target_cpus(), &dest);
-	if (err)
-		return err;
-
-	x86_msi.compose_msi_msg(pdev, irq, dest, msg, hpet_id);
-
-	return 0;
 }
 
 static bool msi_irq_remapped(struct irq_data *irq_data)
@@ -203,8 +174,7 @@ static int msi_domain_activate(struct irq_domain *domain,
 	if (msi_irq_remapped(irq_data))
 		irq_remapping_get_msi_entry(irq_data->parent_data, &msg);
 	else
-		native_compose_msi_msg(NULL, irq_data->irq, cfg->dest_apicid,
-				       &msg, 0);
+		native_compose_msi_msg(cfg, &msg);
 	write_msi_msg(irq_data->irq, &msg);
 
 	return 0;
@@ -230,36 +200,6 @@ static struct irq_domain_ops msi_domain_ops = {
 	.activate = msi_domain_activate,
 	.deactivate = msi_domain_deactivate,
 };
-
-int setup_msi_irq(struct pci_dev *dev, struct msi_desc *msidesc,
-		  unsigned int irq_base, unsigned int irq_offset)
-{
-	struct irq_chip *chip = &msi_chip;
-	struct msi_msg msg;
-	unsigned int irq = irq_base + irq_offset;
-	int ret;
-
-	ret = msi_compose_msg(dev, irq, &msg, -1);
-	if (ret < 0)
-		return ret;
-
-	irq_set_msi_desc_off(irq_base, irq_offset, msidesc);
-
-	/*
-	 * MSI-X message is written per-IRQ, the offset is always 0.
-	 * MSI message denotes a contiguous group of IRQs, written for 0th IRQ.
-	 */
-	if (!irq_offset)
-		write_msi_msg(irq, &msg);
-
-	setup_remapped_irq(irq, irq_cfg(irq), chip);
-
-	irq_set_chip_and_handler_name(irq, chip, handle_edge_irq, "edge");
-
-	dev_dbg(&dev->dev, "irq %d for MSI/MSI-X\n", irq);
-
-	return 0;
-}
 
 int native_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
 {
@@ -394,7 +334,7 @@ int arch_setup_dmar_msi(unsigned int irq)
 	struct msi_msg msg;
 	struct irq_cfg *cfg = irq_cfg(irq);
 
-	native_compose_msi_msg(NULL, irq, cfg->dest_apicid, &msg, -1);
+	native_compose_msi_msg(cfg, &msg);
 	dmar_msi_write(irq, &msg);
 	irq_set_chip_and_handler_name(irq, &dmar_msi_type, handle_edge_irq,
 				      "edge");
@@ -449,24 +389,6 @@ static struct irq_chip hpet_msi_type = {
 	.irq_print_chip = irq_remapping_print_chip,
 };
 
-int default_setup_hpet_msi(unsigned int irq, unsigned int id)
-{
-	struct irq_chip *chip = &hpet_msi_type;
-	struct msi_msg msg;
-	int ret;
-
-	ret = msi_compose_msg(NULL, irq, &msg, id);
-	if (ret < 0)
-		return ret;
-
-	hpet_msi_write(irq_get_handler_data(irq), &msg);
-	irq_set_status_flags(irq, IRQ_MOVE_PCNTXT);
-	setup_remapped_irq(irq, irq_cfg(irq), chip);
-
-	irq_set_chip_and_handler_name(irq, chip, handle_edge_irq, "edge");
-	return 0;
-}
-
 static int hpet_domain_alloc(struct irq_domain *domain, unsigned int virq,
 			     unsigned int nr_irqs, void *arg)
 {
@@ -510,8 +432,7 @@ static int hpet_domain_activate(struct irq_domain *domain,
 	if (msi_irq_remapped(irq_data))
 		irq_remapping_get_msi_entry(irq_data->parent_data, &msg);
 	else
-		native_compose_msi_msg(NULL, irq_data->irq, cfg->dest_apicid,
-				       &msg, hpet_dev_id(domain));
+		native_compose_msi_msg(cfg, &msg);
 	hpet_msi_write(irq_get_handler_data(irq_data->irq), &msg);
 
 	return 0;
