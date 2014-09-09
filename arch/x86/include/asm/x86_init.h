@@ -171,7 +171,6 @@ struct x86_platform_ops {
 };
 
 struct pci_dev;
-struct msi_msg;
 struct msi_desc;
 
 struct x86_msi_ops {
@@ -182,11 +181,6 @@ struct x86_msi_ops {
 	u32 (*msi_mask_irq)(struct msi_desc *desc, u32 mask, u32 flag);
 	u32 (*msix_mask_irq)(struct msi_desc *desc, u32 flag);
 };
-
-struct IO_APIC_route_entry;
-struct io_apic_irq_attr;
-struct irq_data;
-struct cpumask;
 
 struct x86_io_apic_ops {
 	void		(*init)   (void);
