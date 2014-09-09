@@ -2953,16 +2953,6 @@ int mp_ioapic_registered(u32 gsi_base)
 	return 0;
 }
 
-static inline void set_io_apic_irq_attr(struct io_apic_irq_attr *irq_attr,
-					int ioapic, int ioapic_pin,
-					int trigger, int polarity)
-{
-	irq_attr->ioapic	= ioapic;
-	irq_attr->ioapic_pin	= ioapic_pin;
-	irq_attr->trigger	= trigger;
-	irq_attr->polarity	= polarity;
-}
-
 static int mp_irqdomain_get_attr(int irq, u32 gsi, struct mp_pin_info *pinfo,
 				 struct irq_alloc_info *info)
 {
