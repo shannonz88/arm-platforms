@@ -1331,7 +1331,8 @@ static void __init setup_IO_APIC_irqs(void)
 	}
 }
 
-void native_io_apic_print_entries(unsigned int apic, unsigned int nr_entries)
+static void native_io_apic_print_entries(unsigned int apic,
+					 unsigned int nr_entries)
 {
 	int i;
 
@@ -1356,8 +1357,7 @@ void native_io_apic_print_entries(unsigned int apic, unsigned int nr_entries)
 	}
 }
 
-void intel_ir_io_apic_print_entries(unsigned int apic,
-				    unsigned int nr_entries)
+static void ir_io_apic_print_entries(unsigned int apic, unsigned int nr_entries)
 {
 	int i;
 
@@ -1448,7 +1448,7 @@ static void __init print_IO_APIC(int ioapic_idx)
 
 	domain = mp_ioapic_irqdomain(ioapic_idx);
 	if (domain && irq_remapping_domain_is_remapped(domain))
-		intel_ir_io_apic_print_entries(ioapic_idx, reg_01.bits.entries);
+		ir_io_apic_print_entries(ioapic_idx, reg_01.bits.entries);
 	else
 		native_io_apic_print_entries(ioapic_idx, reg_01.bits.entries);
 }
