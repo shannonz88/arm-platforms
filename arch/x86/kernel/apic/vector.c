@@ -21,6 +21,8 @@
 #include <asm/desc.h>
 #include <asm/irq_remapping.h>
 
+static unsigned int x86_vector_alloc_policy = X86_VECTOR_POL_DEFAULT |
+					      X86_VECTOR_POL_CALLER;
 struct irq_domain *x86_vector_domain;
 static DEFINE_RAW_SPINLOCK(vector_lock);
 static struct irq_chip vector_chip;
@@ -55,6 +57,12 @@ struct irq_cfg *irqd_cfg(struct irq_data *irq_data)
 		irq_data = irq_data->parent_data;
 
 	return irq_data->chip_data;
+}
+
+void set_vector_alloc_policy(unsigned int policy)
+{
+	if (!WARN_ON((policy & (X86_VECTOR_POL_MAX - 1)) == 0))
+		x86_vector_alloc_policy = policy | X86_VECTOR_POL_CALLER;
 }
 
 static struct irq_cfg *alloc_irq_cfg(int node)
@@ -245,12 +253,6 @@ void copy_irq_alloc_info(struct irq_alloc_info *dst, struct irq_alloc_info *src)
 		memset(dst, 0, sizeof(*dst));
 }
 
-static inline const struct cpumask *
-irq_alloc_info_get_mask(struct irq_alloc_info *info)
-{
-	return (!info || !info->mask) ? apic->target_cpus() : info->mask;
-}
-
 static void x86_vector_free_irqs(struct irq_domain *domain,
 				 unsigned int virq, unsigned int nr_irqs)
 {
@@ -271,18 +273,64 @@ static void x86_vector_free_irqs(struct irq_domain *domain,
 	}
 }
 
+static int assign_irq_vector_policy(int irq, int node, struct irq_cfg *cfg,
+				    struct irq_alloc_info *info)
+{
+	int err = -EBUSY;
+	unsigned int policy;
+	const struct cpumask *mask;
+
+	if (info && info->mask) {
+		policy = X86_VECTOR_POL_CALLER;
+	} else {
+		policy = X86_VECTOR_POL_MIN;
+	}
+
+	for (; policy <= X86_VECTOR_POL_MAX; policy <<= 1) {
+		if (!(x86_vector_alloc_policy & policy))
+			continue;
+
+		switch (policy) {
+		case X86_VECTOR_POL_NODE:
+			if (node >= 0)
+				mask = cpumask_of_node(node);
+			else
+				mask = NULL;
+			break;
+		case X86_VECTOR_POL_DEFAULT:
+			mask = apic->target_cpus();
+			break;
+		case X86_VECTOR_POL_CALLER:
+			if (info && info->mask)
+				mask = info->mask;
+			else
+				mask = NULL;
+			break;
+		default:
+			mask = NULL;
+			break;
+		}
+		if (mask) {
+			err = assign_irq_vector(irq, cfg, mask);
+			if (!err)
+				return 0;
+		}
+	}
+
+	return err;
+}
+
 static int x86_vector_alloc_irqs(struct irq_domain *domain, unsigned int virq,
 				 unsigned int nr_irqs, void *arg)
 {
 	int i, err;
 	struct irq_cfg *cfg;
 	struct irq_data *irq_data;
-	const struct cpumask *mask;
+	struct irq_alloc_info *info = arg;
 
 	if (disable_apic)
 		return -ENXIO;
 
-	mask = irq_alloc_info_get_mask(arg);
 	for (i = 0; i < nr_irqs; i++) {
 		irq_data = irq_domain_get_irq_data(domain, virq + i);
 		BUG_ON(!irq_data);
@@ -299,7 +347,7 @@ static int x86_vector_alloc_irqs(struct irq_domain *domain, unsigned int virq,
 		irq_data->chip = &vector_chip;
 		irq_data->chip_data = cfg;
 		irq_data->hwirq = virq + i;
-		err = assign_irq_vector(virq, cfg, mask);
+		err = assign_irq_vector_policy(virq, irq_data->node, cfg, info);
 		if (err)
 			goto error;
 	}

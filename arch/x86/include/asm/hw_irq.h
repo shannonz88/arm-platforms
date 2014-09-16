@@ -162,6 +162,17 @@ struct irq_alloc_info {
 	};
 };
 
+enum {
+	/* Allocate vector from cpumask_of_node(dev_to_node(dev)) */
+	X86_VECTOR_POL_NODE = 0x1,
+	/* Allocate vector from apic->target_cpus() */
+	X86_VECTOR_POL_DEFAULT = 0x2,
+	/* Allocate vector from cpumask assigned by caller */
+	X86_VECTOR_POL_CALLER = 0x4,
+	X86_VECTOR_POL_MIN = X86_VECTOR_POL_NODE,
+	X86_VECTOR_POL_MAX = X86_VECTOR_POL_CALLER,
+};
+
 struct irq_cfg {
 	cpumask_var_t		domain;
 	cpumask_var_t		old_domain;
@@ -180,6 +191,7 @@ extern struct irq_cfg *irq_cfg(unsigned int irq);
 extern struct irq_cfg *irqd_cfg(struct irq_data *irq_data);
 extern void lock_vector_lock(void);
 extern void unlock_vector_lock(void);
+extern void set_vector_alloc_policy(unsigned int policy);
 extern void setup_vector_irq(int cpu);
 extern void send_cleanup_vector(struct irq_cfg *);
 extern void irq_complete_move(struct irq_cfg *cfg);
