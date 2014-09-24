@@ -121,6 +121,7 @@ enum irq_alloc_type {
 	X86_IRQ_ALLOC_TYPE_HPET,
 	X86_IRQ_ALLOC_TYPE_MSI,
 	X86_IRQ_ALLOC_TYPE_MSIX,
+	X86_IRQ_ALLOC_TYPE_DMAR,
 };
 
 struct irq_alloc_info {
@@ -147,6 +148,12 @@ struct irq_alloc_info {
 			int		ioapic_pin;
 			u32		ioapic_trigger : 1;
 			u32		ioapic_polarity : 1;
+		};
+#endif
+#ifdef	CONFIG_DMAR_TABLE
+		struct {
+			int		dmar_id;
+			void		*dmar_data;
 		};
 #endif
 	};
