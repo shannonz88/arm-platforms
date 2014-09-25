@@ -65,6 +65,17 @@ void set_vector_alloc_policy(unsigned int policy)
 		x86_vector_alloc_policy = policy | X86_VECTOR_POL_CALLER;
 }
 
+static int __init apic_parse_vector_policy(char *str)
+{
+	int policy;
+
+	if (get_option(&str, &policy) == 1)
+		set_vector_alloc_policy(policy);
+
+	return 1;
+}
+__setup("vector_alloc=", apic_parse_vector_policy);
+
 static struct irq_cfg *alloc_irq_cfg(int node)
 {
 	struct irq_cfg *cfg;
