@@ -185,8 +185,6 @@ extern void send_cleanup_vector(struct irq_cfg *);
 extern void irq_complete_move(struct irq_cfg *cfg);
 
 extern void apic_ack_edge(struct irq_data *data);
-extern int apic_set_affinity(struct irq_data *data, const struct cpumask *mask,
-			     unsigned int *dest_id);
 #else	/*  CONFIG_X86_LOCAL_APIC */
 static inline void lock_vector_lock(void) {}
 static inline void unlock_vector_lock(void) {}
