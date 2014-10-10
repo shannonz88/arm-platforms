@@ -3586,6 +3586,12 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 	vector=		[IA-64,SMP]
 			vector=percpu: enable percpu vector domain
 
+	vector_alloc=	[x86,SMP]
+			vector_alloc=policy: policy is a bitmap, bit 0
+			for allocating CPU vector from CPUs on device local
+			node; bit 1 for the default policy to allocating from
+			apic->target_cpus(). All higher bits are reserved.
+
 	video=		[FB] Frame buffer configuration
 			See Documentation/fb/modedb.txt.
 

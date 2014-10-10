@@ -392,6 +392,7 @@ struct amd_iommu_fault {
 
 
 struct iommu_domain;
+struct irq_domain;
 
 /*
  * This structure contains generic data for  IOMMU protection domains
@@ -595,6 +596,10 @@ struct amd_iommu {
 	/* The maximum PC banks and counters/bank (PCSup=1) */
 	u8 max_banks;
 	u8 max_counters;
+#ifdef CONFIG_IRQ_REMAP
+	struct irq_domain *ir_domain;
+	struct irq_domain *msi_domain;
+#endif
 };
 
 struct devid_map {

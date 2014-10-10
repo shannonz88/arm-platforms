@@ -99,7 +99,9 @@ static void __init intel_mid_time_init(void)
 		return;
 	}
 	/* we need at least one APB timer */
+#if 0
 	pre_init_apic_IRQ0();
+#endif
 	apbt_time_init();
 }
 
