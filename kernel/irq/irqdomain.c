@@ -479,6 +479,21 @@ unsigned int irq_create_of_mapping(struct of_phandle_args *irq_data)
 	}
 
 	if (irq_domain_is_hierarchy(domain)) {
+		if (domain->ops->xlate) {
+			/*
+			 * If we've already configured this interrupt,
+			 * don't do it again, or hell will break loose.
+			 */
+			if (domain->ops->xlate(domain, irq_data->np,
+					       irq_data->args,
+					       irq_data->args_count,
+					       &hwirq, &type))
+				return 0;
+
+			virq = irq_find_mapping(domain, hwirq);
+			if (virq)
+				return virq;
+		}
 		virq = irq_domain_alloc_irqs(domain, 1, NUMA_NO_NODE, irq_data);
 		return virq <= 0 ? 0 : virq;
 	}
