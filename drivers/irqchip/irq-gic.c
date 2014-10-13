@@ -835,8 +835,6 @@ static struct notifier_block gic_cpu_notifier = {
 };
 #endif
 
-
-#ifdef CONFIG_IRQ_DOMAIN_HIERARCHY
 static int gic_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
 				unsigned int nr_irqs, void *arg)
 {
@@ -870,10 +868,8 @@ static void gic_irq_domain_free(struct irq_domain *domain, unsigned int virq,
 static const struct irq_domain_ops gic_irq_domain_hierarchy_ops = {
 	.alloc = gic_irq_domain_alloc,
 	.free = gic_irq_domain_free,
+	.xlate = gic_irq_domain_xlate,
 };
-#else
-#define gic_irq_domain_hierarchy_ops 0
-#endif /* CONFIG_IRQ_DOMAIN_HIERARCHY */
 
 static const struct irq_domain_ops gic_irq_domain_ops = {
 	.map = gic_irq_domain_map,
@@ -965,18 +961,6 @@ void __init gic_init_bases(unsigned int gic_nr, int irq_start,
 		gic_cpu_map[i] = 0xff;
 
 	/*
-	 * For primary GICs, skip over SGIs.
-	 * For secondary GICs, skip over PPIs, too.
-	 */
-	if (gic_nr == 0 && (irq_start & 31) > 0) {
-		hwirq_base = 16;
-		if (irq_start != -1)
-			irq_start = (irq_start & ~31) + 16;
-	} else {
-		hwirq_base = 32;
-	}
-
-	/*
 	 * Find out how many interrupts are supported.
 	 * The GIC only supports up to 1020 interrupt sources.
 	 */
@@ -986,14 +970,31 @@ void __init gic_init_bases(unsigned int gic_nr, int irq_start,
 		gic_irqs = 1020;
 	gic->gic_irqs = gic_irqs;
 
-	gic_irqs -= hwirq_base; /* calculate # of irqs to allocate */
+	if (node) {		/* DT case */
+		const struct irq_domain_ops *ops = &gic_irq_domain_hierarchy_ops;
 
-	if (IS_ENABLED(CONFIG_IRQ_DOMAIN_HIERARCHY) &&
-		of_find_property(node, "arm,irq-domain-hierarchy", NULL))
-		gic->domain = irq_domain_add_linear(node, gic_irqs,
-					&gic_irq_domain_hierarchy_ops, gic);
-	else if (of_property_read_u32(node, "arm,routable-irqs",
-				 &nr_routable_irqs)) {
+		if (!of_property_read_u32(node, "arm,routable-irqs",
+					  &nr_routable_irqs)) {
+			ops = &gic_irq_domain_ops;
+			gic_irqs = nr_routable_irqs;
+		}
+
+		gic->domain = irq_domain_add_linear(node, gic_irqs, ops, gic);
+	} else {		/* Non-DT case */
+		/*
+		 * For primary GICs, skip over SGIs.
+		 * For secondary GICs, skip over PPIs, too.
+		 */
+		if (gic_nr == 0 && (irq_start & 31) > 0) {
+			hwirq_base = 16;
+			if (irq_start != -1)
+				irq_start = (irq_start & ~31) + 16;
+		} else {
+			hwirq_base = 32;
+		}
+
+		gic_irqs -= hwirq_base; /* calculate # of irqs to allocate */
+
 		irq_base = irq_alloc_descs(irq_start, 16, gic_irqs,
 					   numa_node_id());
 		if (IS_ERR_VALUE(irq_base)) {
@@ -1004,10 +1005,6 @@ void __init gic_init_bases(unsigned int gic_nr, int irq_start,
 
 		gic->domain = irq_domain_add_legacy(node, gic_irqs, irq_base,
 					hwirq_base, &gic_irq_domain_ops, gic);
-	} else {
-		gic->domain = irq_domain_add_linear(node, nr_routable_irqs,
-						    &gic_irq_domain_ops,
-						    gic);
 	}
 
 	if (WARN_ON(!gic->domain))
