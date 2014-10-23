@@ -258,11 +258,11 @@ static inline void mmu_notifier_mm_destroy(struct mm_struct *mm)
 	int __young;							\
 	struct vm_area_struct *___vma = __vma;				\
 	unsigned long ___address = __address;				\
-	__young = ptep_clear_flush_young(___vma, ___address, __ptep);	\
-	__young |= mmu_notifier_clear_flush_young(___vma->vm_mm,	\
+	__young = mmu_notifier_clear_flush_young(___vma->vm_mm,		\
 						  ___address,		\
 						  ___address +		\
 							PAGE_SIZE);	\
+	__young |= ptep_clear_flush_young(___vma, ___address, __ptep);	\
 	__young;							\
 })
 
@@ -271,11 +271,11 @@ static inline void mmu_notifier_mm_destroy(struct mm_struct *mm)
 	int __young;							\
 	struct vm_area_struct *___vma = __vma;				\
 	unsigned long ___address = __address;				\
-	__young = pmdp_clear_flush_young(___vma, ___address, __pmdp);	\
-	__young |= mmu_notifier_clear_flush_young(___vma->vm_mm,	\
+	__young = mmu_notifier_clear_flush_young(___vma->vm_mm,		\
 						  ___address,		\
 						  ___address +		\
 							PMD_SIZE);	\
+	__young |= pmdp_clear_flush_young(___vma, ___address, __pmdp);	\
 	__young;							\
 })
 
