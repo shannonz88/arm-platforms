@@ -2492,7 +2492,7 @@ static int ahci_host_activate_single_irq(struct ata_host *host, int irq,
 		return rc;
 
 	rc = devm_request_threaded_irq(host->dev, irq, ahci_single_irq_intr,
-				       ahci_thread_fn, IRQF_SHARED,
+				       ahci_thread_fn, IRQF_SHARED | IRQF_ONESHOT,
 				       dev_driver_string(host->dev), host);
 	if (rc)
 		return rc;
