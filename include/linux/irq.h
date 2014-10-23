@@ -330,6 +330,7 @@ struct irq_chip {
 	void		(*irq_mask)(struct irq_data *data);
 	void		(*irq_mask_ack)(struct irq_data *data);
 	void		(*irq_unmask)(struct irq_data *data);
+	void		(*irq_priority_drop)(struct irq_data *data);
 	void		(*irq_eoi)(struct irq_data *data);
 
 	int		(*irq_set_affinity)(struct irq_data *data, const struct cpumask *dest, bool force);

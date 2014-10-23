@@ -272,12 +272,25 @@ void mask_irq(struct irq_desc *desc)
 	}
 }
 
+void mask_threaded_irq(struct irq_desc *desc)
+{
+	struct irq_chip *chip = desc->irq_data.chip;
+
+	/* If we can do priority drop, then masking comes for free */
+	if (chip->irq_priority_drop)
+		irq_state_set_masked(desc);
+	else
+		mask_irq(desc);
+}
+
 void unmask_irq(struct irq_desc *desc)
 {
-	if (desc->irq_data.chip->irq_unmask) {
-		desc->irq_data.chip->irq_unmask(&desc->irq_data);
+	struct irq_chip *chip = desc->irq_data.chip;
+
+	if (chip->irq_unmask && !chip->irq_priority_drop)
+		chip->irq_unmask(&desc->irq_data);
+	if (chip->irq_unmask || chip->irq_priority_drop)
 		irq_state_clr_masked(desc);
-	}
 }
 
 void unmask_threaded_irq(struct irq_desc *desc)
@@ -287,10 +300,7 @@ void unmask_threaded_irq(struct irq_desc *desc)
 	if (chip->flags & IRQCHIP_EOI_THREADED)
 		chip->irq_eoi(&desc->irq_data);
 
-	if (chip->irq_unmask) {
-		chip->irq_unmask(&desc->irq_data);
-		irq_state_clr_masked(desc);
-	}
+	unmask_irq(desc);
 }
 
 /*
@@ -470,12 +480,24 @@ static inline void preflow_handler(struct irq_desc *desc)
 static inline void preflow_handler(struct irq_desc *desc) { }
 #endif
 
+static void eoi_irq(struct irq_desc *desc, struct irq_chip *chip)
+{
+	if (chip->irq_priority_drop)
+		chip->irq_priority_drop(&desc->irq_data);
+	if (chip->irq_eoi)
+		chip->irq_eoi(&desc->irq_data);
+}
+
 static void cond_unmask_eoi_irq(struct irq_desc *desc, struct irq_chip *chip)
 {
 	if (!(desc->istate & IRQS_ONESHOT)) {
-		chip->irq_eoi(&desc->irq_data);
+		eoi_irq(desc, chip);
 		return;
 	}
+
+	if (chip->irq_priority_drop)
+		chip->irq_priority_drop(&desc->irq_data);
+
 	/*
 	 * We need to unmask in the following cases:
 	 * - Oneshot irq which did not wake the thread (caused by a
@@ -485,7 +507,8 @@ static void cond_unmask_eoi_irq(struct irq_desc *desc, struct irq_chip *chip)
 	if (!irqd_irq_disabled(&desc->irq_data) &&
 	    irqd_irq_masked(&desc->irq_data) && !desc->threads_oneshot) {
 		chip->irq_eoi(&desc->irq_data);
-		unmask_irq(desc);
+		if (!chip->irq_priority_drop)
+			unmask_irq(desc);
 	} else if (!(chip->flags & IRQCHIP_EOI_THREADED)) {
 		chip->irq_eoi(&desc->irq_data);
 	}
@@ -525,7 +548,7 @@ handle_fasteoi_irq(unsigned int irq, struct irq_desc *desc)
 	}
 
 	if (desc->istate & IRQS_ONESHOT)
-		mask_irq(desc);
+		mask_threaded_irq(desc);
 
 	preflow_handler(desc);
 	handle_irq_event(desc);
@@ -536,7 +559,7 @@ handle_fasteoi_irq(unsigned int irq, struct irq_desc *desc)
 	return;
 out:
 	if (!(chip->flags & IRQCHIP_EOI_IF_HANDLED))
-		chip->irq_eoi(&desc->irq_data);
+		eoi_irq(desc, chip);
 	raw_spin_unlock(&desc->lock);
 }
 EXPORT_SYMBOL_GPL(handle_fasteoi_irq);
@@ -655,7 +678,7 @@ void handle_edge_eoi_irq(unsigned int irq, struct irq_desc *desc)
 		 !irqd_irq_disabled(&desc->irq_data));
 
 out_eoi:
-	chip->irq_eoi(&desc->irq_data);
+	eoi_irq(desc, chip);
 	raw_spin_unlock(&desc->lock);
 }
 #endif
@@ -679,8 +702,7 @@ handle_percpu_irq(unsigned int irq, struct irq_desc *desc)
 
 	handle_irq_event_percpu(desc, desc->action);
 
-	if (chip->irq_eoi)
-		chip->irq_eoi(&desc->irq_data);
+	eoi_irq(desc, chip);
 }
 
 /**
@@ -711,8 +733,7 @@ void handle_percpu_devid_irq(unsigned int irq, struct irq_desc *desc)
 	res = action->handler(irq, dev_id);
 	trace_irq_handler_exit(irq, action, res);
 
-	if (chip->irq_eoi)
-		chip->irq_eoi(&desc->irq_data);
+	eoi_irq(desc, chip);
 }
 
 void
