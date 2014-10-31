@@ -16,6 +16,10 @@ config PCI_MSI
 
 	   If you don't know what to do here, say Y.
 
+config PCI_MSI_IRQ_DOMAIN
+	bool
+	depends on PCI_MSI && IRQ_DOMAIN_HIERARCHY
+
 config PCI_DEBUG
 	bool "PCI Debugging"
 	depends on PCI && DEBUG_KERNEL
