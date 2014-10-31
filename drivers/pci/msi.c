@@ -19,6 +19,7 @@
 #include <linux/errno.h>
 #include <linux/io.h>
 #include <linux/slab.h>
+#include <linux/irqdomain.h>
 
 #include "pci.h"
 
@@ -1098,3 +1099,136 @@ int pci_enable_msix_range(struct pci_dev *dev, struct msix_entry *entries,
 	return nvec;
 }
 EXPORT_SYMBOL(pci_enable_msix_range);
+
+#ifdef CONFIG_PCI_MSI_IRQ_DOMAIN
+/*
+ * Generate a unique ID number for each possible MSI source, the ID number
+ * is only used within the irqdomain.
+ */
+static inline irq_hw_number_t
+msi_get_hwirq(struct pci_dev *dev, struct msi_desc *desc)
+{
+	return (irq_hw_number_t)desc->msi_attrib.entry_nr |
+		PCI_DEVID(dev->bus->number, dev->devfn) << 11 |
+		(pci_domain_nr(dev->bus) & 0xFFFFFFFF) << 27;
+}
+
+static int msi_domain_alloc(struct irq_domain *domain, unsigned int virq,
+			    unsigned int nr_irqs, void *arg)
+{
+	int i, ret;
+	irq_hw_number_t hwirq = arch_msi_irq_domain_get_hwirq(arg);
+
+	if (irq_find_mapping(domain, hwirq) > 0)
+		return -EEXIST;
+
+	ret = irq_domain_alloc_irqs_parent(domain, virq, nr_irqs, arg);
+	if (ret < 0)
+		return ret;
+
+	for (i = 0; i < nr_irqs; i++) {
+		irq_domain_set_hwirq_and_chip(domain, virq + i, hwirq + i,
+					      domain->host_data,
+					      (void *)(long)i);
+		__irq_set_handler(virq + i, handle_edge_irq, 0, "edge");
+	}
+
+	return ret;
+}
+
+static void msi_domain_free(struct irq_domain *domain, unsigned int virq,
+			    unsigned int nr_irqs)
+{
+	int i;
+
+	for (i = 0; i < nr_irqs; i++) {
+		struct msi_desc *desc = irq_get_msi_desc(virq);
+
+		if (desc)
+			desc->irq = 0;
+	}
+	irq_domain_free_irqs_top(domain, virq, nr_irqs);
+}
+
+static void msi_domain_activate(struct irq_domain *domain,
+				struct irq_data *irq_data)
+{
+	struct msi_msg msg;
+
+	/*
+	 * irq_data->chip_data is MSI/MSI-X offset.
+	 * MSI-X message is written per-IRQ, the offset is always 0.
+	 * MSI message denotes a contiguous group of IRQs, written for 0th IRQ.
+	 */
+	if (irq_data->chip_data)
+		return;
+
+	BUG_ON(irq_chip_compose_msi_msg(irq_data, &msg));
+	__write_msi_msg(irq_data->msi_desc, &msg);
+}
+
+static void msi_domain_deactivate(struct irq_domain *domain,
+				  struct irq_data *irq_data)
+{
+	struct msi_msg msg;
+
+	if (!irq_data->chip_data) {
+		memset(&msg, 0, sizeof(msg));
+		__write_msi_msg(irq_data->msi_desc, &msg);
+	}
+}
+
+static struct irq_domain_ops msi_domain_ops = {
+	.alloc = msi_domain_alloc,
+	.free = msi_domain_free,
+	.activate = msi_domain_activate,
+	.deactivate = msi_domain_deactivate,
+};
+
+struct irq_domain *msi_create_irq_domain(struct device_node *of_node,
+					 struct irq_chip *chip,
+					 struct irq_domain *parent)
+{
+	struct irq_domain *domain;
+
+	domain = irq_domain_add_tree(of_node, &msi_domain_ops, chip);
+	if (!domain)
+		return NULL;
+
+	domain->parent = parent;
+
+	return domain;
+}
+
+int msi_irq_domain_alloc_irqs(struct irq_domain *domain, int type,
+			      struct pci_dev *dev, void *arg)
+{
+	int i, virq;
+	struct msi_desc *desc;
+	int node = dev_to_node(&dev->dev);
+
+	list_for_each_entry(desc, &dev->msi_list, list) {
+		arch_msi_irq_domain_set_hwirq(arg, msi_get_hwirq(dev, desc));
+		virq = irq_domain_alloc_irqs(domain, desc->nvec_used,
+					     node, arg);
+		if (virq < 0) {
+			/* Special handling for pci_enable_msi_range(). */
+			if (type == PCI_CAP_ID_MSI && desc->nvec_used > 1)
+				return 1;
+			else
+				return -ENOSPC;
+		}
+		for (i = 0; i < desc->nvec_used; i++)
+			irq_set_msi_desc_off(virq, i, desc);
+	}
+
+	list_for_each_entry(desc, &dev->msi_list, list)
+		if (desc->nvec_used == 1)
+			dev_dbg(&dev->dev, "irq %d for MSI/MSI-X\n", virq);
+		else
+			dev_dbg(&dev->dev, "irq [%d-%d] for MSI/MSI-X\n",
+				virq, virq + desc->nvec_used - 1);
+
+	return 0;
+}
+#endif /* CONFIG_PCI_MSI_IRQ_DOMAIN */
