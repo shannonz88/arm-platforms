@@ -75,4 +75,18 @@ struct msi_chip {
 	void (*teardown_irq)(struct msi_chip *chip, unsigned int irq);
 };
 
+#ifdef CONFIG_PCI_MSI_IRQ_DOMAIN
+struct irq_domain;
+struct irq_chip;
+
+struct irq_domain *msi_create_irq_domain(struct device_node *of_node,
+					 struct irq_chip *chip,
+					 struct irq_domain *parent);
+int msi_irq_domain_alloc_irqs(struct irq_domain *domain, int type,
+			      struct pci_dev *dev, void *arg);
+
+irq_hw_number_t arch_msi_irq_domain_get_hwirq(void *arg);
+void arch_msi_irq_domain_set_hwirq(void *arg, irq_hw_number_t hwirq);
+#endif /* CONFIG_PCI_MSI_IRQ_DOMAIN */
+
 #endif /* LINUX_MSI_H */
