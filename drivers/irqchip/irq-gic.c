@@ -46,6 +46,7 @@
 #include <asm/smp_plat.h>
 
 #include "irq-gic-common.h"
+#include "irq-gic-v2m.h"
 #include "irqchip.h"
 
 union gic_base {
@@ -1065,6 +1066,10 @@ gic_of_init(struct device_node *node, struct device_node *parent)
 		irq = irq_of_parse_and_map(node, 0);
 		gic_cascade_irq(gic_cnt, irq);
 	}
+
+	if (IS_ENABLED(CONFIG_ARM_GIC_V2M))
+		gicv2m_of_init(node, gic_data[gic_cnt].domain);
+
 	gic_cnt++;
 	return 0;
 }
