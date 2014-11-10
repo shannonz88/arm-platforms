@@ -1113,6 +1113,11 @@ msi_get_hwirq(struct pci_dev *dev, struct msi_desc *desc)
 		(pci_domain_nr(dev->bus) & 0xFFFFFFFF) << 27;
 }
 
+void __weak arch_msi_irq_set_handler(unsigned int virq)
+{
+	__irq_set_handler(virq, handle_edge_irq, 0, "edge");
+}
+
 static int msi_domain_alloc(struct irq_domain *domain, unsigned int virq,
 			    unsigned int nr_irqs, void *arg)
 {
@@ -1130,7 +1135,7 @@ static int msi_domain_alloc(struct irq_domain *domain, unsigned int virq,
 		irq_domain_set_hwirq_and_chip(domain, virq + i, hwirq + i,
 					      domain->host_data,
 					      (void *)(long)i);
-		__irq_set_handler(virq + i, handle_edge_irq, 0, "edge");
+		arch_msi_irq_set_handler(virq + i);
 	}
 
 	return ret;

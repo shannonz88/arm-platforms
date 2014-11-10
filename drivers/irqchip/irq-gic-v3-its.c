@@ -28,6 +28,7 @@
 #include <linux/of_pci.h>
 #include <linux/of_platform.h>
 #include <linux/percpu.h>
+#include <linux/seq_file.h>
 #include <linux/slab.h>
 
 #include <linux/irqchip/arm-gic-v3.h>
@@ -35,6 +36,7 @@
 #include <asm/cacheflush.h>
 #include <asm/cputype.h>
 #include <asm/exception.h>
+#include <asm/msi.h>
 
 #include "irqchip.h"
 
@@ -84,7 +86,7 @@ struct its_device {
 	struct its_collection	*collection;
 	void			*itt;
 	unsigned long		*lpi_map;
-	int			lpi_base;
+	irq_hw_number_t		lpi_base;
 	int			nr_lpis;
 	u32			nr_ites;
 	u32			device_id;
@@ -524,9 +526,17 @@ static void its_send_invall(struct its_node *its, struct its_collection *col)
  * irqchip functions - assumes MSI, mostly.
  */
 
-static void lpi_set_config(struct its_device *its_dev, u32 hwirq,
-			   u32 id, int enable)
+static inline u32 its_get_event_id(struct irq_data *d)
 {
+	struct its_device *its_dev = irq_data_get_irq_chip_data(d);
+	return d->hwirq - its_dev->lpi_base;
+}
+
+static void lpi_set_config(struct irq_data *d, bool enable)
+{
+	struct its_device *its_dev = irq_data_get_irq_chip_data(d);
+	irq_hw_number_t hwirq = d->hwirq;
+	u32 id = its_get_event_id(d);
 	u8 *cfg = page_address(gic_rdists->prop_page) + hwirq - 8192;
 
 	if (enable)
@@ -546,41 +556,14 @@ static void lpi_set_config(struct its_device *its_dev, u32 hwirq,
 	its_send_inv(its_dev, id);
 }
 
-static inline u16 its_msi_get_entry_nr(struct msi_desc *desc)
-{
-	return desc->msi_attrib.entry_nr;
-}
-
 static void its_mask_irq(struct irq_data *d)
 {
-	struct its_device *its_dev = irq_data_get_irq_handler_data(d);
-	u32 id;
-
-	/* If MSI, propagate the mask to the RC */
-	if (IS_ENABLED(CONFIG_PCI_MSI) && d->msi_desc) {
-		id = its_msi_get_entry_nr(d->msi_desc);
-		mask_msi_irq(d);
-	} else {
-		id = d->hwirq;
-	}
-
-	lpi_set_config(its_dev, d->hwirq, id, 0);
+	lpi_set_config(d, false);
 }
 
 static void its_unmask_irq(struct irq_data *d)
 {
-	struct its_device *its_dev = irq_data_get_irq_handler_data(d);
-	u32 id;
-
-	/* If MSI, propagate the unmask to the RC */
-	if (IS_ENABLED(CONFIG_PCI_MSI) && d->msi_desc) {
-		id = its_msi_get_entry_nr(d->msi_desc);
-		unmask_msi_irq(d);
-	} else {
-		id = d->hwirq;
-	}
-
-	lpi_set_config(its_dev, d->hwirq, id, 1);
+	lpi_set_config(d, true);
 }
 
 static void its_eoi_irq(struct irq_data *d)
@@ -592,22 +575,32 @@ static int its_set_affinity(struct irq_data *d, const struct cpumask *mask_val,
 			    bool force)
 {
 	unsigned int cpu = cpumask_any_and(mask_val, cpu_online_mask);
-	struct its_device *its_dev = irq_data_get_irq_handler_data(d);
+	struct its_device *its_dev = irq_data_get_irq_chip_data(d);
 	struct its_collection *target_col;
-	u32 id;
+	u32 id = its_get_event_id(d);
 
 	if (cpu >= nr_cpu_ids)
 		return -EINVAL;
 
 	target_col = &its_dev->its->collections[cpu];
-	if (IS_ENABLED(CONFIG_PCI_MSI) && d->msi_desc)
-		id = its_msi_get_entry_nr(d->msi_desc);
-	else
-		id = d->hwirq;
 	its_send_movi(its_dev, target_col, id);
 	its_dev->collection = target_col;
 
 	return IRQ_SET_MASK_OK;
+}
+
+static void its_irq_compose_msi_msg(struct irq_data *d, struct msi_msg *msg)
+{
+	struct its_device *its_dev = irq_data_get_irq_chip_data(d);
+	struct its_node *its;
+	u64 addr;
+
+	its = its_dev->its;
+	addr = its->phys_base + GITS_TRANSLATER;
+
+	msg->address_lo		= addr & ((1UL << 32) - 1);
+	msg->address_hi		= addr >> 32;
+	msg->data		= its_get_event_id(d);
 }
 
 static struct irq_chip its_irq_chip = {
@@ -616,6 +609,7 @@ static struct irq_chip its_irq_chip = {
 	.irq_unmask		= its_unmask_irq,
 	.irq_eoi		= its_eoi_irq,
 	.irq_set_affinity	= its_set_affinity,
+	.irq_compose_msi_msg	= its_irq_compose_msi_msg,
 };
 
 /*
@@ -1079,8 +1073,7 @@ static void its_free_device(struct its_device *its_dev)
 	kfree(its_dev);
 }
 
-static int its_alloc_device_irq(struct its_device *dev, u32 id,
-				int *hwirq, unsigned int *irq)
+static int its_alloc_device_irq(struct its_device *dev, irq_hw_number_t *hwirq)
 {
 	int idx;
 
@@ -1089,102 +1082,16 @@ static int its_alloc_device_irq(struct its_device *dev, u32 id,
 		return -ENOSPC;
 
 	*hwirq = dev->lpi_base + idx;
-	*irq = irq_create_mapping(lpi_domain, *hwirq);
-	if (!*irq)
-		return -ENOSPC;	/* Don't kill the device, though */
-
 	set_bit(idx, dev->lpi_map);
 
 	/* Map the GIC irq ID to the device */
-	its_send_mapvi(dev, *hwirq, id);
+	its_send_mapvi(dev, *hwirq, idx);
 
 	return 0;
 }
 
 /* FIXME: Use proper API once it is available in the kernel... */
 #define PCI_REQUESTER_ID(dev)	PCI_DEVID((dev)->bus->number, (dev)->devfn)
-
-static int its_msi_get_vec_count(struct pci_dev *pdev, struct msi_desc *desc)
-{
-#ifdef CONFIG_PCI_MSI
-	if (desc->msi_attrib.is_msix)
-		return pci_msix_vec_count(pdev);
-	else
-		return pci_msi_vec_count(pdev);
-#else
-	return -EINVAL;
-#endif
-}
-
-static int its_msi_setup_irq(struct msi_chip *chip,
-			     struct pci_dev *pdev,
-			     struct msi_desc *desc)
-{
-	struct its_node *its = container_of(chip, struct its_node, msi_chip);
-	struct its_device *its_dev;
-	struct msi_msg msg;
-	unsigned int irq;
-	u64 addr;
-	int hwirq;
-	int err;
-	u32 dev_id = PCI_REQUESTER_ID(pdev);
-	u32 vec_nr;
-
-	its_dev = its_find_device(its, dev_id);
-	if (!its_dev) {
-		int nvec = its_msi_get_vec_count(pdev, desc);
-		if (WARN_ON(nvec <= 0))
-			return nvec;
-		its_dev = its_create_device(its, dev_id, nvec);
-		dev_info(&pdev->dev, "ITT %d entries, %d bits\n", nvec, ilog2(nvec));
-	}
-	if (!its_dev)
-		return -ENOMEM;
-	vec_nr = its_msi_get_entry_nr(desc);
-	err = its_alloc_device_irq(its_dev, vec_nr, &hwirq, &irq);
-	if (err)
-		return err;
-
-	dev_info(&pdev->dev, "ID:%d pID:%d vID:%d\n", its_msi_get_entry_nr(desc), hwirq, irq);
-	irq_set_msi_desc(irq, desc);
-	irq_set_handler_data(irq, its_dev);
-
-	addr = its->phys_base + GITS_TRANSLATER;
-
-	msg.address_lo		= addr & ((1UL << 32) - 1);
-	msg.address_hi		= addr >> 32;
-	msg.data		= vec_nr;
-
-	write_msi_msg(irq, &msg);
-	return 0;
-}
-
-static void its_msi_teardown_irq(struct msi_chip *chip, unsigned int irq)
-{
-	struct irq_data *d = irq_get_irq_data(irq);
-	struct its_device *its_dev = irq_data_get_irq_handler_data(d);
-
-	BUG_ON(d->hwirq < its_dev->lpi_base ||		/* OMG! */
-	       d->hwirq > (its_dev->lpi_base + its_dev->nr_lpis));
-
-	/* Stop the delivery of interrupts */
-	its_send_discard(its_dev, its_msi_get_entry_nr(d->msi_desc));
-
-	/* Mark interrupt index as unused, and clear the mapping */
-	clear_bit(d->hwirq - its_dev->lpi_base, its_dev->lpi_map);
-	irq_dispose_mapping(irq);
-
-	/* If all interrupts have been freed, start mopping the floor */
-	if (bitmap_empty(its_dev->lpi_map, its_dev->nr_lpis)) {
-		its_lpi_free(its_dev->lpi_map,
-			     its_dev->lpi_base,
-			     its_dev->nr_lpis);
-
-		/* Unmap device/itt */
-		its_send_mapd(its_dev, 0);
-		its_free_device(its_dev);
-	}
-}
 
 static int its_probe(struct device_node *node)
 {
@@ -1266,12 +1173,8 @@ static int its_probe(struct device_node *node)
 	spin_unlock(&its_lock);
 
 	if (IS_ENABLED(CONFIG_PCI_MSI) && /* Remove this once we have PCI... */
-	    of_property_read_bool(its->msi_chip.of_node, "msi-controller")) {
-		its->msi_chip.setup_irq		= its_msi_setup_irq;
-		its->msi_chip.teardown_irq	= its_msi_teardown_irq;
-
+	    of_property_read_bool(its->msi_chip.of_node, "msi-controller"))
 		err = of_pci_msi_chip_add(&its->msi_chip);
-	}
 
 	return err;
 
@@ -1312,27 +1215,130 @@ static struct of_device_id its_device_id[] = {
 	{},
 };
 
-struct irq_chip *its_init(struct device_node *node, struct rdists *rdists,
-			  struct irq_domain *domain)
+static int its_irq_gic_domain_alloc(struct irq_domain *domain,
+				    unsigned int virq,
+				    irq_hw_number_t hwirq)
 {
-	struct device_node *np;
+	struct of_phandle_args args;
 
-	for (np = of_find_matching_node(node, its_device_id); np;
+	args.np = domain->parent->of_node;
+	args.args_count = 3;
+	args.args[0] = GIC_IRQ_TYPE_LPI;
+	args.args[1] = hwirq;
+	args.args[2] = IRQ_TYPE_EDGE_RISING;
+
+	return irq_domain_alloc_irqs_parent(domain, virq, 1, &args);
+}
+
+static int its_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
+				unsigned int nr_irqs, void *arg)
+{
+	struct arm64_msi_info *info = arg;
+	struct pci_dev *pdev = info->pdev;
+	struct msi_chip *chip = pdev->bus->msi;
+	struct its_node *its = container_of(chip, struct its_node, msi_chip);
+	u32 dev_id = PCI_REQUESTER_ID(pdev);
+	struct its_device *its_dev;
+	irq_hw_number_t hwirq;
+	int err;
+	int i;
+
+	its_dev = its_find_device(its, dev_id);
+	if (!its_dev) {
+		its_dev = its_create_device(its, dev_id, info->nvec);
+		dev_info(&pdev->dev, "ITT %d entries, %d bits\n",
+			 info->nvec, ilog2(info->nvec));
+	}
+	if (!its_dev)
+		return -ENOMEM;
+
+	for (i = 0; i < nr_irqs; i++) {
+		err = its_alloc_device_irq(its_dev, &hwirq);
+		if (err)
+			return err;
+
+		err = its_irq_gic_domain_alloc(domain, virq, hwirq);
+		if (err)
+			return err;
+
+		irq_domain_set_hwirq_and_chip(lpi_domain, virq + i,
+					      hwirq, &its_irq_chip, its_dev);
+		dev_info(&pdev->dev, "ID:%d pID:%d vID:%d\n",
+			 (int)(hwirq - its_dev->lpi_base),
+			 (int)hwirq, virq + i);
+	}
+
+	return 0;
+}
+
+static void its_irq_domain_free(struct irq_domain *domain, unsigned int virq,
+				unsigned int nr_irqs)
+{
+	struct irq_data *d = irq_get_irq_data(virq);
+	struct its_device *its_dev = irq_data_get_irq_chip_data(d);
+	int i;
+
+	for (i = 0; i < nr_irqs; i++) {
+		int event = its_get_event_id(d);
+
+		/* Stop the delivery of interrupts */
+		its_send_discard(its_dev, event);
+
+		/* Mark interrupt index as unused, and clear the mapping */
+		clear_bit(event, its_dev->lpi_map);
+
+		irq_set_handler(virq + i, NULL);
+		irq_domain_set_hwirq_and_chip(domain, virq + i, 0, NULL, NULL);
+	}
+
+	/* If all interrupts have been freed, start mopping the floor */
+	if (bitmap_empty(its_dev->lpi_map, its_dev->nr_lpis)) {
+		its_lpi_free(its_dev->lpi_map,
+			     its_dev->lpi_base,
+			     its_dev->nr_lpis);
+
+		/* Unmap device/itt */
+		its_send_mapd(its_dev, 0);
+		its_free_device(its_dev);
+	}
+
+	irq_domain_free_irqs_parent(domain, virq, nr_irqs);
+}
+
+static const struct irq_domain_ops its_domain_ops = {
+	.alloc			= its_irq_domain_alloc,
+	.free			= its_irq_domain_free,
+};
+
+int its_init(struct device_node *node, struct rdists *rdists,
+	     struct irq_domain *domain)
+{
+	struct device_node *np, *first;
+
+	for (first = np = of_find_matching_node(node, its_device_id); np;
 	     np = of_find_matching_node(np, its_device_id)) {
 		its_probe(np);
 	}
 
 	if (list_empty(&its_nodes)) {
 		pr_info("ITS: No ITS available, not enabling LPIs\n");
-		return NULL;
+		return -ENXIO;
 	}
 
 	gic_rdists = rdists;
 	gic_root_node = node;
-	lpi_domain = domain;
+	lpi_domain = irq_domain_add_tree(first, &its_domain_ops, NULL);
+	if (!lpi_domain) {
+		pr_info("ITS: No ITS domain allocated, giving up\n");
+		return -ENOMEM;
+	}
+
+	lpi_domain->parent = domain;
+
+	arm64_init_msi_domain(lpi_domain);
 
 	its_alloc_lpi_tables();
 	its_lpi_init(rdists->id_bits);
 
-	return &its_irq_chip;
+	return 0;
 }

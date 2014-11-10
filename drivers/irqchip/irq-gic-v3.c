@@ -599,8 +599,6 @@ static struct irq_chip gic_chip = {
 	.irq_set_affinity	= gic_set_affinity,
 };
 
-static struct irq_chip *its_chip;
-
 #define GIC_ID_NR		(1U << gic_data.rdists.id_bits)
 
 static int gic_irq_domain_map(struct irq_domain *d, unsigned int irq,
@@ -633,10 +631,10 @@ static int gic_irq_domain_map(struct irq_domain *d, unsigned int irq,
 	}
 	/* LPIs */
 	if (hw >= 8192 && hw < GIC_ID_NR) {
-		if (!its_chip)
+		if (!gic_dist_supports_lpis())
 			return -EPERM;
 		irq_domain_set_hwirq_and_chip(d, irq, hw,
-					      its_chip, d->host_data);
+					      &gic_chip, d->host_data);
 		irq_set_handler(irq, handle_fasteoi_irq);
 		set_irq_flags(irq, IRQF_VALID);
 	}
@@ -660,6 +658,9 @@ static int gic_irq_domain_xlate(struct irq_domain *d,
 		break;
 	case 1:			/* PPI */
 		*out_hwirq = intspec[1] + 16;
+		break;
+	case GIC_IRQ_TYPE_LPI:	/* LPI */
+		*out_hwirq = intspec[1];
 		break;
 	default:
 		return -EINVAL;
@@ -788,7 +789,7 @@ static int __init gic_of_init(struct device_node *node, struct device_node *pare
 	set_handle_irq(gic_handle_irq);
 
 	if (IS_ENABLED(CONFIG_ARM_GIC_V3_ITS) && gic_dist_supports_lpis())
-		its_chip = its_init(node, &gic_data.rdists, gic_data.domain);
+		its_init(node, &gic_data.rdists, gic_data.domain);
 
 	gic_smp_init();
 	gic_dist_init();

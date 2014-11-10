@@ -295,6 +295,12 @@
 
 #include <linux/stringify.h>
 
+/*
+ * We need a value to serve as a irq-type for LPIs. Choose one that will
+ * pick the interest of the reviewer.
+ */
+#define GIC_IRQ_TYPE_LPI		0xa110c8ed
+
 struct rdists {
 	struct {
 		void __iomem	*rd_base;
@@ -314,8 +320,8 @@ static inline void gic_write_eoir(u64 irq)
 
 struct irq_domain;
 int its_cpu_init(void);
-struct irq_chip *its_init(struct device_node *node, struct rdists *rdists,
-			  struct irq_domain *domain);
+int its_init(struct device_node *node, struct rdists *rdists,
+	     struct irq_domain *domain);
 
 #endif
 
