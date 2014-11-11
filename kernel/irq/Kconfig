@@ -55,6 +55,10 @@ config GENERIC_IRQ_CHIP
 config IRQ_DOMAIN
 	bool
 
+config IRQ_DOMAIN_HIERARCHY
+	bool
+	depends on IRQ_DOMAIN
+
 config HANDLE_DOMAIN_IRQ
 	bool
 
