@@ -193,4 +193,12 @@ struct msi_domain_info *msi_get_domain_info(struct irq_domain *domain);
 
 #endif /* CONFIG_GENERIC_MSI_IRQ_DOMAIN */
 
+#ifdef CONFIG_PCI_MSI_IRQ_DOMAIN
+void pci_msi_domain_write_msg(struct irq_data *irq_data, struct msi_msg *msg);
+int pci_msi_domain_alloc_irqs(struct irq_domain *domain, int type,
+			      struct pci_dev *dev, void *arg);
+irq_hw_number_t pci_msi_domain_calc_hwirq(struct pci_dev *dev,
+					  struct msi_desc *desc);
+#endif /* CONFIG_PCI_MSI_IRQ_DOMAIN */
+
 #endif /* LINUX_MSI_H */

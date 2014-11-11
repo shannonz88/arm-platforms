@@ -19,6 +19,7 @@
 #include <linux/errno.h>
 #include <linux/io.h>
 #include <linux/slab.h>
+#include <linux/irqdomain.h>
 
 #include "pci.h"
 
@@ -1078,3 +1079,64 @@ int pci_enable_msix_range(struct pci_dev *dev, struct msix_entry *entries,
 	return nvec;
 }
 EXPORT_SYMBOL(pci_enable_msix_range);
+
+#ifdef CONFIG_PCI_MSI_IRQ_DOMAIN
+void pci_msi_domain_write_msg(struct irq_data *irq_data, struct msi_msg *msg)
+{
+	struct msi_desc *desc = irq_data->msi_desc;
+
+	/*
+	 * MSI-X message is written per-IRQ.
+	 * MSI message denotes a contiguous group of IRQs, written for 0th IRQ.
+	 */
+	if (desc->irq == irq_data->irq)
+		__pci_write_msi_msg(desc, msg);
+}
+
+/*
+ * Generate a unique ID number for each possible MSI source, the ID number
+ * is only used within the irqdomain.
+ */
+irq_hw_number_t pci_msi_domain_calc_hwirq(struct pci_dev *dev,
+					  struct msi_desc *desc)
+{
+	return (irq_hw_number_t)desc->msi_attrib.entry_nr |
+		PCI_DEVID(dev->bus->number, dev->devfn) << 11 |
+		(pci_domain_nr(dev->bus) & 0xFFFFFFFF) << 27;
+}
+
+int pci_msi_domain_alloc_irqs(struct irq_domain *domain, int type,
+			      struct pci_dev *dev, void *arg)
+{
+	struct msi_domain_info *info = domain->host_data;
+	int node = dev_to_node(&dev->dev);
+	struct msi_desc *desc;
+	int i, virq;
+
+	list_for_each_entry(desc, &dev->msi_list, list) {
+		if (info->ops->calc_hwirq)
+			info->ops->calc_hwirq(info, arg, desc);
+
+		virq = irq_domain_alloc_irqs(domain, desc->nvec_used,
+					     node, arg);
+		if (virq < 0) {
+			/* Special handling for pci_enable_msi_range(). */
+			if (type == PCI_CAP_ID_MSI && desc->nvec_used > 1)
+				return 1;
+			else
+				return -ENOSPC;
+		}
+		for (i = 0; i < desc->nvec_used; i++)
+			irq_set_msi_desc_off(virq, i, desc);
+	}
+
+	list_for_each_entry(desc, &dev->msi_list, list)
+		if (desc->nvec_used == 1)
+			dev_dbg(&dev->dev, "irq %d for MSI/MSI-X\n", virq);
+		else
+			dev_dbg(&dev->dev, "irq [%d-%d] for MSI/MSI-X\n",
+				virq, virq + desc->nvec_used - 1);
+
+	return 0;
+}
+#endif /* CONFIG_PCI_MSI_IRQ_DOMAIN */
