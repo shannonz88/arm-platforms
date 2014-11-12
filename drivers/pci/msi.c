@@ -63,8 +63,16 @@ int __weak arch_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
 
 	/*
 	 * If an architecture wants to support multiple MSI, it needs to
-	 * override arch_setup_msi_irqs()
+	 * override arch_setup_msi_irqs(), or provide a way out on a per
+	 * domain basis.
 	 */
+#ifdef CONFIG_PCI_MSI_IRQ_DOMAIN
+	struct msi_chip *chip = dev->bus->msi;
+
+	if (chip->domain)
+		return irq_domain_prepare_alloc_irqs(chip->domain, &dev->dev,
+						     nvec, type);
+#endif
 	if (type == PCI_CAP_ID_MSI && nvec > 1)
 		return 1;
 
