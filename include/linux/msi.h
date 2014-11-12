@@ -15,12 +15,8 @@ struct irq_data;
 struct msi_desc;
 void mask_msi_irq(struct irq_data *data);
 void unmask_msi_irq(struct irq_data *data);
-void __read_msi_msg(struct msi_desc *entry, struct msi_msg *msg);
 void __get_cached_msi_msg(struct msi_desc *entry, struct msi_msg *msg);
-void __write_msi_msg(struct msi_desc *entry, struct msi_msg *msg);
-void read_msi_msg(unsigned int irq, struct msi_msg *msg);
 void get_cached_msi_msg(unsigned int irq, struct msi_msg *msg);
-void write_msi_msg(unsigned int irq, struct msi_msg *msg);
 
 struct msi_desc {
 	struct {
@@ -48,6 +44,12 @@ struct msi_desc {
 	struct msi_msg msg;
 };
 
+#ifdef CONFIG_PCI_MSI
+void __pci_read_msi_msg(struct msi_desc *entry, struct msi_msg *msg);
+void __pci_write_msi_msg(struct msi_desc *entry, struct msi_msg *msg);
+void pci_write_msi_msg(unsigned int irq, struct msi_msg *msg);
+#endif
+
 /*
  * The arch hooks to setup up msi irqs. Those functions are
  * implemented as weak symbols so that they /can/ be overriden by
@@ -74,5 +76,48 @@ struct msi_chip {
 			 struct msi_desc *desc);
 	void (*teardown_irq)(struct msi_chip *chip, unsigned int irq);
 };
+
+#ifdef CONFIG_GENERIC_MSI_IRQ_DOMAIN
+struct irq_domain;
+struct irq_chip;
+struct device_node;
+struct msi_domain_info;
+
+struct msi_domain_ops {
+	void		(*calc_hwirq)(struct msi_domain_info *info, void *arg,
+				      struct msi_desc *desc);
+	irq_hw_number_t	(*get_hwirq)(struct msi_domain_info *info, void *arg);
+	int		(*msi_init)(struct irq_domain *domain,
+				    struct msi_domain_info *info,
+				    unsigned int virq, irq_hw_number_t hwirq,
+				    void *arg);
+	void		(*msi_free)(struct irq_domain *domain,
+				    struct msi_domain_info *info,
+				    unsigned int virq);
+};
+
+struct msi_domain_info {
+	struct msi_domain_ops	*ops;
+	struct irq_chip		*chip;
+	void			*data;
+};
+
+int msi_domain_set_affinity(struct irq_data *data, const struct cpumask *mask,
+			    bool force);
+
+struct irq_domain *msi_create_irq_domain(struct device_node *of_node,
+					 struct msi_domain_info *info,
+					 struct irq_domain *parent);
+struct msi_domain_info *msi_get_domain_info(struct irq_domain *domain);
+
+#endif /* CONFIG_GENERIC_MSI_IRQ_DOMAIN */
+
+#ifdef CONFIG_PCI_MSI_IRQ_DOMAIN
+void pci_msi_domain_write_msg(struct irq_data *irq_data, struct msi_msg *msg);
+int pci_msi_domain_alloc_irqs(struct irq_domain *domain, int type,
+			      struct pci_dev *dev, void *arg);
+irq_hw_number_t pci_msi_domain_calc_hwirq(struct pci_dev *dev,
+					  struct msi_desc *desc);
+#endif /* CONFIG_PCI_MSI_IRQ_DOMAIN */
 
 #endif /* LINUX_MSI_H */
