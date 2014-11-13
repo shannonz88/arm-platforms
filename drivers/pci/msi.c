@@ -1084,7 +1084,7 @@ void pci_msi_domain_write_msg(struct irq_data *irq_data, struct msi_msg *msg)
 	 * MSI message denotes a contiguous group of IRQs, written for 0th IRQ.
 	 */
 	if (desc->irq == irq_data->irq)
-		pci_write_msi_msg(desc, msg);
+		__pci_write_msi_msg(desc, msg);
 }
 
 /*
