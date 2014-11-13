@@ -1063,6 +1063,24 @@ void irq_domain_deactivate_irq(struct irq_data *irq_data)
 	}
 }
 
+int irq_domain_prepare_alloc_irqs(struct irq_domain *d, struct device *dev,
+				  unsigned int nr_irqs, int type)
+{
+	int err = -ENOSYS;
+
+	while (d) {
+		/* Stop at the first domain implementing this. */
+		if (d->ops->prepare_alloc_irqs) {
+			err = d->ops->prepare_alloc_irqs(d, dev, nr_irqs, type);
+			break;
+		}
+
+		d = d->parent;
+	}
+
+	return err;
+}
+
 static void irq_domain_check_hierarchy(struct irq_domain *domain)
 {
 	/* Hierarchy irq_domains must implement callback alloc() */

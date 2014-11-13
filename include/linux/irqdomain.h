@@ -41,6 +41,7 @@ struct irq_domain;
 struct of_device_id;
 struct irq_chip;
 struct irq_data;
+struct device;
 
 /* Number of irqs reserved for a legacy isa controller */
 #define NUM_ISA_INTERRUPTS	16
@@ -76,6 +77,10 @@ struct irq_domain_ops {
 		     unsigned int nr_irqs);
 	void (*activate)(struct irq_domain *d, struct irq_data *irq_data);
 	void (*deactivate)(struct irq_domain *d, struct irq_data *irq_data);
+	int (*prepare_alloc_irqs)(struct irq_domain *d, struct device *dev,
+				  unsigned int nr_irqs, int type);
+	int (*cleanup_free_irqs)(struct irq_domain *d, struct device *dev,
+				 unsigned int virq, unsigned int nr_irqs);
 #endif
 };
 
@@ -252,6 +257,9 @@ extern int __irq_domain_alloc_irqs(struct irq_domain *domain, int irq_base,
 extern void irq_domain_free_irqs(unsigned int virq, unsigned int nr_irqs);
 extern void irq_domain_activate_irq(struct irq_data *irq_data);
 extern void irq_domain_deactivate_irq(struct irq_data *irq_data);
+extern int irq_domain_prepare_alloc_irqs(struct irq_domain *d,
+					 struct device *dev,
+					 unsigned int nr_irqs, int type);
 
 static inline int irq_domain_alloc_irqs(struct irq_domain *domain,
 			unsigned int nr_irqs, int node, void *arg)
