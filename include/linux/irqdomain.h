@@ -130,6 +130,8 @@ struct irq_domain {
 };
 
 #define	IRQ_DOMAIN_FLAG_HIERARCHY	0x1
+/* Framework automatically calls parent domain's alloc()/free() */
+#define	IRQ_DOMAIN_FLAG_AUTO_RECURSIVE	0x2
 #define	IRQ_DOMAIN_FLAG_ARCH1		0x10000
 
 #ifdef CONFIG_IRQ_DOMAIN
@@ -275,22 +277,13 @@ extern void irq_domain_free_irqs_common(struct irq_domain *domain,
 extern void irq_domain_free_irqs_top(struct irq_domain *domain,
 				     unsigned int virq, unsigned int nr_irqs);
 
-static inline int irq_domain_alloc_irqs_parent(struct irq_domain *domain,
-					       unsigned int irq_base,
-					       unsigned int nr_irqs, void *arg)
-{
-	if (domain->parent && domain->parent->ops->alloc)
-		return domain->parent->ops->alloc(domain->parent, irq_base,
-						  nr_irqs, arg);
-	return -ENOSYS;
-}
+extern int irq_domain_alloc_irqs_parent(struct irq_domain *domain,
+					unsigned int irq_base,
+					unsigned int nr_irqs, void *arg);
 
-static inline void irq_domain_free_irqs_parent(struct irq_domain *domain,
-				unsigned int irq_base, unsigned int nr_irqs)
-{
-	if (domain->parent && domain->parent->ops->free)
-		domain->parent->ops->free(domain->parent, irq_base, nr_irqs);
-}
+extern void irq_domain_free_irqs_parent(struct irq_domain *domain,
+					unsigned int irq_base,
+					unsigned int nr_irqs);
 
 static inline bool irq_domain_is_hierarchy(struct irq_domain *domain)
 {
