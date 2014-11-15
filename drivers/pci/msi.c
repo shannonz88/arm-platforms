@@ -1105,38 +1105,99 @@ irq_hw_number_t pci_msi_domain_calc_hwirq(struct pci_dev *dev,
 		(pci_domain_nr(dev->bus) & 0xFFFFFFFF) << 27;
 }
 
-int pci_msi_domain_alloc_irqs(struct irq_domain *domain, int type,
-			      struct pci_dev *dev, void *arg)
+static inline bool pci_msi_desc_is_multi_msi(struct msi_desc *desc)
 {
-	struct msi_domain_info *info = domain->host_data;
-	int node = dev_to_node(&dev->dev);
-	struct msi_desc *desc;
-	int i, virq;
+	return !desc->msi_attrib.is_msix && desc->nvec_used > 1;
+}
 
-	list_for_each_entry(desc, &dev->msi_list, list) {
-		if (info->ops->calc_hwirq)
-			info->ops->calc_hwirq(info, arg, desc);
+int pci_msi_domain_check_cap(struct irq_domain *domain,
+			     struct msi_domain_info *info, struct device *dev)
+{
+	struct msi_desc *desc = first_pci_msi_entry(to_pci_dev(dev));
 
-		virq = irq_domain_alloc_irqs(domain, desc->nvec_used,
-					     node, arg);
-		if (virq < 0) {
-			/* Special handling for pci_enable_msi_range(). */
-			if (type == PCI_CAP_ID_MSI && desc->nvec_used > 1)
-				return 1;
-			else
-				return -ENOSPC;
-		}
-		for (i = 0; i < desc->nvec_used; i++)
-			irq_set_msi_desc_off(virq, i, desc);
-	}
-
-	list_for_each_entry(desc, &dev->msi_list, list)
-		if (desc->nvec_used == 1)
-			dev_dbg(&dev->dev, "irq %d for MSI/MSI-X\n", virq);
-		else
-			dev_dbg(&dev->dev, "irq [%d-%d] for MSI/MSI-X\n",
-				virq, virq + desc->nvec_used - 1);
+	/* Special handling to support pci_enable_msi_range() */
+	if (pci_msi_desc_is_multi_msi(desc) &&
+	    !(info->flags & MSI_FLAG_MULTI_PCI_MSI))
+		return 1;
+	else if (desc->msi_attrib.is_msix && !(info->flags & MSI_FLAG_PCI_MSIX))
+		return -ENOTSUPP;
 
 	return 0;
+}
+
+static int pci_msi_domain_handle_error(struct irq_domain *domain,
+				       struct msi_desc *desc, int error)
+{
+	/* Special handling to support pci_enable_msi_range() */
+	if (pci_msi_desc_is_multi_msi(desc) && error == -ENOSPC)
+		return 1;
+
+	return error;
+}
+
+#ifndef msi_alloc_info_t
+static void pci_msi_domain_set_desc(struct msi_alloc_info *arg,
+				    struct msi_desc *desc)
+{
+	arg->desc = desc;
+	arg->hwirq = pci_msi_domain_calc_hwirq(msi_desc_to_pci_dev(desc),
+					       desc);
+}
+#else
+#define pci_msi_domain_set_desc		NULL
+#endif
+
+static struct msi_domain_ops pci_msi_domain_ops_default = {
+	.set_desc	= pci_msi_domain_set_desc,
+	.msi_check	= pci_msi_domain_check_cap,
+	.handle_error	= pci_msi_domain_handle_error,
+};
+
+static void pci_msi_domain_update_dom_ops(struct msi_domain_info *info)
+{
+	struct msi_domain_ops *ops = info->ops;
+
+	if (ops == NULL) {
+		info->ops = &pci_msi_domain_ops_default;
+	} else {
+		if (ops->set_desc == NULL)
+			ops->set_desc = pci_msi_domain_set_desc;
+		if (ops->msi_check == NULL)
+			ops->msi_check = pci_msi_domain_check_cap;
+		if (ops->handle_error == NULL)
+			ops->handle_error = pci_msi_domain_handle_error;
+	}
+}
+
+static void pci_msi_domain_update_chip_ops(struct msi_domain_info *info)
+{
+	struct irq_chip *chip = info->chip;
+
+	BUG_ON(!chip);
+	if (!chip->irq_write_msi_msg)
+		chip->irq_write_msi_msg = pci_msi_domain_write_msg;
+}
+
+struct irq_domain *pci_msi_create_irq_domain(struct device_node *node,
+					     struct msi_domain_info *info,
+					     struct irq_domain *parent)
+{
+	if (info->flags & MSI_FLAG_USE_DEF_DOM_OPS)
+		pci_msi_domain_update_dom_ops(info);
+	if (info->flags & MSI_FLAG_USE_DEF_CHIP_OPS)
+		pci_msi_domain_update_chip_ops(info);
+
+	return msi_create_irq_domain(node, info, parent);
+}
+
+int pci_msi_domain_alloc_irqs(struct irq_domain *domain, struct pci_dev *dev,
+			      int nvec, int type)
+{
+	return msi_domain_alloc_irqs(domain, &dev->dev, nvec);
+}
+
+void pci_msi_domain_free_irqs(struct irq_domain *domain, struct pci_dev *dev)
+{
+	msi_domain_free_irqs(domain, &dev->dev);
 }
 #endif /* CONFIG_PCI_MSI_IRQ_DOMAIN */
