@@ -3,6 +3,7 @@
 
 #include <linux/kobject.h>
 #include <linux/list.h>
+#include <linux/irqhandler.h>
 #include <asm/hw_irq.h>		/* for msi_alloc_info_t */
 
 struct msi_msg {
@@ -130,13 +131,15 @@ typedef struct msi_alloc_info msi_alloc_info_t;
 
 struct msi_domain_ops {
 	/* Callbacks for msi_create_irq_domain() */
-	void		(*calc_hwirq)(struct msi_domain_info *info, void *arg,
+	void		(*calc_hwirq)(struct msi_domain_info *info,
+				      msi_alloc_info_t *arg,
 				      struct msi_desc *desc);
-	irq_hw_number_t	(*get_hwirq)(struct msi_domain_info *info, void *arg);
+	irq_hw_number_t	(*get_hwirq)(struct msi_domain_info *info,
+				     msi_alloc_info_t *arg);
 	int		(*msi_init)(struct irq_domain *domain,
 				    struct msi_domain_info *info,
 				    unsigned int virq, irq_hw_number_t hwirq,
-				    void *arg);
+				    msi_alloc_info_t *arg);
 	void		(*msi_free)(struct irq_domain *domain,
 				    struct msi_domain_info *info,
 				    unsigned int virq);
@@ -156,15 +159,31 @@ struct msi_domain_ops {
 };
 
 struct msi_domain_info {
+	u32			flags;
 	struct msi_domain_ops	*ops;
 	struct irq_chip		*chip;
-	void			*data;
+	void			*chip_data;	/* optional chip data */
+	irq_flow_handler_t	handler;	/* optional flow handler */
+	void			*handler_data;	/* optional handler data */
+	const char		*handler_name;	/* optional handler name */
+	void			*data;		/* optional private data */
 };
+
+/* Use default MSI domain ops if possible */
+#define MSI_FLAG_USE_DEF_DOM_OPS	0x1
+/* Use default MSI chip ops if possible */
+#define MSI_FLAG_USE_DEF_CHIP_OPS	0x2
+/* Build identity map between hwirq and irq */
+#define MSI_FLAG_IDENTITY_MAP		0x10
+/* Support multiple PCI MSI interrupts */
+#define MSI_FLAG_MULTI_PCI_MSI		0x100
+/* Support PCI MSIX interrupts */
+#define MSI_FLAG_PCI_MSIX		0x200
 
 int msi_domain_set_affinity(struct irq_data *data, const struct cpumask *mask,
 			    bool force);
 
-struct irq_domain *msi_create_irq_domain(struct device_node *of_node,
+struct irq_domain *msi_create_irq_domain(struct device_node *node,
 					 struct msi_domain_info *info,
 					 struct irq_domain *parent);
 int msi_domain_alloc_irqs(struct irq_domain *domain, struct device *dev,
