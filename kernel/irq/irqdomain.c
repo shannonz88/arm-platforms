@@ -742,6 +742,25 @@ static int irq_domain_alloc_descs(int virq, unsigned int cnt,
 }
 
 #ifdef	CONFIG_IRQ_DOMAIN_HIERARCHY
+struct irq_domain *irq_domain_add_hierarchy(struct irq_domain *parent,
+			unsigned int flags, unsigned int size,
+			struct device_node *node,
+			const struct irq_domain_ops *ops, void *host_data)
+{
+	struct irq_domain *domain;
+
+	if (size)
+		domain = irq_domain_add_linear(node, size, ops, host_data);
+	else
+		domain = irq_domain_add_tree(node, ops, host_data);
+	if (domain) {
+		domain->parent = parent;
+		domain->flags |= flags;
+	}
+
+	return domain;
+}
+
 static void irq_domain_insert_irq(int virq)
 {
 	struct irq_data *data;
