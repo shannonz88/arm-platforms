@@ -13,6 +13,9 @@
 #include <linux/irqdomain.h>
 #include <linux/msi.h>
 
+/* Temparory solution for building, will be removed later */
+#include <linux/pci.h>
+
 void __get_cached_msi_msg(struct msi_desc *entry, struct msi_msg *msg)
 {
 	*msg = entry->msg;
@@ -122,6 +125,63 @@ struct irq_domain *msi_create_irq_domain(struct device_node *of_node,
 		domain->parent = parent;
 
 	return domain;
+}
+
+int msi_domain_alloc_irqs(struct irq_domain *domain, struct device *dev,
+			  int nvec)
+{
+	int i, ret, virq = -1;
+	msi_alloc_info_t arg;
+	struct msi_desc *desc;
+	struct msi_domain_info *info = domain->host_data;
+	struct msi_domain_ops *ops = info->ops;
+
+	ret = ops->msi_check(domain, info, dev);
+	if (ret == 0)
+		ret = ops->msi_prepare(domain, dev, nvec, &arg);
+	if (ret)
+		return ret;
+
+	for_each_msi_entry(desc, dev) {
+		ops->set_desc(&arg, desc);
+
+		virq = __irq_domain_alloc_irqs(domain, -1, desc->nvec_used,
+					       dev_to_node(dev), &arg, false);
+		if (virq < 0) {
+			ret = -ENOSPC;
+			if (ops->handle_error)
+				ret = ops->handle_error(domain, desc, ret);
+			if (ops->msi_finish)
+				ops->msi_finish(&arg, ret);
+			return ret;
+		}
+
+		for (i = 0; i < desc->nvec_used; i++)
+			irq_set_msi_desc_off(virq, i, desc);
+	}
+
+	if (ops->msi_finish)
+		ops->msi_finish(&arg, 0);
+
+	for_each_msi_entry(desc, dev) {
+		if (desc->nvec_used == 1)
+			dev_dbg(dev, "irq %d for MSI\n", virq);
+		else
+			dev_dbg(dev, "irq [%d-%d] for MSI\n",
+				virq, virq + desc->nvec_used - 1);
+	}
+
+	return 0;
+}
+
+void msi_domain_free_irqs(struct irq_domain *domain, struct device *dev)
+{
+	struct msi_desc *desc;
+
+	for_each_msi_entry(desc, dev) {
+		irq_domain_free_irqs(desc->irq, desc->nvec_used);
+		desc->irq = 0;
+	}
 }
 
 struct msi_domain_info *msi_get_domain_info(struct irq_domain *domain)

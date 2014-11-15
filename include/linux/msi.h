@@ -3,6 +3,7 @@
 
 #include <linux/kobject.h>
 #include <linux/list.h>
+#include <asm/hw_irq.h>		/* for msi_alloc_info_t */
 
 struct msi_msg {
 	u32	address_lo;	/* low 32 bits of msi message address */
@@ -106,7 +107,29 @@ struct irq_chip;
 struct device_node;
 struct msi_domain_info;
 
+#ifndef NUM_MSI_ALLOC_SCRATCHPAD_REGS
+#define NUM_MSI_ALLOC_SCRATCHPAD_REGS	2
+#endif
+
+/*
+ * Default structure for MSI interrupt allocation.
+ * Arch may overwrite it by defining msi_alloc_info_t.
+ */
+struct msi_alloc_info {
+	struct msi_desc			*desc;
+	irq_hw_number_t			hwirq;
+	union {
+		unsigned long		ul;
+		void			*ptr;
+	} scratchpad[NUM_MSI_ALLOC_SCRATCHPAD_REGS];
+};
+
+#ifndef msi_alloc_info_t
+typedef struct msi_alloc_info msi_alloc_info_t;
+#endif
+
 struct msi_domain_ops {
+	/* Callbacks for msi_create_irq_domain() */
 	void		(*calc_hwirq)(struct msi_domain_info *info, void *arg,
 				      struct msi_desc *desc);
 	irq_hw_number_t	(*get_hwirq)(struct msi_domain_info *info, void *arg);
@@ -117,6 +140,19 @@ struct msi_domain_ops {
 	void		(*msi_free)(struct irq_domain *domain,
 				    struct msi_domain_info *info,
 				    unsigned int virq);
+
+	/* Callbacks for msi_irq_domain_alloc_irqs() based on msi_descs */
+	int		(*msi_check)(struct irq_domain *domain,
+				     struct msi_domain_info *info,
+				     struct device *dev);
+	int		(*msi_prepare)(struct irq_domain *domain,
+				       struct device *dev, int nvec,
+				       msi_alloc_info_t *arg);
+	void		(*msi_finish)(msi_alloc_info_t *arg, int retval);
+	void		(*set_desc)(msi_alloc_info_t *arg,
+				    struct msi_desc *desc);
+	int		(*handle_error)(struct irq_domain *domain,
+					struct msi_desc *desc, int error);
 };
 
 struct msi_domain_info {
@@ -131,6 +167,9 @@ int msi_domain_set_affinity(struct irq_data *data, const struct cpumask *mask,
 struct irq_domain *msi_create_irq_domain(struct device_node *of_node,
 					 struct msi_domain_info *info,
 					 struct irq_domain *parent);
+int msi_domain_alloc_irqs(struct irq_domain *domain, struct device *dev,
+			  int nvec);
+void msi_domain_free_irqs(struct irq_domain *domain, struct device *dev);
 struct msi_domain_info *msi_get_domain_info(struct irq_domain *domain);
 
 #endif /* CONFIG_GENERIC_MSI_IRQ_DOMAIN */
