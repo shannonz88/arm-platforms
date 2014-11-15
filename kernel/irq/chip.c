@@ -731,7 +731,16 @@ __irq_set_handler(unsigned int irq, irq_flow_handler_t handle, int is_chained,
 	if (!handle) {
 		handle = handle_bad_irq;
 	} else {
-		if (WARN_ON(desc->irq_data.chip == &no_irq_chip))
+		struct irq_data *irq_data = &desc->irq_data;
+#ifdef CONFIG_IRQ_DOMAIN_HIERARCHY
+		while (irq_data) {
+			if (irq_data->chip != &no_irq_chip)
+				break;
+			irq_data = irq_data->parent_data;
+		}
+#endif
+
+		if (WARN_ON(!irq_data || irq_data->chip == &no_irq_chip))
 			goto out;
 	}
 
