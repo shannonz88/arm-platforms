@@ -46,7 +46,6 @@
 #include <asm/smp_plat.h>
 
 #include "irq-gic-common.h"
-#include "irq-gic-v2m.h"
 #include "irqchip.h"
 
 union gic_base {
