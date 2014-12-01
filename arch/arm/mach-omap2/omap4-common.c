@@ -273,6 +273,5 @@ void __init omap_gic_of_init(void)
 	WARN_ON(!twd_base);
 
 skip_errata_init:
-	omap_wakeupgen_init();
 	irqchip_init();
 }
