@@ -42,7 +42,6 @@ struct gen_pci {
 	struct pci_host_bridge			host;
 	struct gen_pci_cfg_windows		cfg;
 	struct list_head			resources;
-	struct device_node *msi_parent;
 };
 
 #ifdef CONFIG_ARM64
@@ -225,7 +224,6 @@ struct pci_bus *gen_scan_root_bus(struct device *parent, int bus,
 	bool found = false;
 	struct pci_bus *b;
 	int max;
-	struct gen_pci *pci = sysdata;
 
 	resource_list_for_each_entry(window, resources)
 		if (window->res->flags & IORESOURCE_BUS) {
@@ -236,12 +234,6 @@ struct pci_bus *gen_scan_root_bus(struct device *parent, int bus,
 	b = pci_create_root_bus(parent, bus, ops, sysdata, resources);
 	if (!b)
 		return NULL;
-
-	/* TODO:
-	 * This is probably should be done in the core pci driver somewhere
-	 */
-	if (pci->msi_parent)
-		b->msi = of_pci_find_msi_chip_by_node(pci->msi_parent);
 
 	if (!found) {
 		dev_info(&b->dev,
@@ -317,10 +309,6 @@ static int gen_pci_probe(struct platform_device *pdev)
 		return err;
 	}
 #ifdef CONFIG_ARM64
-
-#ifdef CONFIG_PCI_MSI
-	pci->msi_parent = of_parse_phandle(np, "msi-parent", 0);
-#endif
 
 	bus = gen_scan_root_bus(&pdev->dev, pci->cfg.bus_range->start,
 				&gen_pci_ops, pci, &pci->resources);
