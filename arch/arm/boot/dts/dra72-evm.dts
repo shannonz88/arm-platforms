@@ -39,7 +39,6 @@
 		reg = <0x58>;
 
 		interrupts = <GIC_SPI 2 IRQ_TYPE_NONE>;  /* IRQ_SYS_1N */
-		interrupt-parent = <&gic>;
 		interrupt-controller;
 		#interrupt-cells = <2>;
 

@@ -103,13 +103,12 @@ static inline void imx_scu_map_io(void) {}
 static inline void imx_smp_prepare(void) {}
 #endif
 void imx_src_init(void);
-void imx_gpc_init(void);
 void imx_gpc_pre_suspend(bool arm_power_off);
 void imx_gpc_post_resume(void);
 void imx_gpc_mask_all(void);
 void imx_gpc_restore_all(void);
-void imx_gpc_irq_mask(struct irq_data *d);
-void imx_gpc_irq_unmask(struct irq_data *d);
+void imx_gpc_hwirq_mask(unsigned int hwirq);
+void imx_gpc_hwirq_unmask(unsigned int hwirq);
 void imx_anatop_init(void);
 void imx_anatop_pre_suspend(void);
 void imx_anatop_post_resume(void);
