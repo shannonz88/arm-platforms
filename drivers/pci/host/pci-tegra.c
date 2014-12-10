@@ -238,7 +238,6 @@
 	)
 
 struct tegra_msi {
-	struct msi_controller chip;
 	DECLARE_BITMAP(used, INT_PCI_MSI_NR);
 	struct irq_domain *domain;
 	unsigned long pages;
@@ -258,11 +257,6 @@ struct tegra_pcie_soc_data {
 	bool has_cml_clk;
 	bool has_gen2;
 };
-
-static inline struct tegra_msi *to_tegra_msi(struct msi_controller *chip)
-{
-	return container_of(chip, struct tegra_msi, chip);
-}
 
 struct tegra_pcie {
 	struct device *dev;
@@ -1122,37 +1116,6 @@ static int tegra_pcie_put_resources(struct tegra_pcie *pcie)
 	return 0;
 }
 
-static int tegra_msi_alloc(struct tegra_msi *chip)
-{
-	int msi;
-
-	mutex_lock(&chip->lock);
-
-	msi = find_first_zero_bit(chip->used, INT_PCI_MSI_NR);
-	if (msi < INT_PCI_MSI_NR)
-		set_bit(msi, chip->used);
-	else
-		msi = -ENOSPC;
-
-	mutex_unlock(&chip->lock);
-
-	return msi;
-}
-
-static void tegra_msi_free(struct tegra_msi *chip, unsigned long irq)
-{
-	struct device *dev = chip->chip.dev;
-
-	mutex_lock(&chip->lock);
-
-	if (!test_bit(irq, chip->used))
-		dev_err(dev, "trying to free unused MSI#%lu\n", irq);
-	else
-		clear_bit(irq, chip->used);
-
-	mutex_unlock(&chip->lock);
-}
-
 static irqreturn_t tegra_pcie_msi_irq(int irq, void *data)
 {
 	struct tegra_pcie *pcie = data;
@@ -1170,7 +1133,7 @@ static irqreturn_t tegra_pcie_msi_irq(int irq, void *data)
 			/* clear the interrupt */
 			afi_writel(pcie, 1 << offset, AFI_MSI_VEC0 + i * 4);
 
-			irq = irq_find_mapping(msi->domain, index);
+			irq = irq_find_mapping(msi->domain->parent, index);
 			if (irq) {
 				if (test_bit(index, msi->used))
 					generic_handle_irq(irq);
@@ -1194,48 +1157,7 @@ static irqreturn_t tegra_pcie_msi_irq(int irq, void *data)
 	return processed > 0 ? IRQ_HANDLED : IRQ_NONE;
 }
 
-static int tegra_msi_setup_irq(struct msi_controller *chip,
-			       struct pci_dev *pdev, struct msi_desc *desc)
-{
-	struct tegra_msi *msi = to_tegra_msi(chip);
-	struct msi_msg msg;
-	unsigned int irq;
-	int hwirq;
-
-	hwirq = tegra_msi_alloc(msi);
-	if (hwirq < 0)
-		return hwirq;
-
-	irq = irq_create_mapping(msi->domain, hwirq);
-	if (!irq) {
-		tegra_msi_free(msi, hwirq);
-		return -EINVAL;
-	}
-
-	irq_set_msi_desc(irq, desc);
-
-	msg.address_lo = virt_to_phys((void *)msi->pages);
-	/* 32 bit address only */
-	msg.address_hi = 0;
-	msg.data = hwirq;
-
-	pci_write_msi_msg(irq, &msg);
-
-	return 0;
-}
-
-static void tegra_msi_teardown_irq(struct msi_controller *chip,
-				   unsigned int irq)
-{
-	struct tegra_msi *msi = to_tegra_msi(chip);
-	struct irq_data *d = irq_get_irq_data(irq);
-	irq_hw_number_t hwirq = irqd_to_hwirq(d);
-
-	irq_dispose_mapping(irq);
-	tegra_msi_free(msi, hwirq);
-}
-
-static struct irq_chip tegra_msi_irq_chip = {
+static struct irq_chip tegra_msi_top_irq_chip = {
 	.name = "Tegra PCIe MSI",
 	.irq_enable = pci_msi_unmask_irq,
 	.irq_disable = pci_msi_mask_irq,
@@ -1243,21 +1165,111 @@ static struct irq_chip tegra_msi_irq_chip = {
 	.irq_unmask = pci_msi_unmask_irq,
 };
 
-static int tegra_msi_map(struct irq_domain *domain, unsigned int irq,
-			 irq_hw_number_t hwirq)
-{
-	irq_set_chip_and_handler(irq, &tegra_msi_irq_chip, handle_simple_irq);
-	irq_set_chip_data(irq, domain->host_data);
-	set_irq_flags(irq, IRQF_VALID);
+#ifdef PCI_MSI
+static struct msi_domain_info tegra_msi_domain_info = {
+	.flags	= (MSI_FLAG_USE_DEF_DOM_OPS | MSI_FLAG_USE_DEF_CHIP_OPS |
+		   MSI_FLAG_PCI_MSIX),
+	.chip	= &tegra_msi_top_irq_chip,
+};
 
+static void tegra_compose_msi_msg(struct irq_data *data, struct msi_msg *msg)
+{
+	struct tegra_msi *msi = irq_data_get_irq_chip_data(data);
+
+	msg->address_lo = virt_to_phys((void *)msi->pages);
+	/* 32 bit address only */
+	msg->address_hi = 0;
+	msg->data = data->hwirq;
+}
+
+static struct irq_chip tegra_msi_bottom_irq_chip = {
+	.name			= "Tegra MSI",
+	.irq_compose_msi_msg	= tegra_compose_msi_msg,
+};
+
+static int tegra_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
+				  unsigned int nr_irqs, void *args)
+{
+	struct tegra_msi *msi = domain->host_data;
+	int hwirq;
+
+	mutex_lock(&msi->lock);
+
+	hwirq = find_first_zero_bit(msi->used, INT_PCI_MSI_NR);
+	if (hwirq < INT_PCI_MSI_NR)
+		set_bit(hwirq, chip->used);
+	else
+		hwirq = -ENOSPC;
+
+	mutex_unlock(&msi->lock);
+
+	if (hwirq < 0)
+		return hwirq;
+
+	irq_domain_set_info(domain, virq, hwirq, &tegra_msi_bottom_irq_chip,
+			    domain->host_data, handle_simple_irq,
+			    NULL, NULL);
+	set_irq_flags(virq, IRQF_VALID);
 	tegra_cpuidle_pcie_irqs_in_use();
 
 	return 0;
 }
 
+static void tegra_irq_domain_free(struct irq_domain *domain,
+				  unsigned int virq, unsigned int nr_irqs)
+{
+	struct irq_data *d = irq_domain_get_irq_data(domain, virq);
+	struct tegra_msi *msi = irq_data_get_irq_chip_data(d);
+	struct tegra_pcie *pcie = container_of(chip, struct tegra_pcie, msi);
+	struct device *dev = pcie->dev;
+
+	mutex_lock(&msi->lock);
+
+	if (!test_bit(d->hwirq, msi->used))
+		dev_err(dev, "trying to free unused MSI#%lu\n", d->hwirq);
+	else
+		clear_bit(d->hwirq, msi->used);
+
+	mutex_unlock(&msi->lock);
+}
+
 static const struct irq_domain_ops msi_domain_ops = {
-	.map = tegra_msi_map,
+	.alloc	= tegra_irq_domain_alloc,
+	.free	= tegra_irq_domain_free,
 };
+
+static int tegra_allocate_domains(struct tegra_msi *msi)
+{
+	struct irq_domain *inner_domain;
+
+	inner_domain = irq_domain_add_linear(NULL, INT_PCI_MSI_NR,
+					     &msi_domain_ops, msi);
+	if (!inner_domain) {
+		dev_err(&pdev->dev, "failed to create IRQ domain\n");
+		return -ENOMEM;
+	}
+
+	msi->domain = pci_msi_create_irq_domain(pcie->dev->of_node,
+						&tegra_msi_domain_info,
+						inner_domain);
+	if (!msi->domain) {
+		dev_err(&pdev->dev, "failed to create MSI domain\n");
+		irq_domain_remove(inner_domain);
+		return -ENOMEM;
+	}
+}
+
+static void tegra_free_domains(struct tegra_msi *msi)
+{
+	struct irq_domain *inner_domain = msi->domain->parent;
+
+	irq_domain_remove(msi->domain);
+	irq_domain_remove(inner_domain);
+}
+#else
+static int tegra_allocate_domains(struct tegra_msi *msi) { return 0; }
+static void tegra_free_domains(struct tegra_msi *msi) {}
+#endif
 
 static int tegra_pcie_enable_msi(struct tegra_pcie *pcie)
 {
@@ -1270,16 +1282,9 @@ static int tegra_pcie_enable_msi(struct tegra_pcie *pcie)
 
 	mutex_init(&msi->lock);
 
-	msi->chip.dev = pcie->dev;
-	msi->chip.setup_irq = tegra_msi_setup_irq;
-	msi->chip.teardown_irq = tegra_msi_teardown_irq;
-
-	msi->domain = irq_domain_add_linear(pcie->dev->of_node, INT_PCI_MSI_NR,
-					    &msi_domain_ops, &msi->chip);
-	if (!msi->domain) {
-		dev_err(&pdev->dev, "failed to create IRQ domain\n");
-		return -ENOMEM;
-	}
+	err = tegra_allocate_domains(msi);
+	if (err)
+		return err;
 
 	err = platform_get_irq_byname(pdev, "msi");
 	if (err < 0) {
@@ -1290,7 +1295,7 @@ static int tegra_pcie_enable_msi(struct tegra_pcie *pcie)
 	msi->irq = err;
 
 	err = request_irq(msi->irq, tegra_pcie_msi_irq, 0,
-			  tegra_msi_irq_chip.name, pcie);
+			  tegra_msi_top_irq_chip.name, pcie);
 	if (err < 0) {
 		dev_err(&pdev->dev, "failed to request IRQ: %d\n", err);
 		goto err;
@@ -1323,14 +1328,13 @@ static int tegra_pcie_enable_msi(struct tegra_pcie *pcie)
 	return 0;
 
 err:
-	irq_domain_remove(msi->domain);
+	tegra_free_domains(msi);
 	return err;
 }
 
 static int tegra_pcie_disable_msi(struct tegra_pcie *pcie)
 {
 	struct tegra_msi *msi = &pcie->msi;
-	unsigned int i, irq;
 	u32 value;
 
 	/* mask the MSI interrupt */
@@ -1353,14 +1357,7 @@ static int tegra_pcie_disable_msi(struct tegra_pcie *pcie)
 	if (msi->irq > 0)
 		free_irq(msi->irq, pcie);
 
-	for (i = 0; i < INT_PCI_MSI_NR; i++) {
-		irq = irq_find_mapping(msi->domain, i);
-		if (irq > 0)
-			irq_dispose_mapping(irq);
-	}
-
-	irq_domain_remove(msi->domain);
-
+	tegra_free_domains(msi);
 	return 0;
 }
 
@@ -1807,10 +1804,6 @@ static int tegra_pcie_enable(struct tegra_pcie *pcie)
 	}
 
 	memset(&hw, 0, sizeof(hw));
-
-#ifdef CONFIG_PCI_MSI
-	hw.msi_ctrl = &pcie->msi.chip;
-#endif
 
 	hw.nr_controllers = 1;
 	hw.private_data = (void **)&pcie;
