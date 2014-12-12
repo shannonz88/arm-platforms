@@ -50,6 +50,9 @@ struct irq_desc {
 	struct irq_data		irq_data;
 	unsigned int __percpu	*kstat_irqs;
 	irq_flow_handler_t	handle_irq;
+#ifdef CONFIG_IRQ_DOMAIN_HIERARCHY
+	unsigned long		chip_flags;	/* Union of all the irqchips */
+#endif
 #ifdef CONFIG_IRQ_PREFLOW_FASTEOI
 	irq_preflow_handler_t	preflow_handler;
 #endif
@@ -109,6 +112,10 @@ static inline void *irq_desc_get_chip_data(struct irq_desc *desc)
 
 static inline unsigned long irq_desc_get_chip_flags(struct irq_desc *desc)
 {
+#ifdef CONFIG_IRQ_DOMAIN_HIERARCHY
+	if (desc->chip_flags & IRQCHIP_STACKED_CHIPS)
+		return desc->chip_flags;
+#endif
 	return desc->irq_data.chip->flags;
 }
 

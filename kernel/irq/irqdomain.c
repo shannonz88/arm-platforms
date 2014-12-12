@@ -1013,6 +1013,17 @@ static void irq_domain_free_irqs_recursive(struct irq_domain *domain,
 	}
 }
 
+static void irq_desc_update_chip_flags(struct irq_domain *domain,
+				       unsigned int virq)
+{
+#ifdef CONFIG_IRQ_DOMAIN_HIERARCHY
+	struct irq_desc *desc = irq_to_desc(virq);
+	struct irq_data *data = irq_domain_get_irq_data(domain, virq);
+
+	desc->chip_flags |= data->chip->flags | IRQCHIP_STACKED_CHIPS;
+#endif
+}
+
 static int irq_domain_alloc_irqs_recursive(struct irq_domain *domain,
 					   unsigned int irq_base,
 					   unsigned int nr_irqs, void *arg)
@@ -1025,8 +1036,15 @@ static int irq_domain_alloc_irqs_recursive(struct irq_domain *domain,
 	if (recursive)
 		ret = irq_domain_alloc_irqs_recursive(parent, irq_base,
 						      nr_irqs, arg);
-	if (ret >= 0)
+	if (ret >= 0) {
 		ret = domain->ops->alloc(domain, irq_base, nr_irqs, arg);
+		if (ret >= 0) {
+			int i;
+
+			for (i = 0; i < nr_irqs; i++)
+				irq_desc_update_chip_flags(domain, irq_base + i);
+		}
+	}
 	if (ret < 0 && recursive)
 		irq_domain_free_irqs_recursive(parent, irq_base, nr_irqs);
 

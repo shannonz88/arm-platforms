@@ -84,6 +84,9 @@ static void desc_set_defaults(unsigned int irq, struct irq_desc *desc, int node,
 	irq_settings_clr_and_set(desc, ~0, _IRQ_DEFAULT_INIT_FLAGS);
 	irqd_set(&desc->irq_data, IRQD_IRQ_DISABLED);
 	desc->handle_irq = handle_bad_irq;
+#ifdef CONFIG_IRQ_DOMAIN_HIERARCHY
+	desc->chip_flags = 0;
+#endif
 	desc->depth = 1;
 	desc->irq_count = 0;
 	desc->irqs_unhandled = 0;
