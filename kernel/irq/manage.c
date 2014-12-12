@@ -491,7 +491,7 @@ static int set_irq_wake_real(unsigned int irq, unsigned int on)
 	struct irq_desc *desc = irq_to_desc(irq);
 	int ret = -ENXIO;
 
-	if (irq_desc_get_chip(desc)->flags &  IRQCHIP_SKIP_SET_WAKE)
+	if (irq_desc_get_chip_flags(desc) &  IRQCHIP_SKIP_SET_WAKE)
 		return 0;
 
 	if (desc->irq_data.chip->irq_set_wake)
@@ -589,7 +589,7 @@ int __irq_set_trigger(struct irq_desc *desc, unsigned int irq,
 
 	flags &= IRQ_TYPE_SENSE_MASK;
 
-	if (chip->flags & IRQCHIP_SET_TYPE_MASKED) {
+	if (irq_desc_get_chip_flags(desc) & IRQCHIP_SET_TYPE_MASKED) {
 		if (!irqd_irq_masked(&desc->irq_data))
 			mask_irq(desc);
 		if (!irqd_irq_disabled(&desc->irq_data))
@@ -1043,7 +1043,7 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 	 * chip flags, so we can avoid the unmask dance at the end of
 	 * the threaded handler for those.
 	 */
-	if (desc->irq_data.chip->flags & IRQCHIP_ONESHOT_SAFE)
+	if (irq_desc_get_chip_flags(desc) & IRQCHIP_ONESHOT_SAFE)
 		new->flags &= ~IRQF_ONESHOT;
 
 	/*
@@ -1121,7 +1121,7 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 		new->thread_mask = 1 << ffz(thread_mask);
 
 	} else if (new->handler == irq_default_primary_handler &&
-		   !(desc->irq_data.chip->flags & IRQCHIP_ONESHOT_SAFE)) {
+		   !(irq_desc_get_chip_flags(desc) & IRQCHIP_ONESHOT_SAFE)) {
 		/*
 		 * The interrupt was requested with handler = NULL, so
 		 * we use the default primary handler for it. But it

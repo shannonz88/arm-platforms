@@ -287,7 +287,7 @@ void unmask_threaded_irq(struct irq_desc *desc)
 {
 	struct irq_chip *chip = desc->irq_data.chip;
 
-	if (chip->flags & IRQCHIP_EOI_THREADED)
+	if (irq_desc_get_chip_flags(desc) & IRQCHIP_EOI_THREADED)
 		chip->irq_eoi(&desc->irq_data);
 
 	if (chip->irq_unmask) {
@@ -489,7 +489,7 @@ static void cond_unmask_eoi_irq(struct irq_desc *desc, struct irq_chip *chip)
 	    irqd_irq_masked(&desc->irq_data) && !desc->threads_oneshot) {
 		chip->irq_eoi(&desc->irq_data);
 		unmask_irq(desc);
-	} else if (!(chip->flags & IRQCHIP_EOI_THREADED)) {
+	} else if (!(irq_desc_get_chip_flags(desc) & IRQCHIP_EOI_THREADED)) {
 		chip->irq_eoi(&desc->irq_data);
 	}
 }
@@ -538,7 +538,7 @@ handle_fasteoi_irq(unsigned int irq, struct irq_desc *desc)
 	raw_spin_unlock(&desc->lock);
 	return;
 out:
-	if (!(chip->flags & IRQCHIP_EOI_IF_HANDLED))
+	if (!(irq_desc_get_chip_flags(desc) & IRQCHIP_EOI_IF_HANDLED))
 		chip->irq_eoi(&desc->irq_data);
 	raw_spin_unlock(&desc->lock);
 }
@@ -836,7 +836,7 @@ void irq_cpu_online(void)
 
 		chip = irq_data_get_irq_chip(&desc->irq_data);
 		if (chip && chip->irq_cpu_online &&
-		    (!(chip->flags & IRQCHIP_ONOFFLINE_ENABLED) ||
+		    (!(irq_desc_get_chip_flags(desc) & IRQCHIP_ONOFFLINE_ENABLED) ||
 		     !irqd_irq_disabled(&desc->irq_data)))
 			chip->irq_cpu_online(&desc->irq_data);
 
@@ -866,7 +866,7 @@ void irq_cpu_offline(void)
 
 		chip = irq_data_get_irq_chip(&desc->irq_data);
 		if (chip && chip->irq_cpu_offline &&
-		    (!(chip->flags & IRQCHIP_ONOFFLINE_ENABLED) ||
+		    (!(irq_desc_get_chip_flags(desc) & IRQCHIP_ONOFFLINE_ENABLED) ||
 		     !irqd_irq_disabled(&desc->irq_data)))
 			chip->irq_cpu_offline(&desc->irq_data);
 

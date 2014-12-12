@@ -107,6 +107,11 @@ static inline void *irq_desc_get_chip_data(struct irq_desc *desc)
 	return desc->irq_data.chip_data;
 }
 
+static inline unsigned long irq_desc_get_chip_flags(struct irq_desc *desc)
+{
+	return desc->irq_data.chip->flags;
+}
+
 static inline void *irq_desc_get_handler_data(struct irq_desc *desc)
 {
 	return desc->irq_data.handler_data;
