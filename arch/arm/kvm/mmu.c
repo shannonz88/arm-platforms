@@ -58,6 +58,24 @@ static void kvm_tlb_flush_vmid_ipa(struct kvm *kvm, phys_addr_t ipa)
 		kvm_call_hyp(__kvm_tlb_flush_vmid_ipa, kvm, ipa);
 }
 
+static void kvm_flush_dcache_pte(pte_t pte)
+{
+	struct page *page = pte_page(pte);
+	kvm_flush_dcache_to_poc(page_address(page), PAGE_SIZE);
+}
+
+static void kvm_flush_dcache_pmd(pmd_t pmd)
+{
+	struct page *page = pmd_page(pmd);
+	kvm_flush_dcache_to_poc(page_address(page), PMD_SIZE);
+}
+
+static void kvm_flush_dcache_pud(pud_t pud)
+{
+	struct page *page = pud_page(pud);
+	kvm_flush_dcache_to_poc(page_address(page), PUD_SIZE);
+}
+
 static int mmu_topup_memory_cache(struct kvm_mmu_memory_cache *cache,
 				  int min, int max)
 {
@@ -128,9 +146,12 @@ static void unmap_ptes(struct kvm *kvm, pmd_t *pmd,
 	start_pte = pte = pte_offset_kernel(pmd, addr);
 	do {
 		if (!pte_none(*pte)) {
+			pte_t old_pte = *pte;
 			kvm_set_pte(pte, __pte(0));
-			put_page(virt_to_page(pte));
 			kvm_tlb_flush_vmid_ipa(kvm, addr);
+			if ((pte_val(old_pte) & PAGE_S2_DEVICE) != PAGE_S2_DEVICE)
+				kvm_flush_dcache_pte(old_pte);
+			put_page(virt_to_page(pte));
 		}
 	} while (pte++, addr += PAGE_SIZE, addr != end);
 
@@ -149,8 +170,10 @@ static void unmap_pmds(struct kvm *kvm, pud_t *pud,
 		next = kvm_pmd_addr_end(addr, end);
 		if (!pmd_none(*pmd)) {
 			if (kvm_pmd_huge(*pmd)) {
+				pmd_t old_pmd = *pmd;
 				pmd_clear(pmd);
 				kvm_tlb_flush_vmid_ipa(kvm, addr);
+				kvm_flush_dcache_pmd(old_pmd);
 				put_page(virt_to_page(pmd));
 			} else {
 				unmap_ptes(kvm, pmd, addr, next);
@@ -173,8 +196,10 @@ static void unmap_puds(struct kvm *kvm, pgd_t *pgd,
 		next = kvm_pud_addr_end(addr, end);
 		if (!pud_none(*pud)) {
 			if (pud_huge(*pud)) {
+				pud_t old_pud = *pud;
 				pud_clear(pud);
 				kvm_tlb_flush_vmid_ipa(kvm, addr);
+				kvm_flush_dcache_pud(old_pud);
 				put_page(virt_to_page(pud));
 			} else {
 				unmap_pmds(kvm, pud, addr, next);
@@ -209,10 +234,8 @@ static void stage2_flush_ptes(struct kvm *kvm, pmd_t *pmd,
 
 	pte = pte_offset_kernel(pmd, addr);
 	do {
-		if (!pte_none(*pte)) {
-			hva_t hva = gfn_to_hva(kvm, addr >> PAGE_SHIFT);
-			kvm_flush_dcache_to_poc((void*)hva, PAGE_SIZE);
-		}
+		if (!pte_none(*pte))
+			kvm_flush_dcache_pte(*pte);
 	} while (pte++, addr += PAGE_SIZE, addr != end);
 }
 
@@ -226,12 +249,10 @@ static void stage2_flush_pmds(struct kvm *kvm, pud_t *pud,
 	do {
 		next = kvm_pmd_addr_end(addr, end);
 		if (!pmd_none(*pmd)) {
-			if (kvm_pmd_huge(*pmd)) {
-				hva_t hva = gfn_to_hva(kvm, addr >> PAGE_SHIFT);
-				kvm_flush_dcache_to_poc((void*)hva, PMD_SIZE);
-			} else {
+			if (kvm_pmd_huge(*pmd))
+				kvm_flush_dcache_pmd(*pmd);
+			else
 				stage2_flush_ptes(kvm, pmd, addr, next);
-			}
 		}
 	} while (pmd++, addr = next, addr != end);
 }
@@ -246,12 +267,10 @@ static void stage2_flush_puds(struct kvm *kvm, pgd_t *pgd,
 	do {
 		next = kvm_pud_addr_end(addr, end);
 		if (!pud_none(*pud)) {
-			if (pud_huge(*pud)) {
-				hva_t hva = gfn_to_hva(kvm, addr >> PAGE_SHIFT);
-				kvm_flush_dcache_to_poc((void*)hva, PUD_SIZE);
-			} else {
+			if (pud_huge(*pud))
+				kvm_flush_dcache_pud(*pud);
+			else
 				stage2_flush_pmds(kvm, pud, addr, next);
-			}
 		}
 	} while (pud++, addr = next, addr != end);
 }
