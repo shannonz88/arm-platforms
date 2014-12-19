@@ -69,55 +69,19 @@ static u32 get_ccsidr(u32 csselr)
 	return ccsidr;
 }
 
-static void do_dc_cisw(u32 val)
-{
-	asm volatile("dc cisw, %x0" : : "r" (val));
-	dsb(ish);
-}
-
-static void do_dc_csw(u32 val)
-{
-	asm volatile("dc csw, %x0" : : "r" (val));
-	dsb(ish);
-}
-
 /* See note at ARM ARM B1.14.4 */
 static bool access_dcsw(struct kvm_vcpu *vcpu,
 			const struct sys_reg_params *p,
 			const struct sys_reg_desc *r)
 {
-	unsigned long val;
-	int cpu;
-
 	if (!p->is_write)
 		return read_from_write_only(vcpu, p);
 
-	cpu = get_cpu();
-
-	cpumask_setall(&vcpu->arch.require_dcache_flush);
-	cpumask_clear_cpu(cpu, &vcpu->arch.require_dcache_flush);
-
-	/* If we were already preempted, take the long way around */
-	if (cpu != vcpu->arch.last_pcpu) {
-		flush_cache_all();
-		goto done;
-	}
-
-	val = *vcpu_reg(vcpu, p->Rt);
-
-	switch (p->CRm) {
-	case 6:			/* Upgrade DCISW to DCCISW, as per HCR.SWIO */
-	case 14:		/* DCCISW */
-		do_dc_cisw(val);
-		break;
-
-	case 10:		/* DCCSW */
-		do_dc_csw(val);
-		break;
-	}
-
-done:
-	put_cpu();
+	/*
+	 * Don't do any flushing. Just wait for the MMU + Caches to be
+	 * turned off, and use that to actually clean the caches.
+	 */
+	vcpu->arch.hcr_el2 |= HCR_TVM;
 
 	return true;
 }
@@ -155,12 +119,23 @@ static bool access_sctlr(struct kvm_vcpu *vcpu,
 			 const struct sys_reg_params *p,
 			 const struct sys_reg_desc *r)
 {
+	bool was_enabled = vcpu_has_cache_enabled(vcpu);
+	bool now_enabled;
+
 	access_vm_reg(vcpu, p, r);
 
-	if (vcpu_has_cache_enabled(vcpu)) {	/* MMU+Caches enabled? */
-		vcpu->arch.hcr_el2 &= ~HCR_TVM;
+	now_enabled = vcpu_has_cache_enabled(vcpu);
+
+	/*
+	 * If switching the MMU+caches on, need to invalidate the caches.
+	 * If switching it off, need to clean the caches.
+	 * Clean + invalidate does the trick always.
+	 */
+	if (now_enabled ^ was_enabled)
 		stage2_flush_vm(vcpu->kvm);
-	}
+
+	if (now_enabled)
+		vcpu->arch.hcr_el2 &= ~HCR_TVM;
 
 	return true;
 }
