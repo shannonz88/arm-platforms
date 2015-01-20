@@ -212,6 +212,7 @@
 
 
 #define FSC_FAULT	(0x04)
+#define FSC_ACCESS	(0x08)
 #define FSC_PERM	(0x0c)
 
 /* Hyp Prefetch Fault Address Register (HPFAR/HDFAR) */
