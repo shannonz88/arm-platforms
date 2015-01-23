@@ -119,7 +119,7 @@ int irq_can_set_affinity(unsigned int irq)
 	struct irq_desc *desc = irq_to_desc(irq);
 
 	if (!desc || !irqd_can_balance(&desc->irq_data) ||
-	    !desc->irq_data.chip || !desc->irq_data.chip->irq_set_affinity)
+	    !desc->irq_data.___chip || !desc->irq_data.___chip->irq_set_affinity)
 		return 0;
 
 	return 1;
@@ -476,7 +476,7 @@ void enable_irq(unsigned int irq)
 
 	if (!desc)
 		return;
-	if (WARN(!desc->irq_data.chip,
+	if (WARN(!desc->irq_data.___chip,
 		 KERN_ERR "enable_irq before setup/request_irq: irq %u\n", irq))
 		goto out;
 
@@ -494,8 +494,8 @@ static int set_irq_wake_real(unsigned int irq, unsigned int on)
 	if (irq_desc_get_chip_flags(desc) &  IRQCHIP_SKIP_SET_WAKE)
 		return 0;
 
-	if (desc->irq_data.chip->irq_set_wake)
-		ret = desc->irq_data.chip->irq_set_wake(&desc->irq_data, on);
+	if (desc->irq_data.___chip->irq_set_wake)
+		ret = desc->irq_data.___chip->irq_set_wake(&desc->irq_data, on);
 
 	return ret;
 }
@@ -574,7 +574,7 @@ int can_request_irq(unsigned int irq, unsigned long irqflags)
 int __irq_set_trigger(struct irq_desc *desc, unsigned int irq,
 		      unsigned long flags)
 {
-	struct irq_chip *chip = desc->irq_data.chip;
+	struct irq_chip *chip = desc->irq_data.___chip;
 	int ret, unmask = 0;
 
 	if (!chip || !chip->irq_set_type) {
@@ -935,7 +935,7 @@ static void irq_setup_forced_threading(struct irqaction *new)
 static int irq_request_resources(struct irq_desc *desc)
 {
 	struct irq_data *d = &desc->irq_data;
-	struct irq_chip *c = d->chip;
+	struct irq_chip *c = d->___chip;
 
 	return c->irq_request_resources ? c->irq_request_resources(d) : 0;
 }
@@ -943,7 +943,7 @@ static int irq_request_resources(struct irq_desc *desc)
 static void irq_release_resources(struct irq_desc *desc)
 {
 	struct irq_data *d = &desc->irq_data;
-	struct irq_chip *c = d->chip;
+	struct irq_chip *c = d->___chip;
 
 	if (c->irq_release_resources)
 		c->irq_release_resources(d);
@@ -964,7 +964,7 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 	if (!desc)
 		return -EINVAL;
 
-	if (desc->irq_data.chip == &no_irq_chip)
+	if (desc->irq_data.___chip == &no_irq_chip)
 		return -ENOSYS;
 	if (!try_module_get(desc->owner))
 		return -ENODEV;
@@ -1147,7 +1147,7 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 		ret = irq_request_resources(desc);
 		if (ret) {
 			pr_err("Failed to request resources for %s (irq %d) on irqchip %s\n",
-			       new->name, irq, desc->irq_data.chip->name);
+			       new->name, irq, desc->irq_data.___chip->name);
 			goto out_mask;
 		}
 

@@ -328,7 +328,7 @@ void register_irq_proc(unsigned int irq, struct irq_desc *desc)
 {
 	char name [MAX_NAMELEN];
 
-	if (!root_irq_dir || (desc->irq_data.chip == &no_irq_chip) || desc->dir)
+	if (!root_irq_dir || (desc->irq_data.___chip == &no_irq_chip) || desc->dir)
 		return;
 
 	memset(name, 0, MAX_NAMELEN);
@@ -470,11 +470,11 @@ int show_interrupts(struct seq_file *p, void *v)
 	for_each_online_cpu(j)
 		seq_printf(p, "%10u ", kstat_irqs_cpu(i, j));
 
-	if (desc->irq_data.chip) {
-		if (desc->irq_data.chip->irq_print_chip)
-			desc->irq_data.chip->irq_print_chip(&desc->irq_data, p);
-		else if (desc->irq_data.chip->name)
-			seq_printf(p, " %8s", desc->irq_data.chip->name);
+	if (desc->irq_data.___chip) {
+		if (desc->irq_data.___chip->irq_print_chip)
+			desc->irq_data.___chip->irq_print_chip(&desc->irq_data, p);
+		else if (desc->irq_data.___chip->name)
+			seq_printf(p, " %8s", desc->irq_data.___chip->name);
 		else
 			seq_printf(p, " %8s", "-");
 	} else {

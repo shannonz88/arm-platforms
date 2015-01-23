@@ -131,7 +131,7 @@ static int gicv2m_irq_gic_domain_alloc(struct irq_domain *domain,
 
 	/* Configure the interrupt line to be edge */
 	d = irq_domain_get_irq_data(domain->parent, virq);
-	d->chip->irq_set_type(d, IRQ_TYPE_EDGE_RISING);
+	d->___chip->irq_set_type(d, IRQ_TYPE_EDGE_RISING);
 	return 0;
 }
 

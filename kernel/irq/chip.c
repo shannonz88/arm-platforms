@@ -37,7 +37,10 @@ int irq_set_chip(unsigned int irq, struct irq_chip *chip)
 	if (!chip)
 		chip = &no_irq_chip;
 
-	desc->irq_data.chip = chip;
+	desc->irq_data.___chip = chip;
+#ifdef CONFIG_IRQ_DOMAIN_HIERARCHY
+	desc->chip_flags = desc->irq_data.___chip->flags;
+#endif
 	irq_put_desc_unlock(desc, flags);
 	/*
 	 * For !CONFIG_SPARSE_IRQ make the irq show up in
@@ -180,8 +183,8 @@ int irq_startup(struct irq_desc *desc, bool resend)
 	desc->depth = 0;
 
 	irq_domain_activate_irq(&desc->irq_data);
-	if (desc->irq_data.chip->irq_startup) {
-		ret = desc->irq_data.chip->irq_startup(&desc->irq_data);
+	if (desc->irq_data.___chip->irq_startup) {
+		ret = desc->irq_data.___chip->irq_startup(&desc->irq_data);
 		irq_state_clr_masked(desc);
 	} else {
 		irq_enable(desc);
@@ -195,12 +198,12 @@ void irq_shutdown(struct irq_desc *desc)
 {
 	irq_state_set_disabled(desc);
 	desc->depth = 1;
-	if (desc->irq_data.chip->irq_shutdown)
-		desc->irq_data.chip->irq_shutdown(&desc->irq_data);
-	else if (desc->irq_data.chip->irq_disable)
-		desc->irq_data.chip->irq_disable(&desc->irq_data);
+	if (desc->irq_data.___chip->irq_shutdown)
+		desc->irq_data.___chip->irq_shutdown(&desc->irq_data);
+	else if (desc->irq_data.___chip->irq_disable)
+		desc->irq_data.___chip->irq_disable(&desc->irq_data);
 	else
-		desc->irq_data.chip->irq_mask(&desc->irq_data);
+		desc->irq_data.___chip->irq_mask(&desc->irq_data);
 	irq_domain_deactivate_irq(&desc->irq_data);
 	irq_state_set_masked(desc);
 }
@@ -208,10 +211,10 @@ void irq_shutdown(struct irq_desc *desc)
 void irq_enable(struct irq_desc *desc)
 {
 	irq_state_clr_disabled(desc);
-	if (desc->irq_data.chip->irq_enable)
-		desc->irq_data.chip->irq_enable(&desc->irq_data);
+	if (desc->irq_data.___chip->irq_enable)
+		desc->irq_data.___chip->irq_enable(&desc->irq_data);
 	else
-		desc->irq_data.chip->irq_unmask(&desc->irq_data);
+		desc->irq_data.___chip->irq_unmask(&desc->irq_data);
 	irq_state_clr_masked(desc);
 }
 
@@ -231,61 +234,61 @@ void irq_enable(struct irq_desc *desc)
 void irq_disable(struct irq_desc *desc)
 {
 	irq_state_set_disabled(desc);
-	if (desc->irq_data.chip->irq_disable) {
-		desc->irq_data.chip->irq_disable(&desc->irq_data);
+	if (desc->irq_data.___chip->irq_disable) {
+		desc->irq_data.___chip->irq_disable(&desc->irq_data);
 		irq_state_set_masked(desc);
 	}
 }
 
 void irq_percpu_enable(struct irq_desc *desc, unsigned int cpu)
 {
-	if (desc->irq_data.chip->irq_enable)
-		desc->irq_data.chip->irq_enable(&desc->irq_data);
+	if (desc->irq_data.___chip->irq_enable)
+		desc->irq_data.___chip->irq_enable(&desc->irq_data);
 	else
-		desc->irq_data.chip->irq_unmask(&desc->irq_data);
+		desc->irq_data.___chip->irq_unmask(&desc->irq_data);
 	cpumask_set_cpu(cpu, desc->percpu_enabled);
 }
 
 void irq_percpu_disable(struct irq_desc *desc, unsigned int cpu)
 {
-	if (desc->irq_data.chip->irq_disable)
-		desc->irq_data.chip->irq_disable(&desc->irq_data);
+	if (desc->irq_data.___chip->irq_disable)
+		desc->irq_data.___chip->irq_disable(&desc->irq_data);
 	else
-		desc->irq_data.chip->irq_mask(&desc->irq_data);
+		desc->irq_data.___chip->irq_mask(&desc->irq_data);
 	cpumask_clear_cpu(cpu, desc->percpu_enabled);
 }
 
 static inline void mask_ack_irq(struct irq_desc *desc)
 {
-	if (desc->irq_data.chip->irq_mask_ack)
-		desc->irq_data.chip->irq_mask_ack(&desc->irq_data);
+	if (desc->irq_data.___chip->irq_mask_ack)
+		desc->irq_data.___chip->irq_mask_ack(&desc->irq_data);
 	else {
-		desc->irq_data.chip->irq_mask(&desc->irq_data);
-		if (desc->irq_data.chip->irq_ack)
-			desc->irq_data.chip->irq_ack(&desc->irq_data);
+		desc->irq_data.___chip->irq_mask(&desc->irq_data);
+		if (desc->irq_data.___chip->irq_ack)
+			desc->irq_data.___chip->irq_ack(&desc->irq_data);
 	}
 	irq_state_set_masked(desc);
 }
 
 void mask_irq(struct irq_desc *desc)
 {
-	if (desc->irq_data.chip->irq_mask) {
-		desc->irq_data.chip->irq_mask(&desc->irq_data);
+	if (desc->irq_data.___chip->irq_mask) {
+		desc->irq_data.___chip->irq_mask(&desc->irq_data);
 		irq_state_set_masked(desc);
 	}
 }
 
 void unmask_irq(struct irq_desc *desc)
 {
-	if (desc->irq_data.chip->irq_unmask) {
-		desc->irq_data.chip->irq_unmask(&desc->irq_data);
+	if (desc->irq_data.___chip->irq_unmask) {
+		desc->irq_data.___chip->irq_unmask(&desc->irq_data);
 		irq_state_clr_masked(desc);
 	}
 }
 
 void unmask_threaded_irq(struct irq_desc *desc)
 {
-	struct irq_chip *chip = desc->irq_data.chip;
+	struct irq_chip *chip = desc->irq_data.___chip;
 
 	if (irq_desc_get_chip_flags(desc) & IRQCHIP_EOI_THREADED)
 		chip->irq_eoi(&desc->irq_data);
@@ -507,7 +510,7 @@ static void cond_unmask_eoi_irq(struct irq_desc *desc, struct irq_chip *chip)
 void
 handle_fasteoi_irq(unsigned int irq, struct irq_desc *desc)
 {
-	struct irq_chip *chip = desc->irq_data.chip;
+	struct irq_chip *chip = desc->irq_data.___chip;
 
 	raw_spin_lock(&desc->lock);
 
@@ -586,7 +589,7 @@ handle_edge_irq(unsigned int irq, struct irq_desc *desc)
 	kstat_incr_irqs_this_cpu(irq, desc);
 
 	/* Start handling the irq */
-	desc->irq_data.chip->irq_ack(&desc->irq_data);
+	desc->irq_data.___chip->irq_ack(&desc->irq_data);
 
 	do {
 		if (unlikely(!desc->action)) {
@@ -741,7 +744,7 @@ __irq_set_handler(unsigned int irq, irq_flow_handler_t handle, int is_chained,
 		 * cannot enable/startup the interrupt at this point.
 		 */
 		while (irq_data) {
-			if (irq_data->chip != &no_irq_chip)
+			if (irq_data->___chip != &no_irq_chip)
 				break;
 			/*
 			 * Bail out if the outer chip is not set up
@@ -754,13 +757,13 @@ __irq_set_handler(unsigned int irq, irq_flow_handler_t handle, int is_chained,
 			irq_data = irq_data->parent_data;
 		}
 #endif
-		if (WARN_ON(!irq_data || irq_data->chip == &no_irq_chip))
+		if (WARN_ON(!irq_data || irq_data->___chip == &no_irq_chip))
 			goto out;
 	}
 
 	/* Uninstall? */
 	if (handle == handle_bad_irq) {
-		if (desc->irq_data.chip != &no_irq_chip)
+		if (desc->irq_data.___chip != &no_irq_chip)
 			mask_ack_irq(desc);
 		irq_state_set_disabled(desc);
 		desc->depth = 1;
@@ -882,7 +885,7 @@ void irq_cpu_offline(void)
 void irq_chip_ack_parent(struct irq_data *data)
 {
 	data = data->parent_data;
-	data->chip->irq_ack(data);
+	data->___chip->irq_ack(data);
 }
 
 /**
@@ -892,7 +895,7 @@ void irq_chip_ack_parent(struct irq_data *data)
 void irq_chip_mask_parent(struct irq_data *data)
 {
 	data = data->parent_data;
-	data->chip->irq_mask(data);
+	data->___chip->irq_mask(data);
 }
 
 /**
@@ -902,7 +905,7 @@ void irq_chip_mask_parent(struct irq_data *data)
 void irq_chip_unmask_parent(struct irq_data *data)
 {
 	data = data->parent_data;
-	data->chip->irq_unmask(data);
+	data->___chip->irq_unmask(data);
 }
 
 /**
@@ -912,7 +915,7 @@ void irq_chip_unmask_parent(struct irq_data *data)
 void irq_chip_eoi_parent(struct irq_data *data)
 {
 	data = data->parent_data;
-	data->chip->irq_eoi(data);
+	data->___chip->irq_eoi(data);
 }
 
 /**
@@ -927,8 +930,8 @@ int irq_chip_set_affinity_parent(struct irq_data *data,
 				 const struct cpumask *dest, bool force)
 {
 	data = data->parent_data;
-	if (data->chip->irq_set_affinity)
-		return data->chip->irq_set_affinity(data, dest, force);
+	if (data->___chip->irq_set_affinity)
+		return data->___chip->irq_set_affinity(data, dest, force);
 
 	return -ENOSYS;
 }
@@ -943,8 +946,8 @@ int irq_chip_set_affinity_parent(struct irq_data *data,
 int irq_chip_retrigger_hierarchy(struct irq_data *data)
 {
 	for (data = data->parent_data; data; data = data->parent_data)
-		if (data->chip && data->chip->irq_retrigger)
-			return data->chip->irq_retrigger(data);
+		if (data->___chip && data->___chip->irq_retrigger)
+			return data->___chip->irq_retrigger(data);
 
 	return -ENOSYS;
 }
@@ -966,12 +969,12 @@ int irq_chip_compose_msi_msg(struct irq_data *data, struct msi_msg *msg)
 #ifdef	CONFIG_IRQ_DOMAIN_HIERARCHY
 	for (; data; data = data->parent_data)
 #endif
-		if (data->chip && data->chip->irq_compose_msi_msg)
+		if (data->___chip && data->___chip->irq_compose_msi_msg)
 			pos = data;
 	if (!pos)
 		return -ENOSYS;
 
-	pos->chip->irq_compose_msi_msg(pos, msg);
+	pos->___chip->irq_compose_msi_msg(pos, msg);
 
 	return 0;
 }

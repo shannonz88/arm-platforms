@@ -306,8 +306,8 @@ int irq_domain_associate(struct irq_domain *domain, unsigned int virq,
 		}
 
 		/* If not already assigned, give the domain the chip's name */
-		if (!domain->name && irq_data->chip)
-			domain->name = irq_data->chip->name;
+		if (!domain->name && irq_data->___chip)
+			domain->name = irq_data->___chip->name;
 	}
 
 	if (hwirq < domain->revmap_size) {
@@ -795,8 +795,8 @@ static void irq_domain_insert_irq(int virq)
 		}
 
 		/* If not already assigned, give the domain the chip's name */
-		if (!domain->name && data->chip)
-			domain->name = data->chip->name;
+		if (!domain->name && data->___chip)
+			domain->name = data->___chip->name;
 	}
 
 	irq_clear_status_flags(virq, IRQ_NOREQUEST);
@@ -920,7 +920,7 @@ int irq_domain_set_hwirq_and_chip(struct irq_domain *domain, unsigned int virq,
 		return -ENOENT;
 
 	irq_data->hwirq = hwirq;
-	irq_data->chip = chip ? chip : &no_irq_chip;
+	irq_data->___chip = chip ? chip : &no_irq_chip;
 	irq_data->chip_data = chip_data;
 
 	return 0;
@@ -954,7 +954,7 @@ void irq_domain_set_info(struct irq_domain *domain, unsigned int virq,
 void irq_domain_reset_irq_data(struct irq_data *irq_data)
 {
 	irq_data->hwirq = 0;
-	irq_data->chip = &no_irq_chip;
+	irq_data->___chip = &no_irq_chip;
 	irq_data->chip_data = NULL;
 }
 
@@ -1020,7 +1020,7 @@ static void irq_desc_update_chip_flags(struct irq_domain *domain,
 	struct irq_desc *desc = irq_to_desc(virq);
 	struct irq_data *data = irq_domain_get_irq_data(domain, virq);
 
-	desc->chip_flags |= data->chip->flags | IRQCHIP_STACKED_CHIPS;
+	desc->chip_flags |= data->___chip->flags;
 #endif
 }
 

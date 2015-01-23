@@ -71,8 +71,8 @@ void check_irq_resend(struct irq_desc *desc, unsigned int irq)
 		desc->istate &= ~IRQS_PENDING;
 		desc->istate |= IRQS_REPLAY;
 
-		if (!desc->irq_data.chip->irq_retrigger ||
-		    !desc->irq_data.chip->irq_retrigger(&desc->irq_data)) {
+		if (!desc->irq_data.___chip->irq_retrigger ||
+		    !desc->irq_data.___chip->irq_retrigger(&desc->irq_data)) {
 #ifdef CONFIG_HARDIRQS_SW_RESEND
 			/*
 			 * If the interrupt has a parent irq and runs

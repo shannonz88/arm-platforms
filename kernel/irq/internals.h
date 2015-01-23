@@ -120,14 +120,14 @@ extern int irq_do_set_affinity(struct irq_data *data,
 /* Inline functions for support of irq chips on slow busses */
 static inline void chip_bus_lock(struct irq_desc *desc)
 {
-	if (unlikely(desc->irq_data.chip->irq_bus_lock))
-		desc->irq_data.chip->irq_bus_lock(&desc->irq_data);
+	if (unlikely(desc->irq_data.___chip->irq_bus_lock))
+		desc->irq_data.___chip->irq_bus_lock(&desc->irq_data);
 }
 
 static inline void chip_bus_sync_unlock(struct irq_desc *desc)
 {
-	if (unlikely(desc->irq_data.chip->irq_bus_sync_unlock))
-		desc->irq_data.chip->irq_bus_sync_unlock(&desc->irq_data);
+	if (unlikely(desc->irq_data.___chip->irq_bus_sync_unlock))
+		desc->irq_data.___chip->irq_bus_sync_unlock(&desc->irq_data);
 }
 
 #define _IRQ_DESC_CHECK		(1 << 0)

@@ -35,7 +35,7 @@ EXPORT_SYMBOL_GPL(get_cached_msi_msg);
 static inline void irq_chip_write_msi_msg(struct irq_data *data,
 					  struct msi_msg *msg)
 {
-	data->chip->irq_write_msi_msg(data, msg);
+	data->___chip->irq_write_msi_msg(data, msg);
 }
 
 /**
@@ -54,7 +54,7 @@ int msi_domain_set_affinity(struct irq_data *irq_data,
 	struct msi_msg msg;
 	int ret;
 
-	ret = parent->chip->irq_set_affinity(parent, mask, force);
+	ret = parent->___chip->irq_set_affinity(parent, mask, force);
 	if (ret >= 0 && ret != IRQ_SET_MASK_OK_DONE) {
 		BUG_ON(irq_chip_compose_msi_msg(irq_data, &msg));
 		irq_chip_write_msi_msg(irq_data, &msg);

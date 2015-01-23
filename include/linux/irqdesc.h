@@ -102,7 +102,7 @@ static inline struct irq_data *irq_desc_get_irq_data(struct irq_desc *desc)
 
 static inline struct irq_chip *irq_desc_get_chip(struct irq_desc *desc)
 {
-	return desc->irq_data.chip;
+	return desc->irq_data.___chip;
 }
 
 static inline void *irq_desc_get_chip_data(struct irq_desc *desc)
@@ -113,10 +113,10 @@ static inline void *irq_desc_get_chip_data(struct irq_desc *desc)
 static inline unsigned long irq_desc_get_chip_flags(struct irq_desc *desc)
 {
 #ifdef CONFIG_IRQ_DOMAIN_HIERARCHY
-	if (desc->chip_flags & IRQCHIP_STACKED_CHIPS)
-		return desc->chip_flags;
+	return desc->chip_flags;
+#else
+	return desc->irq_data.___chip->flags;
 #endif
-	return desc->irq_data.chip->flags;
 }
 
 static inline void *irq_desc_get_handler_data(struct irq_desc *desc)
@@ -184,7 +184,10 @@ __irq_set_chip_handler_name_locked(unsigned int irq, struct irq_chip *chip,
 	struct irq_desc *desc;
 
 	desc = irq_to_desc(irq);
-	irq_desc_get_irq_data(desc)->chip = chip;
+	irq_desc_get_irq_data(desc)->___chip = chip;
+#ifdef CONFIG_IRQ_DOMAIN_HIERARCHY
+	desc->chip_flags = chip->flags;
+#endif
 	desc->handle_irq = handler;
 	desc->name = name;
 }

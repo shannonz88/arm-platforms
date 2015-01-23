@@ -50,8 +50,8 @@ unsigned long probe_irq_on(void)
 			 * Some chips need to know about probing in
 			 * progress:
 			 */
-			if (desc->irq_data.chip->irq_set_type)
-				desc->irq_data.chip->irq_set_type(&desc->irq_data,
+			if (desc->irq_data.___chip->irq_set_type)
+				desc->irq_data.___chip->irq_set_type(&desc->irq_data,
 							 IRQ_TYPE_PROBE);
 			irq_startup(desc, false);
 		}

@@ -153,7 +153,7 @@ struct irq_data {
 	unsigned long		hwirq;
 	unsigned int		node;
 	unsigned int		state_use_accessors;
-	struct irq_chip		*chip;
+	struct irq_chip		*___chip;
 	struct irq_domain	*domain;
 #ifdef	CONFIG_IRQ_DOMAIN_HIERARCHY
 	struct irq_data		*parent_data;
@@ -377,7 +377,6 @@ struct irq_chip {
  * IRQCHIP_SKIP_SET_WAKE:	Skip chip.irq_set_wake(), for this irq chip
  * IRQCHIP_ONESHOT_SAFE:	One shot does not require mask/unmask
  * IRQCHIP_EOI_THREADED:	Chip requires eoi() on unmask in threaded mode
- * IRQCHIP_STACKED_CHIPS:	Pseudo flag for stacked irq chips
  */
 enum {
 	IRQCHIP_SET_TYPE_MASKED		= (1 <<  0),
@@ -387,9 +386,6 @@ enum {
 	IRQCHIP_SKIP_SET_WAKE		= (1 <<  4),
 	IRQCHIP_ONESHOT_SAFE		= (1 <<  5),
 	IRQCHIP_EOI_THREADED		= (1 <<  6),
-
-	/* The following is only valid as part of irq_desc.chip_flags */
-	IRQCHIP_STACKED_CHIPS		= (1 << 31),
 };
 
 /* This include will go away once we isolated irq_desc usage to core code */
@@ -574,12 +570,12 @@ extern struct irq_data *irq_get_irq_data(unsigned int irq);
 static inline struct irq_chip *irq_get_chip(unsigned int irq)
 {
 	struct irq_data *d = irq_get_irq_data(irq);
-	return d ? d->chip : NULL;
+	return d ? d->___chip : NULL;
 }
 
 static inline struct irq_chip *irq_data_get_irq_chip(struct irq_data *d)
 {
-	return d->chip;
+	return d->___chip;
 }
 
 static inline void *irq_get_chip_data(unsigned int irq)
@@ -828,7 +824,7 @@ int irq_alloc_domain_generic_chips(struct irq_domain *d, int irqs_per_chip,
 
 static inline struct irq_chip_type *irq_data_get_chip_type(struct irq_data *d)
 {
-	return container_of(d->chip, struct irq_chip_type, chip);
+	return container_of(d->___chip, struct irq_chip_type, chip);
 }
 
 #define IRQ_MSK(n) (u32)((n) < 32 ? ((1 << (n)) - 1) : UINT_MAX)
