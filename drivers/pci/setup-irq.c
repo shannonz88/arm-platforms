@@ -15,11 +15,19 @@
 #include <linux/errno.h>
 #include <linux/ioport.h>
 #include <linux/cache.h>
+#include <linux/irq.h>
 
 void __weak pcibios_update_irq(struct pci_dev *dev, int irq)
 {
-	dev_dbg(&dev->dev, "assigning IRQ %02d\n", irq);
-	pci_write_config_byte(dev, PCI_INTERRUPT_LINE, irq);
+	struct irq_data *d;
+
+	d = irq_get_irq_data(irq);
+#ifdef CONFIG_IRQ_DOMAIN_HIERARCHY
+	while (d->parent_data)
+		d = d->parent_data;
+#endif
+	dev_dbg(&dev->dev, "assigning IRQ %02ld\n", d->hwirq);
+	pci_write_config_byte(dev, PCI_INTERRUPT_LINE, d->hwirq);
 }
 
 static void pdev_fixup_irq(struct pci_dev *dev,
