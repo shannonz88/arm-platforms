@@ -1035,6 +1035,67 @@ static inline void hyp_cpu_pm_init(void)
 }
 #endif
 
+static void teardown_common_resources(void)
+{
+	free_percpu(kvm_host_cpu_state);
+}
+
+static int init_common_resources(void)
+{
+	kvm_host_cpu_state = alloc_percpu(kvm_cpu_context_t);
+	if (!kvm_host_cpu_state) {
+		kvm_err("Cannot allocate host CPU state\n");
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
+static int init_subsystems(void)
+{
+	int err;
+
+	/*
+	 * Init HYP view of VGIC
+	 */
+	err = kvm_vgic_hyp_init();
+	switch (err) {
+	case 0:
+		vgic_present = true;
+		break;
+	case -ENODEV:
+	case -ENXIO:
+		vgic_present = false;
+		break;
+	default:
+		return err;
+	}
+
+	/*
+	 * Init HYP architected timer support
+	 */
+	err = kvm_timer_hyp_init();
+	if (err)
+		return err;
+
+	kvm_perf_init();
+	kvm_coproc_table_init();
+
+	return 0;
+}
+
+static void teardown_hyp_mode(void)
+{
+	int cpu;
+
+	if (is_kernel_in_hyp_mode())
+		return;
+
+	free_hyp_pgds();
+	for_each_possible_cpu(cpu)
+		free_page(per_cpu(kvm_arm_hyp_stack_page, cpu));
+}
+
 /**
  * Inits Hyp-mode on all online CPUs
  */
@@ -1042,6 +1103,9 @@ static int init_hyp_mode(void)
 {
 	int cpu;
 	int err = 0;
+
+	if (is_kernel_in_hyp_mode())
+		return 0;
 
 	/*
 	 * Allocate Hyp PGD and setup Hyp identity mapping
@@ -1065,7 +1129,7 @@ static int init_hyp_mode(void)
 		stack_page = __get_free_page(GFP_KERNEL);
 		if (!stack_page) {
 			err = -ENOMEM;
-			goto out_free_stack_pages;
+			goto out_err;
 		}
 
 		per_cpu(kvm_arm_hyp_stack_page, cpu) = stack_page;
@@ -1077,13 +1141,13 @@ static int init_hyp_mode(void)
 	err = create_hyp_mappings(__kvm_hyp_code_start, __kvm_hyp_code_end);
 	if (err) {
 		kvm_err("Cannot map world-switch code\n");
-		goto out_free_mappings;
+		goto out_err;
 	}
 
 	err = create_hyp_mappings(__start_rodata, __end_rodata);
 	if (err) {
 		kvm_err("Cannot map rodata section\n");
-		goto out_free_mappings;
+		goto out_err;
 	}
 
 	/*
@@ -1095,18 +1159,8 @@ static int init_hyp_mode(void)
 
 		if (err) {
 			kvm_err("Cannot map hyp stack\n");
-			goto out_free_mappings;
+			goto out_err;
 		}
-	}
-
-	/*
-	 * Map the host CPU structures
-	 */
-	kvm_host_cpu_state = alloc_percpu(kvm_cpu_context_t);
-	if (!kvm_host_cpu_state) {
-		err = -ENOMEM;
-		kvm_err("Cannot allocate host CPU state\n");
-		goto out_free_mappings;
 	}
 
 	for_each_possible_cpu(cpu) {
@@ -1117,7 +1171,7 @@ static int init_hyp_mode(void)
 
 		if (err) {
 			kvm_err("Cannot map host CPU state: %d\n", err);
-			goto out_free_context;
+			goto out_err;
 		}
 	}
 
@@ -1126,34 +1180,22 @@ static int init_hyp_mode(void)
 	 */
 	on_each_cpu(cpu_init_hyp_mode, NULL, 1);
 
-	/*
-	 * Init HYP view of VGIC
-	 */
-	err = kvm_vgic_hyp_init();
-	switch (err) {
-	case 0:
-		vgic_present = true;
-		break;
-	case -ENODEV:
-	case -ENXIO:
-		vgic_present = false;
-		break;
-	default:
-		goto out_free_context;
-	}
-
-	/*
-	 * Init HYP architected timer support
-	 */
-	err = kvm_timer_hyp_init();
-	if (err)
-		goto out_free_context;
-
 #ifndef CONFIG_HOTPLUG_CPU
 	free_boot_hyp_pgd();
 #endif
 
-	kvm_perf_init();
+	cpu_notifier_register_begin();
+
+	err = __register_cpu_notifier(&hyp_init_cpu_nb);
+
+	cpu_notifier_register_done();
+
+	if (err) {
+		kvm_err("Cannot register HYP init CPU notifier (%d)\n", err);
+		goto out_err;
+	}
+
+	hyp_cpu_pm_init();
 
 	/* set size of VMID supported by CPU */
 	kvm_vmid_bits = kvm_get_vmid_bits();
@@ -1162,14 +1204,9 @@ static int init_hyp_mode(void)
 	kvm_info("Hyp mode initialized successfully\n");
 
 	return 0;
-out_free_context:
-	free_percpu(kvm_host_cpu_state);
-out_free_mappings:
-	free_hyp_pgds();
-out_free_stack_pages:
-	for_each_possible_cpu(cpu)
-		free_page(per_cpu(kvm_arm_hyp_stack_page, cpu));
+
 out_err:
+	teardown_hyp_mode();
 	kvm_err("error initializing Hyp mode: %d\n", err);
 	return err;
 }
@@ -1213,26 +1250,24 @@ int kvm_arch_init(void *opaque)
 		}
 	}
 
-	cpu_notifier_register_begin();
+	err = init_common_resources();
+	if (err)
+		return err;
 
 	err = init_hyp_mode();
 	if (err)
 		goto out_err;
 
-	err = __register_cpu_notifier(&hyp_init_cpu_nb);
-	if (err) {
-		kvm_err("Cannot register HYP init CPU notifier (%d)\n", err);
-		goto out_err;
-	}
+	err = init_subsystems();
+	if (err)
+		goto out_hyp;
 
-	cpu_notifier_register_done();
-
-	hyp_cpu_pm_init();
-
-	kvm_coproc_table_init();
 	return 0;
+
+out_hyp:
+	teardown_hyp_mode();
 out_err:
-	cpu_notifier_register_done();
+	teardown_common_resources();
 	return err;
 }
 
