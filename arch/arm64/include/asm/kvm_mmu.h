@@ -56,6 +56,7 @@
 #ifdef __ASSEMBLY__
 
 #include <asm/kvm_arm.h>
+#include <asm/kvm_vhe_macros.h>
 
 .macro setup_vtcr tmp1, tmp2
 	mov	\tmp1, #(VTCR_EL2_FLAGS & 0xffff)
@@ -69,12 +70,13 @@
 	msr	vtcr_el2, \tmp1
 	isb
 .endm
+
 /*
  * Convert a kernel VA into a HYP VA.
  * reg: VA to be converted.
  */
 .macro kern_hyp_va	reg
-	and	\reg, \reg, #HYP_PAGE_OFFSET_MASK
+	ifnvhe _S_(and \reg, \reg, #HYP_PAGE_OFFSET_MASK), nop
 .endm
 
 #else
