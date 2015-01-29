@@ -56,6 +56,29 @@
 
 #ifdef __ASSEMBLY__
 
+#include <asm/kvm_arm.h>
+
+.macro setup_vtcr tmp1, tmp2
+	mov	\tmp1, #(VTCR_EL2_FLAGS & 0xffff)
+	movk	\tmp1, #(VTCR_EL2_FLAGS >> 16), lsl #16
+	/*
+	 * Read the PARange bits from ID_AA64MMFR0_EL1 and set the PS bits in
+	 * VTCR_EL2.
+	 */
+	mrs	\tmp2, id_aa64mmfr0_el1
+	bfi	\tmp1, \tmp2, #16, #3
+	/*
+	 * Read the VMIDBits bits from ID_AA64MMFR1_EL1 and set the VS bit in
+	 * VTCR_EL2.
+	 */
+	mrs	\tmp2, ID_AA64MMFR1_EL1
+	ubfx	\tmp2, \tmp2, #5, #1
+	lsl	\tmp2, \tmp2, #VTCR_EL2_VS
+	orr	\tmp1, \tmp1, \tmp2
+
+	msr	vtcr_el2, \tmp1
+	isb
+.endm
 /*
  * Convert a kernel VA into a HYP VA.
  * reg: VA to be converted.
