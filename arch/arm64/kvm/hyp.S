@@ -508,7 +508,8 @@
 .endm
 
 .macro deactivate_traps
-	mov	x2, #HCR_RW
+ifnvhe _S_(mov	x2, #HCR_RW),			_S_(mov	x2, #HCR_RW|HCR_TGE)
+ifnvhe 	nop,					_S_(orr	x2, x2, #HCR_E2H)
 	msr	hcr_el2, x2
 	msr	hstr_el2, xzr
 
