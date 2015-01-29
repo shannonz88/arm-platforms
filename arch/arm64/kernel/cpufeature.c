@@ -22,6 +22,7 @@
 #include <asm/cpu.h>
 #include <asm/cpufeature.h>
 #include <asm/processor.h>
+#include <asm/virt.h>
 
 static bool
 feature_matches(u64 reg, const struct arm64_cpu_capabilities *entry)
@@ -44,6 +45,11 @@ has_##reg##_feature(const struct arm64_cpu_capabilities *entry)		\
 __ID_FEAT_CHK(id_aa64pfr0);
 __ID_FEAT_CHK(id_aa64mmfr1);
 __ID_FEAT_CHK(id_aa64isar0);
+
+static bool runs_at_el2(const struct arm64_cpu_capabilities *entry)
+{
+	return is_kernel_in_hyp_mode();
+}
 
 static const struct arm64_cpu_capabilities arm64_features[] = {
 	{
@@ -72,6 +78,11 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.min_field_value = 2,
 	},
 #endif /* CONFIG_AS_LSE && CONFIG_ARM64_LSE_ATOMICS */
+	{
+		.desc = "Virtualization Host Extensions",
+		.capability = ARM64_HAS_VIRT_HOST_EXTN,
+		.matches = runs_at_el2,
+	},
 	{},
 };
 
