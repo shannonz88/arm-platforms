@@ -28,6 +28,7 @@
 #include <asm/kvm_arm.h>
 #include <asm/kvm_asm.h>
 #include <asm/kvm_mmu.h>
+#include <asm/kvm_vhe_macros.h>
 #include <asm/memory.h>
 
 #define CPU_GP_REG_OFFSET(x)	(CPU_GP_REGS + x)
@@ -38,6 +39,19 @@
 	.text
 	.pushsection	.hyp.text, "ax"
 	.align	PAGE_SHIFT
+
+.macro do_el2_call
+	/*
+	 * Shuffle the parameters before calling the function
+	 * pointed to in x0. Assumes parameters in x[1,2,3],
+	 * clobbers lr.
+	 */
+	mov     lr, x0
+	mov     x0, x1
+	mov     x1, x2
+	mov     x2, x3
+	blr     lr
+.endm
 
 .macro save_common_regs
 	// x2: base address for cpu context
@@ -929,7 +943,23 @@ __hyp_panic_str:
  * arch/arm64/kernel/hyp_stub.S.
  */
 ENTRY(kvm_call_hyp)
-	hvc	#0
+	/*
+	 * NOP out the hvc/ret sequence on VHE, and fall through.
+	 */
+ifnvhe	hvc #0,					nop
+ifnvhe	ret,				       "push	lr, xzr"
+
+	do_el2_call
+
+	/*
+	 * We used to rely on having an exception return to get
+	 * an implicit isb. In the E2H case, we don't have it anymore.
+	 * rather than changing all the leaf functions, just do it here
+	 * before returning to the rest of the kernel.
+	 */
+	isb
+
+	pop     lr, xzr
 	ret
 ENDPROC(kvm_call_hyp)
 
@@ -961,7 +991,9 @@ el1_sync:					// Guest trapped into EL2
 	mrs	x1, esr_el2
 	lsr	x2, x1, #ESR_ELx_EC_SHIFT
 
-	cmp	x2, #ESR_ELx_EC_HVC64
+	// Ugly shortcut for VHE. We can do this early because the
+	// host cannot do an HVC.
+ifnvhe  _S_(cmp	x2, #ESR_ELx_EC_HVC64),		"b	el1_trap"
 	b.ne	el1_trap
 
 	mrs	x3, vttbr_el2			// If vttbr is valid, the 64bit guest
@@ -982,11 +1014,7 @@ el1_sync:					// Guest trapped into EL2
 	 * Compute the function address in EL2, and shuffle the parameters.
 	 */
 	kern_hyp_va	x0
-	mov	lr, x0
-	mov	x0, x1
-	mov	x1, x2
-	mov	x2, x3
-	blr	lr
+	do_el2_call
 
 	pop	lr, xzr
 2:	eret
