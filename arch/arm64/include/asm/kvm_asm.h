@@ -18,6 +18,7 @@
 #ifndef __ARM_KVM_ASM_H__
 #define __ARM_KVM_ASM_H__
 
+#include <asm/sysreg.h>
 #include <asm/virt.h>
 
 /*
@@ -27,7 +28,7 @@
 #define	MPIDR_EL1	1	/* MultiProcessor Affinity Register */
 #define	CSSELR_EL1	2	/* Cache Size Selection Register */
 #define	SCTLR_EL1	3	/* System Control Register */
-#define	ACTLR_EL1	4	/* Auxiliary Control Register */
+#define	AMAIR_EL1	4	/* Aux Memory Attribute Indirection Register */
 #define	CPACR_EL1	5	/* Coprocessor Access Control */
 #define	TTBR0_EL1	6	/* Translation Table Base Register 0 */
 #define	TTBR1_EL1	7	/* Translation Table Base Register 1 */
@@ -39,13 +40,13 @@
 #define	MAIR_EL1	13	/* Memory Attribute Indirection Register */
 #define	VBAR_EL1	14	/* Vector Base Address Register */
 #define	CONTEXTIDR_EL1	15	/* Context ID Register */
-#define	TPIDR_EL0	16	/* Thread ID, User R/W */
-#define	TPIDRRO_EL0	17	/* Thread ID, User R/O */
-#define	TPIDR_EL1	18	/* Thread ID, Privileged */
-#define	AMAIR_EL1	19	/* Aux Memory Attribute Indirection Register */
-#define	CNTKCTL_EL1	20	/* Timer Control Register (EL1) */
-#define	PAR_EL1		21	/* Physical Address Register */
-#define MDSCR_EL1	22	/* Monitor Debug System Control Register */
+#define	CNTKCTL_EL1	16	/* Timer Control Register (EL1) */
+#define	PAR_EL1		17	/* Physical Address Register */
+#define	MDSCR_EL1	18	/* Monitor Debug System Control Register */
+#define	TPIDR_EL0	19	/* Thread ID, User R/W */
+#define	TPIDRRO_EL0	20	/* Thread ID, User R/O */
+#define	TPIDR_EL1	21	/* Thread ID, Privileged */
+#define	ACTLR_EL1	22	/* Auxiliary Control Register */
 #define MDCCINT_EL1	23	/* Monitor Debug Comms Channel Interrupt Enable Reg */
 
 /* 32bit specific registers. Keep them at the end of the range */
@@ -95,6 +96,29 @@
 #define cp14_DBGDCCINT	(MDCCINT_EL1 * 2)
 
 #define NR_COPRO_REGS	(NR_SYS_REGS * 2)
+
+#define sctlr_EL12              sys_reg(3, 5, 1, 0, 0)
+#define cpacr_EL12              sys_reg(3, 5, 1, 0, 2)
+#define ttbr0_EL12              sys_reg(3, 5, 2, 0, 0)
+#define ttbr1_EL12              sys_reg(3, 5, 2, 0, 1)
+#define tcr_EL12                sys_reg(3, 5, 2, 0, 2)
+#define afsr0_EL12              sys_reg(3, 5, 5, 1, 0)
+#define afsr1_EL12              sys_reg(3, 5, 5, 1, 1)
+#define esr_EL12                sys_reg(3, 5, 5, 2, 0)
+#define far_EL12                sys_reg(3, 5, 6, 0, 0)
+#define mair_EL12               sys_reg(3, 5, 10, 2, 0)
+#define amair_EL12              sys_reg(3, 5, 10, 3, 0)
+#define vbar_EL12               sys_reg(3, 5, 12, 0, 0)
+#define contextidr_EL12         sys_reg(3, 5, 13, 0, 1)
+#define cntkctl_EL12            sys_reg(3, 5, 14, 1, 0)
+#define cntp_tval_EL02          sys_reg(3, 5, 14, 2, 0)
+#define cntp_ctl_EL02           sys_reg(3, 5, 14, 2, 1)
+#define cntp_cval_EL02          sys_reg(3, 5, 14, 2, 2)
+#define cntv_tval_EL02          sys_reg(3, 5, 14, 3, 0)
+#define cntv_ctl_EL02           sys_reg(3, 5, 14, 3, 1)
+#define cntv_cval_EL02          sys_reg(3, 5, 14, 3, 2)
+#define spsr_EL12               sys_reg(3, 5, 4, 0, 0)
+#define elr_EL12                sys_reg(3, 5, 4, 0, 1)
 
 #define ARM_EXCEPTION_IRQ	  0
 #define ARM_EXCEPTION_TRAP	  1

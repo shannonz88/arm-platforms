@@ -31,6 +31,24 @@
 	alternative_insn	"\nonvhe", "\vhe", ARM64_HAS_VIRT_HOST_EXTN
 .endm
 
+#define mrs_el0(reg, sysreg)	\
+	ifnvhe  _S_(mrs reg, sysreg##_EL0), _S_(mrs_s reg, sysreg##_EL02)
+
+#define msr_el0(sysreg, reg)	\
+	ifnvhe  _S_(msr sysreg##_EL0, reg), _S_(msr_s sysreg##_EL02, reg)
+
+#define mrs_el1(reg, sysreg)	\
+	ifnvhe  _S_(mrs reg, sysreg##_EL1), _S_(mrs_s reg, sysreg##_EL12)
+
+#define msr_el1(sysreg, reg)	\
+	ifnvhe  _S_(msr sysreg##_EL1, reg), _S_(msr_s sysreg##_EL12, reg)
+
+#define mrs_hyp(reg, sysreg)	\
+	ifnvhe  _S_(mrs reg, sysreg##_EL2), _S_(mrs reg, sysreg##_EL1)
+
+#define msr_hyp(sysreg, reg)	\
+	ifnvhe  _S_(msr sysreg##_EL2, reg), _S_(msr sysreg##_EL1, reg)
+
 #endif
 
 #endif	/*__ARM64_KVM_VHE_MACROS_H__  */
