@@ -24,6 +24,7 @@
 #include <asm/kvm.h>
 #include <asm/kvm_asm.h>
 #include <asm/kvm_arm.h>
+#include <asm/kvm_vhe_macros.h>
 
 	.text
 	.pushsection	.hyp.text, "ax"
@@ -35,11 +36,21 @@
 #define LR_OFFSET(n)	(VGIC_V3_CPU_LR + (15 - n) * 8)
 
 /*
+ * Disable the vcpu interface, preventing interrupts from
+ * being delivered.
+ */
+ENTRY(__vgic_v3_disable)
+	// Nuke the HCR register.
+	msr_s	ICH_HCR_EL2, xzr
+	ret
+ENDPROC(__vgic_v3_disable)
+
+/*
  * Save the VGIC CPU state into memory
  * x0: Register pointing to VCPU struct
  * Do not corrupt x1!!!
  */
-.macro	save_vgic_v3_state
+ENTRY(__save_vgic_v3_state)
 	// Compute the address of struct vgic_cpu
 	add	x3, x0, #VCPU_VGIC_CPU
 
@@ -58,7 +69,7 @@
 	str	w7, [x3, #VGIC_V3_CPU_EISR]
 	str	w8, [x3, #VGIC_V3_CPU_ELRSR]
 
-	msr_s	ICH_HCR_EL2, xzr
+ifnvhe	_S_(msr_s	ICH_HCR_EL2, xzr),	nop
 
 	mrs_s	x21, ICH_VTR_EL2
 	mvn	w22, w21
@@ -137,15 +148,17 @@
 	orr	x5, x5, #ICC_SRE_EL2_ENABLE
 	msr_s	ICC_SRE_EL2, x5
 	isb
-	mov	x5, #1
+	// If using VHE, we don't care about EL1 and can early out.
+ifnvhe "mov	x5, #1",			ret
 	msr_s	ICC_SRE_EL1, x5
-.endm
+	ret
+ENDPROC(__save_vgic_v3_state)
 
 /*
  * Restore the VGIC CPU state from memory
  * x0: Register pointing to VCPU struct
  */
-.macro	restore_vgic_v3_state
+ENTRY(__restore_vgic_v3_state)
 	// Compute the address of struct vgic_cpu
 	add	x3, x0, #VCPU_VGIC_CPU
 
@@ -249,15 +262,6 @@
 	and	x5, x5, #~ICC_SRE_EL2_ENABLE
 	msr_s	ICC_SRE_EL2, x5
 1:
-.endm
-
-ENTRY(__save_vgic_v3_state)
-	save_vgic_v3_state
-	ret
-ENDPROC(__save_vgic_v3_state)
-
-ENTRY(__restore_vgic_v3_state)
-	restore_vgic_v3_state
 	ret
 ENDPROC(__restore_vgic_v3_state)
 

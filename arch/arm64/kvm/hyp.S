@@ -423,8 +423,10 @@ skip_el1_restore:
 .endm
 
 .macro skip_32bit_state tmp, target
-	// Skip 32bit state if not needed
-	mrs	\tmp, hcr_el2
+	// Skip 32bit state if not needed.
+	// With VHE, we may have cleared the RW bit in HCR_EL2 early,
+	// and have to rely on the memory version instead.
+ifnvhe "mrs	\tmp, hcr_el2",			_S_(ldr	\tmp, [x0, #VCPU_HCR_EL2])
 	tbnz	\tmp, #HCR_RW_SHIFT, \target
 .endm
 
@@ -861,10 +863,17 @@ __kvm_vcpu_return:
 	save_guest_32bit_state
 
 	save_timer_state
+ifnvhe "b	1f",		nop
+	alternative_insn	"bl __vgic_v2_disable", \
+				"bl __vgic_v3_disable", \
+				ARM64_HAS_SYSREG_GIC_CPUIF
+1:
 	save_vgic_state
 
 	deactivate_traps
 	deactivate_vm
+
+__kvm_vcpu_return_irq:
 
 	// Host context
 	ldr	x2, [x0, #VCPU_HOST_CONTEXT]
@@ -1172,8 +1181,49 @@ el1_irq:
 	push	x0, x1
 	push	x2, x3
 	mrs	x0, tpidr_el2
-	mov	x1, #ARM_EXCEPTION_IRQ
-	b	__kvm_vcpu_return
+ifnvhe _S_(mov	x1, #ARM_EXCEPTION_IRQ),	nop
+ifnvhe "b	__kvm_vcpu_return", 		nop
+
+	// Fallthrough for VHE
+	add	x2, x0, #VCPU_CONTEXT
+
+	save_guest_regs
+	bl	__save_shared_sysregs
+	save_timer_state
+	alternative_insn	"bl __vgic_v2_disable", \
+				"bl __vgic_v3_disable", \
+				ARM64_HAS_SYSREG_GIC_CPUIF
+	deactivate_traps
+	deactivate_vm
+
+	isb	// Needed to ensure TGE is on and vectors have been switched
+
+	ldr	x2, [x0, #VCPU_HOST_CONTEXT]
+	restore_shared_sysregs
+
+	mov	x0, x2
+	adrp	x1, handle_arch_irq
+	add	x1, x1, #:lo12:handle_arch_irq
+	ldr	x1, [x1]
+	blr	x1
+
+	// Back from the interrupt handler, finalize the world switch
+	mrs	x0, tpidr_el2
+	add	x2, x0, #VCPU_CONTEXT
+
+	bl	__save_fpsimd
+	bl	__save_sysregs	// We've already saved the shared regs
+	save_guest_32bit_state
+
+	skip_debug_state x3, 1f
+	ldr	x3, [x0, #VCPU_DEBUG_PTR]
+	kern_hyp_va x3
+	bl	__save_debug
+1:
+	save_vgic_state
+
+	mov	x1,	#ARM_EXCEPTION_IRQ
+	b	__kvm_vcpu_return_irq
 
 	.ltorg
 

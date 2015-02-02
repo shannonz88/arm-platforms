@@ -584,6 +584,9 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		 * disabled.  Enabling the interrupts now will have
 		 * the effect of taking the interrupt again, in SVC
 		 * mode this time.
+		 *
+		 * With VHE, the interrupt is likely to have been
+		 * already taken already.
 		 */
 		local_irq_enable();
 

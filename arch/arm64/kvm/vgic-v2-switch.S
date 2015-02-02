@@ -29,13 +29,25 @@
 	.text
 	.pushsection	.hyp.text, "ax"
 
+ENTRY(__vgic_v2_disable)
+	/* Get VGIC VCTRL base into x2 */
+	ldr	x2, [x0, #VCPU_KVM]
+	kern_hyp_va	x2
+	ldr	x2, [x2, #KVM_VGIC_VCTRL]
+	kern_hyp_va	x2
+	cbz	x2, 1f		// disabled
+
+	/* Clear GICH_HCR */
+	str	wzr, [x2, #GICH_HCR]
+1:	ret
+ENDPROC(__vgic_v2_disable)
+
 /*
  * Save the VGIC CPU state into memory
  * x0: Register pointing to VCPU struct
  * Do not corrupt x1!!!
  */
 ENTRY(__save_vgic_v2_state)
-__save_vgic_v2_state:
 	/* Get VGIC VCTRL base into x2 */
 	ldr	x2, [x0, #VCPU_KVM]
 	kern_hyp_va	x2
@@ -75,7 +87,7 @@ CPU_BE(	str	w10, [x3, #VGIC_V2_CPU_ELRSR] )
 	str	w11, [x3, #VGIC_V2_CPU_APR]
 
 	/* Clear GICH_HCR */
-	str	wzr, [x2, #GICH_HCR]
+ifnvhe	_S_(str	wzr, [x2, #GICH_HCR]),		nop
 
 	/* Save list registers */
 	add	x2, x2, #GICH_LR0
@@ -95,7 +107,6 @@ ENDPROC(__save_vgic_v2_state)
  * x0: Register pointing to VCPU struct
  */
 ENTRY(__restore_vgic_v2_state)
-__restore_vgic_v2_state:
 	/* Get VGIC VCTRL base into x2 */
 	ldr	x2, [x0, #VCPU_KVM]
 	kern_hyp_va	x2
