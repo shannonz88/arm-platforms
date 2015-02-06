@@ -279,11 +279,6 @@ skip_el1_restore:
 	mrs	x20,	par_el1
 	mrs	x21,	mdscr_el1
 
-	mrs	x22,	tpidr_el0
-	mrs	x23,	tpidrro_el0
-	mrs	x24,	tpidr_el1
-	mrs	x25,	actlr_el1
-
 	stp	x4, x5, [x3]
 	stp	x6, x7, [x3, #16]
 	stp	x8, x9, [x3, #32]
@@ -293,8 +288,6 @@ skip_el1_restore:
 	stp	x16, x17, [x3, #96]
 	stp	x18, x19, [x3, #112]
 	stp	x20, x21, [x3, #128]
-	stp	x22, x23, [x3, #144]
-	stp	x24, x25, [x3, #160]
 .endm
 
 .macro save_debug type
@@ -360,8 +353,6 @@ skip_el1_restore:
 	ldp	x16, x17, [x3, #96]
 	ldp	x18, x19, [x3, #112]
 	ldp	x20, x21, [x3, #128]
-	ldp	x22, x23, [x3, #144]
-	ldp	x24, x25, [x3, #160]
 
 	msr	vmpidr_el2,	x4
 	msr	csselr_el1,	x5
@@ -381,11 +372,6 @@ skip_el1_restore:
 	msr_el1(cntkctl,	x19)
 	msr	par_el1,	x20
 	msr	mdscr_el1,	x21
-
-	msr	tpidr_el0,	x22
-	msr	tpidrro_el0,	x23
-	msr	tpidr_el1,	x24
-	msr	actlr_el1,	x25
 .endm
 
 .macro restore_debug type
@@ -635,10 +621,12 @@ alternative_endif
 
 .macro save_timer_state
 	// x0: vcpu pointer
-	ldr	x2, [x0, #VCPU_KVM]
-	kern_hyp_va x2
-	ldr	w3, [x2, #KVM_TIMER_ENABLED]
-	cbz	w3, 1f
+	// x1: return code
+	// x2: vcpu context
+	ldr	x3, [x0, #VCPU_KVM]
+	kern_hyp_va x3
+	ldr	w4, [x3, #KVM_TIMER_ENABLED]
+	cbz	w4, 1f
 
 	mrs_el0(x3, cntv_ctl)
 	and	x3, x3, #3
@@ -654,9 +642,9 @@ alternative_endif
 	msr_el0(cntv_ctl, xzr)
 
 	// Allow physical timer/counter access for the host
-	mrs	x2, cnthctl_el2
-	orr	x2, x2, #3
-	msr	cnthctl_el2, x2
+	mrs	x3, cnthctl_el2
+	orr	x3, x3, #3
+	msr	cnthctl_el2, x3
 
 	// Clear cntvoff for the host
 ifnvhe "msr	cntvoff_el2, xzr",		nop
@@ -664,32 +652,41 @@ ifnvhe "msr	cntvoff_el2, xzr",		nop
 
 .macro restore_timer_state
 	// x0: vcpu pointer
+	// x2: vcpu context
 	// Disallow physical timer access for the guest
 	// Physical counter access is allowed
-	mrs	x2, cnthctl_el2
-	orr	x2, x2, #1
-	bic	x2, x2, #2
-	msr	cnthctl_el2, x2
+	mrs	x3, cnthctl_el2
+	orr	x3, x3, #1
+	bic	x3, x3, #2
+	msr	cnthctl_el2, x3
 
-	ldr	x2, [x0, #VCPU_KVM]
-	kern_hyp_va x2
-	ldr	w3, [x2, #KVM_TIMER_ENABLED]
-	cbz	w3, 1f
+	ldr	x3, [x0, #VCPU_KVM]
+	kern_hyp_va x3
+	ldr	w4, [x3, #KVM_TIMER_ENABLED]
+	cbz	w4, 1f
 
-	ldr	x3, [x2, #KVM_TIMER_CNTVOFF]
-	msr	cntvoff_el2, x3
-	ldr	x2, [x0, #VCPU_TIMER_CNTV_CVAL]
-	msr_el0(cntv_cval, x2)
+	ldr	x4, [x3, #KVM_TIMER_CNTVOFF]
+	msr	cntvoff_el2, x4
+	ldr	x4, [x0, #VCPU_TIMER_CNTV_CVAL]
+	msr_el0(cntv_cval, x4)
 	isb
 
-	ldr	w2, [x0, #VCPU_TIMER_CNTV_CTL]
-	and	x2, x2, #3
-	msr_el0(cntv_ctl, x2)
+	ldr	w4, [x0, #VCPU_TIMER_CNTV_CTL]
+	and	x4, x4, #3
+	msr_el0(cntv_ctl, x4)
 1:
 .endm
 
+__save_shared_sysregs:
+	save_shared_sysregs
+	ret
+
 __save_sysregs:
 	save_sysregs
+	ret
+
+__restore_shared_sysregs:
+	restore_shared_sysregs
 	ret
 
 __restore_sysregs:
@@ -812,10 +809,9 @@ ENTRY(__kvm_vcpu_run)
 	kern_hyp_va x2
 
 	save_host_regs
-ifnvhe "bl	__save_sysregs",		nop
-ifnvhe "b	1f",				nop
-	save_shared_sysregs
-1:
+ifnvhe "bl	__save_sysregs",		"nop"
+	bl	__save_shared_sysregs
+
 	compute_debug_state 1f
 	add	x3, x0, #VCPU_HOST_DEBUG_STATE
 	bl	__save_debug
@@ -833,6 +829,7 @@ ifnvhe "b	1f",				nop
 	// to Cortex-A57 erratum #852523.
 	restore_guest_32bit_state
 	bl __restore_sysregs
+	bl __restore_shared_sysregs
 
 	skip_debug_state x3, 1f
 	ldr	x3, [x0, #VCPU_DEBUG_PTR]
@@ -854,6 +851,7 @@ __kvm_vcpu_return:
 	save_guest_regs
 	bl __save_fpsimd
 	bl __save_sysregs
+	bl __save_shared_sysregs
 
 	skip_debug_state x3, 1f
 	ldr	x3, [x0, #VCPU_DEBUG_PTR]
@@ -872,10 +870,8 @@ __kvm_vcpu_return:
 	ldr	x2, [x0, #VCPU_HOST_CONTEXT]
 	kern_hyp_va x2
 
-ifnvhe "bl	__restore_sysregs",		nop
-ifnvhe "b	1f",				nop
-	restore_shared_sysregs
-1:
+ifnvhe "bl	__restore_sysregs",		"nop"
+	bl	__restore_shared_sysregs
 	bl __restore_fpsimd
 	/* Clear FPSIMD and Trace trapping */
 ifnvhe	nop,					"mov	x3, #(3 << 20)"
@@ -971,7 +967,8 @@ __kvm_hyp_panic:
 	ldr	x2, [x0, #VCPU_HOST_CONTEXT]
 	kern_hyp_va x2
 
-	bl __restore_sysregs
+ifnvhe "bl __restore_sysregs",			"nop"
+	bl __restore_shared_sysregs
 
 1:	adr	x0, __hyp_panic_str
 	adr	x1, 2f
