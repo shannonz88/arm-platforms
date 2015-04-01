@@ -71,3 +71,11 @@ struct pci_bus *pci_acpi_scan_root(struct acpi_pci_root *root)
 	return NULL;
 }
 #endif
+
+int pcibios_enable_device(struct pci_dev *dev, int mask)
+{
+	if (pci_has_flag(PCI_PROBE_ONLY))
+		return 0;
+
+	return pci_enable_resources(dev, mask);
+}
