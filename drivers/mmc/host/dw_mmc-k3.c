@@ -11,6 +11,7 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/clk.h>
+#include <linux/delay.h>
 #include <linux/mmc/host.h>
 #include <linux/mmc/dw_mmc.h>
 #include <linux/of_address.h>
@@ -20,21 +21,86 @@
 
 static void dw_mci_k3_set_ios(struct dw_mci *host, struct mmc_ios *ios)
 {
+	struct dw_mci_hs_priv_data *priv = host->priv;
 	int ret;
 
-	ret = clk_set_rate(host->ciu_clk, ios->clock);
-	if (ret)
-		dev_warn(host->dev, "failed to set rate %uHz\n", ios->clock);
+	if (priv->old_timing != ios->timing) {
 
-	host->bus_hz = clk_get_rate(host->ciu_clk);
+		switch (ios->timing) {
+		case MMC_TIMING_LEGACY:
+			if(MMC_SD == priv->id)
+				host->bus_hz = MMC_CCLK_MAX_24M;
+			else
+				host->bus_hz = MMC_CCLK_MAX_25M;
+			break;
+		case MMC_TIMING_MMC_HS:
+		case MMC_TIMING_UHS_SDR25:
+			if(MMC_SD == priv->id)
+				host->bus_hz = MMC_CCLK_MAX_48M;
+			else
+				host->bus_hz = MMC_CCLK_MAX_50M;
+			break;
+		case MMC_TIMING_UHS_DDR50:
+			if (MMC_EMMC == priv->id)
+				host->bus_hz = MMC_CCLK_MAX_100M;
+			else
+				host->bus_hz = MMC_CCLK_MAX_50M;
+			break;
+		case MMC_TIMING_UHS_SDR50:
+			if (MMC_SD == priv->id)
+				host->bus_hz = MMC_CCLK_MAX_96M;
+			else
+				host->bus_hz = MMC_CCLK_MAX_100M;
+			break;
+		default:
+			dev_err(host->dev, "timing not supported \n");
+		}
+
+		clk_set_rate( host->biu_clk, host->bus_hz );
+		priv->old_timing = ios->timing;
+    }
+}
+
+static void disable_boot(struct dw_mci *host)
+{
+	int timeout = 0;
+	unsigned int data;
+
+	dev_warn(host->dev, "whacking SDMMC_CMD_DISABLE_BOOT bit\n");
+
+	mci_writel(host, CTRL, SDMMC_CTRL_FIFO_RESET);
+	mci_writel(host, CMD, SDMMC_CMD_START | SDMMC_CMD_DISABLE_BOOT);
+
+	while (1) {
+		data = mci_readl(host, CMD) & 0x80000000;
+		if (data == 0)
+			break;
+		if (timeout < 2000) {
+			timeout++;
+			mdelay(1);
+		} else {
+			dev_warn(host->dev, "failed to stop MMC\n");
+			break;
+		}
+	}
+}
+
+static int dw_mci_k3_parse_dt(struct dw_mci *host)
+{
+	struct device_node *np = host->dev->of_node;
+	if (of_find_property(np, "hisilicon,disable-boot", NULL)) {
+		disable_boot(host);
+	}
+	return 0;
 }
 
 static const struct dw_mci_drv_data k3_drv_data = {
 	.set_ios		= dw_mci_k3_set_ios,
+	.parse_dt		= dw_mci_k3_parse_dt,
 };
 
 static const struct of_device_id dw_mci_k3_match[] = {
-	{ .compatible = "hisilicon,hi4511-dw-mshc", .data = &k3_drv_data, },
+        { .compatible = "hisilicon,hisi-dw-mshc", .data = &k3_drv_data, },
 	{},
 };
 MODULE_DEVICE_TABLE(of, dw_mci_k3_match);

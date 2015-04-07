@@ -9,6 +9,7 @@
 #include <linux/sched.h>
 #include <linux/device.h>
 #include <linux/dmaengine.h>
+#include <linux/dma-mapping.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
@@ -207,14 +208,21 @@ static irqreturn_t k3_dma_int_handler(int irq, void *dev_id)
 				unsigned long flags;
 
 				spin_lock_irqsave(&c->vc.lock, flags);
-				vchan_cookie_complete(&p->ds_run->vd);
+				if (p->ds_run != NULL)
+					vchan_cookie_complete(&p->ds_run->vd);
 				p->ds_done = p->ds_run;
 				spin_unlock_irqrestore(&c->vc.lock, flags);
 			}
 			irq_chan |= BIT(i);
 		}
-		if (unlikely((err1 & BIT(i)) || (err2 & BIT(i))))
+		if (unlikely((err1 & BIT(i)) || (err2 & BIT(i)))) {
+			p = &d->phy[i];
+			c = p->vchan;
+			if (c)
+				c->status = DMA_ERROR;
+
 			dev_warn(d->slave.dev, "DMA ERR\n");
+		}
 	}
 
 	writel_relaxed(irq_chan, d->base + INT_TC1_RAW);
@@ -276,6 +284,11 @@ static void k3_dma_tasklet(unsigned long arg)
 				/* Mark this channel free */
 				c->phy = NULL;
 				p->vchan = NULL;
+			} else if (p && c->status == DMA_ERROR) {
+				k3_dma_terminate_chan(p, d);
+				c->phy = NULL;
+				p->vchan = NULL;
+				p->ds_run = p->ds_done = NULL;
 			}
 		}
 		spin_unlock_irq(&c->vc.lock);
@@ -727,6 +740,8 @@ static int k3_dma_probe(struct platform_device *op)
 	INIT_LIST_HEAD(&d->slave.channels);
 	dma_cap_set(DMA_SLAVE, d->slave.cap_mask);
 	dma_cap_set(DMA_MEMCPY, d->slave.cap_mask);
+	op->dev.coherent_dma_mask = DMA_BIT_MASK(32);
+	op->dev.dma_mask = &op->dev.coherent_dma_mask;
 	d->slave.dev = &op->dev;
 	d->slave.device_alloc_chan_resources = k3_dma_alloc_chan_resources;
 	d->slave.device_free_chan_resources = k3_dma_free_chan_resources;

@@ -79,6 +79,18 @@ struct hisi_divider_clock {
 	const char		*alias;
 };
 
+struct hi6220_divider_clock {
+	unsigned int		id;
+	const char		*name;
+	const char		*parent_name;
+	unsigned long		flags;
+	unsigned long		offset;
+	u8			shift;
+	u8			width;
+	u32			mask_bit;
+	const char		*alias;
+};
+
 struct hisi_gate_clock {
 	unsigned int		id;
 	const char		*name;
@@ -90,12 +102,28 @@ struct hisi_gate_clock {
 	const char		*alias;
 };
 
+struct hisi_stub_clock {
+	unsigned int		id;
+	char			*name;
+	const char		*parent_name;
+	unsigned long		flags;
+	const char		*alias;
+};
+
 struct clk *hisi_register_clkgate_sep(struct device *, const char *,
 				const char *, unsigned long,
 				void __iomem *, u8,
 				u8, spinlock_t *);
+struct clk *hi6220_register_clkdiv(struct device *dev, const char *name,
+	const char *parent_name, unsigned long flags, void __iomem *reg,
+	u8 shift, u8 width, u32 mask_bit, spinlock_t *lock);
+struct clk *hisi_register_stub_clk(struct device_node *np,
+	unsigned int id, const char *name, const char *parent_name,
+	unsigned long flags, spinlock_t *lock);
 
 struct hisi_clock_data __init *hisi_clk_init(struct device_node *, int);
+struct hisi_clock_data __init *hisi_clk_alloc_data(struct device_node *np,
+						   int nr_clks);
 void __init hisi_clk_register_fixed_rate(struct hisi_fixed_rate_clock *,
 					int, struct hisi_clock_data *);
 void __init hisi_clk_register_fixed_factor(struct hisi_fixed_factor_clock *,
@@ -108,4 +136,10 @@ void __init hisi_clk_register_gate(struct hisi_gate_clock *,
 					int, struct hisi_clock_data *);
 void __init hisi_clk_register_gate_sep(struct hisi_gate_clock *,
 					int, struct hisi_clock_data *);
+void __init hi6220_clk_register_divider(struct hi6220_divider_clock *,
+					int, struct hisi_clock_data *);
+void __init hisi_clk_register_stub(struct hisi_stub_clock *clks, int nums,
+				   struct hisi_clock_data *data,
+				   struct device_node *np);
+
 #endif	/* __HISI_CLK_H */
