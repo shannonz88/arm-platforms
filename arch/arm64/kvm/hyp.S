@@ -105,27 +105,15 @@
 .macro save_fpsimd
 	// x2: cpu context address
 	// x3, x4: tmp regs
-	// Don't bother saving FP if trap is enabled
-	mrs	x4, cptr_el2
-	tst	x4, #CPTR_EL2_TFP
-	b.ne	1f
-
 	add	x3, x2, #CPU_GP_REG_OFFSET(CPU_FP_REGS)
 	fpsimd_save x3, 4
-1:
 .endm
 
 .macro restore_fpsimd
 	// x2: cpu context address
 	// x3, x4: tmp regs
-	// Don't bother restoring FP if trap is enabled
-	mrs	x4, cptr_el2
-	tst	x4, #CPTR_EL2_TFP
-	b.ne	1f
-
 	add	x3, x2, #CPU_GP_REG_OFFSET(CPU_FP_REGS)
 	fpsimd_restore x3, 4
-1:
 .endm
 
 .macro save_guest_regs
@@ -723,9 +711,7 @@
 	add	x3, x2, #CPU_SYSREG_OFFSET(DACR32_EL2)
 	mrs	x4, dacr32_el2
 	mrs	x5, ifsr32_el2
-	mrs	x6, fpexc32_el2
 	stp	x4, x5, [x3]
-	str	x6, [x3, #16]
 
 	skip_debug_state x8, 2f
 	mrs	x7, dbgvcr32_el2
@@ -753,10 +739,8 @@
 
 	add	x3, x2, #CPU_SYSREG_OFFSET(DACR32_EL2)
 	ldp	x4, x5, [x3]
-	ldr	x6, [x3, #16]
 	msr	dacr32_el2, x4
 	msr	ifsr32_el2, x5
-	msr	fpexc32_el2, x6
 
 	skip_debug_state x8, 2f
 	ldr	x7, [x3, #24]
@@ -774,8 +758,7 @@
 .macro activate_traps
 	ldr     x2, [x0, #VCPU_HCR_EL2]
 	msr     hcr_el2, x2
-	mov	x2, #CPTR_EL2_TTA
-	orr	x2, x2, #CPTR_EL2_TFP
+	ldr	x2, [x0, #VCPU_CPTR_EL2]
 	msr	cptr_el2, x2
 
 	mov	x2, #(1 << 15)	// Trap CP15 Cr=15
@@ -950,6 +933,12 @@ ENTRY(__kvm_vcpu_run)
 	compute_debug_state 1f
 	bl	__save_debug
 1:
+
+	skip_32bit_state x6, 1f
+	add	x3, x0, #VCPU_CONTEXT
+	ldr	x6, [x3, #CPU_SYSREG_OFFSET(FPEXC32_EL2)]
+	mrs	x6, fpexc32_el2
+1:
 	activate_traps
 	activate_vm
 
@@ -978,7 +967,15 @@ __kvm_vcpu_return:
 	add	x2, x0, #VCPU_CONTEXT
 
 	save_guest_regs
-	bl __save_fpsimd
+	mrs	x7, cptr_el2
+	tst	x7, #CPTR_EL2_TFP
+	b.ne	3f
+
+	mrs	x6, fpexc32_el2
+	str	x6, [x2, #CPU_SYSREG_OFFSET(FPEXC32_EL2)]
+	mov	x6, #0x70
+	msr	fpexc32_el2, x6
+3:
 	bl __save_sysregs
 
 	skip_debug_state x3, 1f
@@ -992,8 +989,6 @@ __kvm_vcpu_return:
 	// Host context
 	ldr	x2, [x0, #VCPU_HOST_CONTEXT]
 	kern_hyp_va x2
-
-	bl __restore_fpsimd
 
 	skip_debug_state x3, 1f
 	// Clear the dirty flag for the next run, as all the state has
@@ -1011,6 +1006,11 @@ __kvm_vcpu_return:
 	mov	x0, x1
 	ret
 END(__kvm_vcpu_run)
+
+ENTRY(__kvm_get_fpexc32_el2)
+	mrs	x0, fpexc32_el2
+	ret
+END(__kvm_get_fpexc32_el2)
 
 // void __kvm_tlb_flush_vmid_ipa(struct kvm *kvm, phys_addr_t ipa);
 ENTRY(__kvm_tlb_flush_vmid_ipa)
@@ -1282,15 +1282,23 @@ el1_fp_trap:
 	// Disable trapping of FP/SIMD
 	mrs	x1, cptr_el2
 	bic	x1, x1, #CPTR_EL2_TFP
+	str	x1, [x0, #VCPU_CPTR_EL2]	// Remember trapping is off
 	msr	cptr_el2, x1
+	isb
 
 	// Save host FP context
 	ldr	x2, [x0, #VCPU_HOST_CONTEXT]
 	kern_hyp_va x2
 	bl	__save_fpsimd
 
-	// Restore gest FP context
+	// Restore guest FP context
 	add	x2, x0, #VCPU_CONTEXT
+
+	// If this is a 32bit guest, restore FPEXC23_EL2
+//	skip_32bit_state x3, 1f
+//	ldr	x1, [x2, #CPU_SYSREG_OFFSET(FPEXC32_EL2)]
+//	msr	fpexc32_el2, x1
+//1:
 	bl	__restore_fpsimd
 
 	pop	x4, lr

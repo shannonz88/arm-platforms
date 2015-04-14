@@ -108,6 +108,9 @@ struct kvm_vcpu_arch {
 	/* Debug state */
 	u64 debug_flags;
 
+	/* FP/SIMD state */
+	u64 cptr_el2;
+
 	/* Pointer to host CPU context */
 	kvm_cpu_context_t *host_cpu_context;
 
@@ -207,6 +210,9 @@ int handle_exit(struct kvm_vcpu *vcpu, struct kvm_run *run,
 
 int kvm_perf_init(void);
 int kvm_perf_teardown(void);
+
+void kvm_fpsimd_load_vcpu_state(struct kvm_vcpu *vcpu);
+void kvm_fpsimd_put_vcpu_state(struct kvm_vcpu *vcpu);
 
 struct kvm_vcpu *kvm_mpidr_to_vcpu(struct kvm *kvm, unsigned long mpidr);
 

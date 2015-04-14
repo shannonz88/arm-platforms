@@ -233,6 +233,9 @@ static inline void vgic_arch_setup(const struct vgic_params *vgic)
 int kvm_perf_init(void);
 int kvm_perf_teardown(void);
 
+static inline void kvm_fpsimd_load_vcpu_state(struct kvm_vcpu *vcpu) {}
+static inline void  kvm_fpsimd_put_vcpu_state(struct kvm_vcpu *vcpu) {}
+
 void kvm_mmu_wp_memory_region(struct kvm *kvm, int slot);
 
 struct kvm_vcpu *kvm_mpidr_to_vcpu(struct kvm *kvm, unsigned long mpidr);

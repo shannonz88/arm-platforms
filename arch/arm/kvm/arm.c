@@ -285,10 +285,16 @@ int kvm_arch_vcpu_init(struct kvm_vcpu *vcpu)
 
 void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 {
+	if (vcpu->cpu != -1) {
+		pr_err("vcpu %d %d overload!!!\n", vcpu->vcpu_id, cpu);
+		return;
+	}
+
 	vcpu->cpu = cpu;
 	vcpu->arch.host_cpu_context = this_cpu_ptr(kvm_host_cpu_state);
 
 	kvm_arm_set_running_vcpu(vcpu);
+	kvm_fpsimd_load_vcpu_state(vcpu);
 }
 
 void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
@@ -300,7 +306,9 @@ void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
 	 */
 	vcpu->cpu = -1;
 
+	kvm_fpsimd_put_vcpu_state(vcpu);
 	kvm_arm_set_running_vcpu(NULL);
+	vcpu->arch.host_cpu_context = NULL;
 }
 
 int kvm_arch_vcpu_ioctl_set_guest_debug(struct kvm_vcpu *vcpu,

@@ -70,10 +70,11 @@
 	ldp	q26, q27, [\state, #16 * 26]
 	ldp	q28, q29, [\state, #16 * 28]
 	ldp	q30, q31, [\state, #16 * 30]!
+	ldr	w\tmpnr, [\state, #16 * 2 + 4]
+//	fpsimd_restore_fpcr x\tmpnr, \state
+	 msr	fpcr, x\tmpnr
 	ldr	w\tmpnr, [\state, #16 * 2]
 	msr	fpsr, x\tmpnr
-	ldr	w\tmpnr, [\state, #16 * 2 + 4]
-	fpsimd_restore_fpcr x\tmpnr, \state
 .endm
 
 .macro fpsimd_save_partial state, numnr, tmpnr1, tmpnr2

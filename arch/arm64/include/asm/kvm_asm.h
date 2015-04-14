@@ -137,6 +137,12 @@ extern char __restore_vgic_v2_state[];
 extern char __save_vgic_v3_state[];
 extern char __restore_vgic_v3_state[];
 
+extern u64 __kvm_get_fpexc32_el2(void);
+
+struct kvm_cpu_context;
+extern void __kvm_save_fpsimd(struct kvm_cpu_context *);
+extern void __kvm_restore_fpsimd(struct kvm_cpu_context *);
+
 #endif
 
 #endif /* __ARM_KVM_ASM_H__ */
