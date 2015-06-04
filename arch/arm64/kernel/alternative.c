@@ -41,7 +41,8 @@ struct alt_region {
 /*
  * Check if the target PC is within an alternative block.
  */
-static bool branch_insn_requires_update(struct alt_instr *alt, unsigned long pc)
+static bool branch_insn_requires_update(struct alt_instr *alt,
+					unsigned long pc, u32 *insnptr)
 {
 	unsigned long replptr;
 
@@ -56,6 +57,7 @@ static bool branch_insn_requires_update(struct alt_instr *alt, unsigned long pc)
 	 * Branching into *another* alternate sequence is doomed, and
 	 * we're not even trying to fix it up.
 	 */
+	pr_err("can't patch branch to %lx at %pSR\n", pc, insnptr);
 	BUG();
 }
 
@@ -76,7 +78,7 @@ static u32 get_alt_insn(struct alt_instr *alt, u32 *insnptr, u32 *altinsnptr)
 		 * do not rewrite the instruction, as it is already
 		 * correct. Otherwise, generate the new instruction.
 		 */
-		if (branch_insn_requires_update(alt, target)) {
+		if (branch_insn_requires_update(alt, target, insnptr)) {
 			offset = target - (unsigned long)insnptr;
 			insn = aarch64_set_branch_offset(insn, offset);
 		}
