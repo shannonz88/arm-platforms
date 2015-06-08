@@ -163,7 +163,8 @@ struct irq_phys_map {
 	u32			virt_irq;
 	u32			phys_irq;
 	u32			irq;
-	bool			active;
+	bool			shared;
+	bool			active; /* Only valid if shared */
 };
 
 struct irq_phys_map_entry {
@@ -356,7 +357,8 @@ void vgic_v3_dispatch_sgi(struct kvm_vcpu *vcpu, u64 reg);
 int kvm_vgic_vcpu_pending_irq(struct kvm_vcpu *vcpu);
 int kvm_vgic_vcpu_active_irq(struct kvm_vcpu *vcpu);
 struct irq_phys_map *kvm_vgic_map_phys_irq(struct kvm_vcpu *vcpu,
-					   int virt_irq, int irq);
+					   int virt_irq, int irq,
+					   bool shared);
 int kvm_vgic_unmap_phys_irq(struct kvm_vcpu *vcpu, struct irq_phys_map *map);
 bool kvm_vgic_get_phys_irq_active(struct irq_phys_map *map);
 void kvm_vgic_set_phys_irq_active(struct irq_phys_map *map, bool active);
