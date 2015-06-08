@@ -1128,19 +1128,25 @@ static void vgic_queue_irq_to_lr(struct kvm_vcpu *vcpu, int irq,
 		 * active in the physical world. Otherwise the
 		 * physical interrupt will fire and the guest will
 		 * exit before processing the virtual interrupt.
+		 *
+		 * This is of course only valid for a shared
+		 * interrupt. A non shared interrupt should already be
+		 * active.
 		 */
 		if (map) {
-			int ret;
-
-			BUG_ON(!map->active);
 			vlr.hwirq = map->phys_irq;
 			vlr.state |= LR_HW;
 			vlr.state &= ~LR_EOI_INT;
 
-			ret = irq_set_irqchip_state(map->irq,
-						    IRQCHIP_STATE_ACTIVE,
-						    true);
-			WARN_ON(ret);
+			if (map->shared) {
+				int ret;
+
+				BUG_ON(!map->active);
+				ret = irq_set_irqchip_state(map->irq,
+							    IRQCHIP_STATE_ACTIVE,
+							    true);
+				WARN_ON(ret);
+			}
 
 			/*
 			 * Make sure we're not going to sample this
@@ -1383,21 +1389,41 @@ static bool vgic_process_maintenance(struct kvm_vcpu *vcpu)
 static int vgic_sync_hwirq(struct kvm_vcpu *vcpu, struct vgic_lr vlr)
 {
 	struct irq_phys_map *map;
+	bool active;
 	int ret;
 
 	if (!(vlr.state & LR_HW))
 		return 0;
 
 	map = vgic_irq_map_search(vcpu, vlr.irq);
-	BUG_ON(!map || !map->active);
+	BUG_ON(!map);
+	BUG_ON(map->shared && !map->active);
 
 	ret = irq_get_irqchip_state(map->irq,
 				    IRQCHIP_STATE_ACTIVE,
-				    &map->active);
+				    &active);
 
 	WARN_ON(ret);
 
-	if (map->active) {
+	/*
+	 * For a non-shared interrupt, we have to cater for two
+	 * possible deactivation conditions:
+	 *
+	 * - the physical interrupt is now inactive (EOIed from the
+         *   guest)
+	 * - the physical interrupt is still active, but its virtual
+	 *   counterpart is flagged as "not queued", indicating another
+	 *   interrupt has fired between the EOI and the guest exit.
+	 *
+	 * Also, we are not reactivating a non-shared interrupt
+	 * ourselves. This is always left to the guest.
+	 */
+	if (!map->shared)
+		return !active || !vgic_irq_is_queued(vcpu, vlr.irq);
+
+	map->active = active;
+
+	if (active) {
 		ret = irq_set_irqchip_state(map->irq,
 					    IRQCHIP_STATE_ACTIVE,
 					    false);
@@ -1590,6 +1616,17 @@ static int vgic_update_irq_pending(struct kvm *kvm, int cpuid,
 		goto out;
 	}
 
+	if (map && !map->shared) {
+		/*
+		 * We are told to inject a HW irq, so we have to trust
+		 * the caller that the previous one has been EOIed,
+		 * and that a new one is now active. Clearing the
+		 * queued state will have the effect of making it
+		 * sample-able again.
+		 */
+		vgic_irq_clear_queued(vcpu, irq_num);
+	}
+
 	if (!vgic_can_sample_irq(vcpu, irq_num)) {
 		/*
 		 * Level interrupt in progress, will be picked up
@@ -1720,15 +1757,19 @@ static struct list_head *vgic_get_irq_phys_map_list(struct kvm_vcpu *vcpu,
  * @vcpu: The VCPU pointer
  * @virt_irq: The virtual irq number
  * @irq: The Linux IRQ number
+ * @shared: Indicates if the interrupt has to be context-switched or
+ *          if it is private to a VM
  *
  * Establish a mapping between a guest visible irq (@virt_irq) and a
  * Linux irq (@irq). On injection, @virt_irq will be associated with
- * the physical interrupt represented by @irq.
+ * the physical interrupt represented by @irq. If @shared is true,
+ * the active state of the interrupt will be context-switched.
  *
  * Returns a valid pointer on success, and an error pointer otherwise
  */
 struct irq_phys_map *kvm_vgic_map_phys_irq(struct kvm_vcpu *vcpu,
-					   int virt_irq, int irq)
+					   int virt_irq, int irq,
+					   bool shared)
 {
 	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
 	struct list_head *root = vgic_get_irq_phys_map_list(vcpu, virt_irq);
@@ -1762,7 +1803,8 @@ struct irq_phys_map *kvm_vgic_map_phys_irq(struct kvm_vcpu *vcpu,
 	if (map) {
 		/* Make sure this mapping matches */
 		if (map->phys_irq != phys_irq	||
-		    map->irq      != irq)
+		    map->irq      != irq	||
+		    map->shared   != shared)
 			map = ERR_PTR(-EINVAL);
 
 		goto out;
@@ -1772,6 +1814,7 @@ struct irq_phys_map *kvm_vgic_map_phys_irq(struct kvm_vcpu *vcpu,
 	map->virt_irq = virt_irq;
 	map->phys_irq = phys_irq;
 	map->irq      = irq;
+	map->shared   = shared;
 
 	list_add_tail_rcu(&entry->entry, root);
 
@@ -1822,7 +1865,7 @@ static void vgic_free_phys_irq_map_rcu(struct rcu_head *rcu)
  */
 bool kvm_vgic_get_phys_irq_active(struct irq_phys_map *map)
 {
-	BUG_ON(!map);
+	BUG_ON(!map || !map->shared);
 	return map->active;
 }
 
@@ -1834,7 +1877,7 @@ bool kvm_vgic_get_phys_irq_active(struct irq_phys_map *map)
  */
 void kvm_vgic_set_phys_irq_active(struct irq_phys_map *map, bool active)
 {
-	BUG_ON(!map);
+	BUG_ON(!map || !map->shared);
 	map->active = active;
 }
 
