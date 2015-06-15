@@ -36,6 +36,11 @@
  */
 extern u32 __boot_cpu_mode[2];
 
+/*
+ * __run_cpu_mode records the mode the boot CPU uses for the kernel.
+ */
+extern u32 __run_cpu_mode;
+
 void __hyp_set_vectors(phys_addr_t phys_vector_base);
 phys_addr_t __hyp_get_vectors(void);
 
@@ -58,6 +63,16 @@ static inline bool is_kernel_in_hyp_mode(void)
 
 	asm("mrs %0, CurrentEL" : "=r" (el));
 	return el == CurrentEL_EL2;
+}
+
+static inline bool is_kernel_mode_mismatched(void)
+{
+	u64 el;
+	u32 mode;
+
+	asm("mrs %0, CurrentEL" : "=r" (el));
+	mode = ACCESS_ONCE(__run_cpu_mode);
+	return el != mode;
 }
 
 /* The section containing the hypervisor text */
