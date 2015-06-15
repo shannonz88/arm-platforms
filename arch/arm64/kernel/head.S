@@ -582,7 +582,23 @@ ENTRY(set_cpu_boot_mode_flag)
 1:	str	w20, [x1]			// This CPU has booted in EL1
 	dmb	sy
 	dc	ivac, x1			// Invalidate potentially stale cache line
+	adr_l	x1, __run_cpu_mode
+	ldr	w0, [x1]
+	mrs	x20, CurrentEL
+	cbz	x0, skip_el_check
+	cmp	x0, x20
+	bne	mismatched_el
+skip_el_check:			// Only the first CPU gets to set the rule
+	str	w20, [x1]
+	dmb	sy
+	dc	ivac, x1	// Invalidate potentially stale cache line
 	ret
+mismatched_el:
+	str	w20, [x1, #4]
+	dmb	sy
+	dc	ivac, x1	// Invalidate potentially stale cache line
+1:	wfi
+	b	1b
 ENDPROC(set_cpu_boot_mode_flag)
 
 /*
@@ -597,6 +613,9 @@ ENDPROC(set_cpu_boot_mode_flag)
 ENTRY(__boot_cpu_mode)
 	.long	BOOT_CPU_MODE_EL2
 	.long	BOOT_CPU_MODE_EL1
+ENTRY(__run_cpu_mode)
+	.long	0
+	.long	0
 	.popsection
 
 	/*
