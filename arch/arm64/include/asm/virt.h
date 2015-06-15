@@ -36,6 +36,11 @@
  */
 extern u32 __boot_cpu_mode[2];
 
+/*
+ * __run_cpu_mode records the mode the boot CPU uses for the kernel.
+ */
+extern u32 __run_cpu_mode[2];
+
 void __hyp_set_vectors(phys_addr_t phys_vector_base);
 phys_addr_t __hyp_get_vectors(void);
 
@@ -58,6 +63,18 @@ static inline bool is_kernel_in_hyp_mode(void)
 
 	asm("mrs %0, CurrentEL" : "=r" (el));
 	return el == CurrentEL_EL2;
+}
+
+static inline bool is_kernel_mode_mismatched(void)
+{
+	/*
+	 * A mismatched CPU will have written its own CurrentEL in
+	 * __run_cpu_mode[1] (initially set to zero) after failing to
+	 * match the value in __run_cpu_mode[0]. Thus, a non-zero
+	 * value in __run_cpu_mode[1] is enough to detect the
+	 * pathological case.
+	 */
+	return !!ACCESS_ONCE(__run_cpu_mode[1]);
 }
 
 /* The section containing the hypervisor text */

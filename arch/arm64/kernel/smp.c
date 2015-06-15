@@ -113,6 +113,9 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 			pr_crit("CPU%u: failed to come online\n", cpu);
 			ret = -EIO;
 		}
+
+		if (is_kernel_mode_mismatched())
+			panic("CPU%u: incompatible execution level", cpu);
 	} else {
 		pr_err("CPU%u: failed to boot: %d\n", cpu, ret);
 	}
