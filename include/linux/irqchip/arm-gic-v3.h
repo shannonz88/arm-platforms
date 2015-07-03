@@ -392,9 +392,6 @@ int its_init(struct device_node *node, struct rdists *rdists,
 int its_msi_prepare(struct irq_domain *domain, u32 dev_id,
 		    int nvec, msi_alloc_info_t *info);
 
-struct irq_domain *its_pci_msi_alloc_domain(struct device_node *node,
-					    struct irq_domain *parent);
-
 #endif
 
 #endif

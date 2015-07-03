@@ -98,8 +98,38 @@ static struct msi_domain_info its_pci_msi_domain_info = {
 	.chip	= &its_msi_irq_chip,
 };
 
-struct irq_domain *its_pci_msi_alloc_domain(struct device_node *np,
-					    struct irq_domain *parent)
+static struct of_device_id its_device_id[] = {
+	{	.compatible	= "arm,gic-v3-its",	},
+	{},
+};
+
+static int __init its_pci_msi_init(void)
 {
-	return pci_msi_create_irq_domain(np, &its_pci_msi_domain_info, parent);
+	struct device_node *np;
+	struct irq_domain *parent;
+
+	for (np = of_find_matching_node(NULL, its_device_id); np;
+	     np = of_find_matching_node(np, its_device_id)) {
+		if (!of_property_read_bool(np, "msi-controller"))
+			continue;
+
+		parent = irq_find_matching_host(np, DOMAIN_BUS_PLATFORM_MSI);
+		if (!parent) {
+			pr_err("%s: unable to locate ITS domain\n",
+			       np->full_name);
+			continue;
+		}
+
+		if (!pci_msi_create_irq_domain(np, &its_pci_msi_domain_info,
+					       parent)) {
+			pr_err("%s: unable to create PCI domain\n",
+			       np->full_name);
+			continue;
+		}
+
+		pr_info("PCI/MSI: %s domain created\n", np->full_name);
+	}
+
+	return 0;
 }
+subsys_initcall(its_pci_msi_init);

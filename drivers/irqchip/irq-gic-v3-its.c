@@ -60,7 +60,6 @@ struct its_collection {
 struct its_node {
 	raw_spinlock_t		lock;
 	struct list_head	entry;
-	struct irq_domain	*domain;
 	void __iomem		*base;
 	unsigned long		phys_base;
 	struct its_cmd_block	*cmd_base;
@@ -1316,7 +1315,7 @@ static int its_probe(struct device_node *node, struct irq_domain *parent)
 	struct resource res;
 	struct its_node *its;
 	void __iomem *its_base;
-	struct irq_domain *inner_domain = NULL;
+	struct irq_domain *inner_domain;
 	u32 val;
 	u64 baser, tmp;
 	int err;
@@ -1414,12 +1413,6 @@ static int its_probe(struct device_node *node, struct irq_domain *parent)
 
 		inner_domain->parent = parent;
 		inner_domain->bus_token = DOMAIN_BUS_PLATFORM_MSI;
-
-		its->domain = its_pci_msi_alloc_domain(node, inner_domain);
-		if (!its->domain) {
-			err = -ENOMEM;
-			goto out_free_domains;
-		}
 	}
 
 	spin_lock(&its_lock);
@@ -1428,11 +1421,6 @@ static int its_probe(struct device_node *node, struct irq_domain *parent)
 
 	return 0;
 
-out_free_domains:
-	if (its->domain)
-		irq_domain_remove(its->domain);
-	if (inner_domain)
-		irq_domain_remove(inner_domain);
 out_free_tables:
 	its_free_tables(its);
 out_free_cmd:
