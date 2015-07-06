@@ -140,6 +140,11 @@ static inline unsigned int gic_irq(struct irq_data *d)
 	return d->hwirq;
 }
 
+static inline bool forwarded_irq(struct irq_data *d)
+{
+	return d->handler_data != NULL;
+}
+
 /*
  * Routines to acknowledge, disable and enable interrupts
  */
@@ -158,6 +163,12 @@ static int gic_peek_irq(struct irq_data *d, u32 offset)
 static void gic_mask_irq(struct irq_data *d)
 {
 	gic_poke_irq(d, GIC_DIST_ENABLE_CLEAR);
+	/*
+	 * When masking a forwarded interrupt, make sure it is
+	 * deactivated as well.
+	 */
+	if (static_key_true(&supports_deactivate) && forwarded_irq(d))
+		gic_poke_irq(d, GIC_DIST_ACTIVE_CLEAR);
 }
 
 static void gic_unmask_irq(struct irq_data *d)
@@ -167,10 +178,14 @@ static void gic_unmask_irq(struct irq_data *d)
 
 static void gic_eoi_irq(struct irq_data *d)
 {
-	if (static_key_true(&supports_deactivate))
+	if (static_key_true(&supports_deactivate)) {
+		/* Do not deactivate an IRQ forwarded to a vcpu. */
+		if (forwarded_irq(d))
+			return;
 		writel_relaxed(gic_irq(d), gic_cpu_base(d) + GIC_CPU_DEACTIVATE);
-	else
+	} else {
 		writel_relaxed(gic_irq(d), gic_cpu_base(d) + GIC_CPU_EOI);
+	}
 }
 
 static int gic_irq_set_irqchip_state(struct irq_data *d,
@@ -237,6 +252,18 @@ static int gic_set_type(struct irq_data *d, unsigned int type)
 		return -EINVAL;
 
 	return gic_configure_irq(gicirq, type, base, NULL);
+}
+
+static int gic_irq_set_vcpu_affinity(struct irq_data *d, void *vcpu)
+{
+	/* Only interrupts on the primary GIC can be forwarded to a vcpu. */
+	if (static_key_true(&supports_deactivate) &&
+	    irq_data_get_irq_chip_data(d) == &gic_data[0]) {
+		d->handler_data = vcpu;
+		return 0;
+	}
+
+	return -EINVAL;
 }
 
 #ifdef CONFIG_SMP
@@ -334,6 +361,7 @@ static struct irq_chip gic_chip = {
 #endif
 	.irq_get_irqchip_state	= gic_irq_get_irqchip_state,
 	.irq_set_irqchip_state	= gic_irq_set_irqchip_state,
+	.irq_set_vcpu_affinity	= gic_irq_set_vcpu_affinity,
 	.flags			= IRQCHIP_SET_TYPE_MASKED,
 };
 
