@@ -295,10 +295,14 @@ static int gic_irq_get_irqchip_state(struct irq_data *d,
 
 static void gic_eoi_irq(struct irq_data *d)
 {
-	if (static_key_true(&supports_deactivate))
+	if (static_key_true(&supports_deactivate)) {
+		/* No need to deactivate an LPI */
+		if (gic_irq(d) >= 8192)
+			return;
 		gic_write_dir(gic_irq(d));
-	else
+	} else {
 		gic_write_eoir(gic_irq(d));
+	}
 }
 
 static int gic_set_type(struct irq_data *d, unsigned int type)
