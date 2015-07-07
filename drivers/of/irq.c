@@ -18,6 +18,7 @@
  * driver.
  */
 
+#include <linux/device.h>
 #include <linux/errno.h>
 #include <linux/list.h>
 #include <linux/module.h>
@@ -575,4 +576,19 @@ err:
 		list_del(&desc->list);
 		kfree(desc);
 	}
+}
+
+void of_msi_configure(struct device *dev, struct device_node *np)
+{
+	struct device_node *msi_np;
+	struct irq_domain *d;
+
+	msi_np = of_parse_phandle(np, "msi-parent", 0);
+	if (!msi_np)
+		return;
+
+	d = irq_find_matching_host(msi_np, DOMAIN_BUS_PLATFORM_MSI);
+	if (!d)
+		d = irq_find_host(msi_np);
+	dev_set_msi_domain(dev, d);
 }
