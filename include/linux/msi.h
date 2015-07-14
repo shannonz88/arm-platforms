@@ -18,6 +18,11 @@ struct pci_dev;
 void __get_cached_msi_msg(struct msi_desc *entry, struct msi_msg *msg);
 void get_cached_msi_msg(unsigned int irq, struct msi_msg *msg);
 
+typedef void (*irq_write_msi_msg_t)(struct msi_desc *desc,
+				    struct msi_msg *msg);
+
+struct platform_msi_priv_data;
+
 struct msi_desc {
 	struct list_head		list;
 	unsigned int			irq;
@@ -41,6 +46,10 @@ struct msi_desc {
 				u8	mask_pos;
 				void __iomem *mask_base;
 			};
+		};
+		struct {
+			struct platform_msi_priv_data *platform_msi_priv_data;
+			u16 msi_index;
 		};
 	};
 };
@@ -228,6 +237,12 @@ int msi_domain_alloc_irqs(struct irq_domain *domain, struct device *dev,
 void msi_domain_free_irqs(struct irq_domain *domain, struct device *dev);
 struct msi_domain_info *msi_get_domain_info(struct irq_domain *domain);
 
+struct irq_domain *platform_msi_create_irq_domain(struct device_node *np,
+						  struct msi_domain_info *info,
+						  struct irq_domain *parent);
+int platform_msi_domain_alloc_irqs(struct device *dev, unsigned int nvec,
+				   irq_write_msi_msg_t write_msi_msg);
+void platform_msi_domain_free_irqs(struct device *dev);
 #endif /* CONFIG_GENERIC_MSI_IRQ_DOMAIN */
 
 #ifdef CONFIG_PCI_MSI_IRQ_DOMAIN
