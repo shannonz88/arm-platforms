@@ -178,6 +178,7 @@
 		interrupt-names = "eventq", "priq", "cmdq-sync", "gerror";
 		dma-coherent;
 		#iommu-cells = <0>;
+		msi-parent = <&its 0x3210>;
 	};
 
 	smb {
