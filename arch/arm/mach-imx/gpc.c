@@ -188,7 +188,7 @@ static int imx_gpc_domain_xlate(struct irq_domain *domain,
 				unsigned long *out_hwirq,
 				unsigned int *out_type)
 {
-	if (domain->of_node != controller)
+	if (irq_domain_get_of_node(domain) != controller)
 		return -EINVAL;	/* Shouldn't happen, really... */
 	if (intsize != 3)
 		return -EINVAL;	/* Not GIC compliant */
