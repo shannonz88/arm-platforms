@@ -202,7 +202,7 @@ static int imx_gpcv2_domain_alloc(struct irq_domain *domain,
 	}
 
 	parent_args = *args;
-	parent_args.np = domain->parent->of_node;
+	parent_args.np = irq_domain_get_of_node(domain->parent);
 	return irq_domain_alloc_irqs_parent(domain, irq, nr_irqs, &parent_args);
 }
 
