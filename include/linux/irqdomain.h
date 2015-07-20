@@ -17,16 +17,14 @@
  * model). It's the domain callbacks that are responsible for setting the
  * irq_chip on a given irq_desc after it's been mapped.
  *
- * The host code and data structures are agnostic to whether or not
- * we use an open firmware device-tree. We do have references to struct
- * device_node in two places: in irq_find_host() to find the host matching
- * a given interrupt controller node, and of course as an argument to its
- * counterpart domain->ops->match() callback. However, those are treated as
- * generic pointers by the core and the fact that it's actually a device-node
- * pointer is purely a convention between callers and implementation. This
- * code could thus be used on other architectures by replacing those two
- * by some sort of arch-specific void * "token" used to identify interrupt
- * controllers.
+ * The host code and data structures are agnostic to whether or not we
+ * use an open firmware device-tree. Domains can be assigned a
+ * "void *domain_token" identifier, which is assumed to represent a
+ * "struct device_node" if the pointer is a valid virtual address.
+ *
+ * Otherwise, the value is assumed to be an opaque identifier. Should
+ * a pointer to a non "struct device_node" be required, another data
+ * structure should be used to indirect it (an IDR for example).
  */
 
 #ifndef _LINUX_IRQDOMAIN_H
@@ -108,8 +106,8 @@ struct irq_domain_chip_generic;
  * @flags: host per irq_domain flags
  *
  * Optional elements
- * @of_node: Pointer to device tree nodes associated with the irq_domain. Used
- *           when decoding device tree interrupt specifiers.
+ * @domain_token: optional firmware-specific identifier for
+ *                the interrupt controller
  * @gc: Pointer to a list of generic chips. There is a helper function for
  *      setting up one or more generic chips for interrupt controllers
  *      drivers using the generic chip library which uses this pointer.
@@ -130,7 +128,7 @@ struct irq_domain {
 	unsigned int flags;
 
 	/* Optional data */
-	struct device_node *of_node;
+	void *domain_token;
 	enum irq_domain_bus_token bus_token;
 	struct irq_domain_chip_generic *gc;
 #ifdef	CONFIG_IRQ_DOMAIN_HIERARCHY
@@ -161,70 +159,73 @@ enum {
 	IRQ_DOMAIN_FLAG_NONCORE		= (1 << 16),
 };
 
+#ifdef CONFIG_IRQ_DOMAIN
+extern struct device_node *irq_domain_token_to_of_node(void *domain_token);
+
 static inline struct device_node *irq_domain_get_of_node(struct irq_domain *d)
 {
-	return d->of_node;
+	return irq_domain_token_to_of_node(d->domain_token);
 }
 
-#ifdef CONFIG_IRQ_DOMAIN
-struct irq_domain *__irq_domain_add(struct device_node *of_node, int size,
+struct irq_domain *__irq_domain_add(void *domain_token, int size,
 				    irq_hw_number_t hwirq_max, int direct_max,
 				    const struct irq_domain_ops *ops,
 				    void *host_data);
-struct irq_domain *irq_domain_add_simple(struct device_node *of_node,
+struct irq_domain *irq_domain_add_simple(void *domain_token,
 					 unsigned int size,
 					 unsigned int first_irq,
 					 const struct irq_domain_ops *ops,
 					 void *host_data);
-struct irq_domain *irq_domain_add_legacy(struct device_node *of_node,
+struct irq_domain *irq_domain_add_legacy(void *domain_token,
 					 unsigned int size,
 					 unsigned int first_irq,
 					 irq_hw_number_t first_hwirq,
 					 const struct irq_domain_ops *ops,
 					 void *host_data);
-extern struct irq_domain *irq_find_matching_host(struct device_node *node,
+extern struct irq_domain *irq_find_matching_host(void *domain_token,
 						 enum irq_domain_bus_token bus_token);
 extern void irq_set_default_host(struct irq_domain *host);
 
-static inline struct irq_domain *irq_find_host(struct device_node *node)
+static inline struct irq_domain *irq_find_host(void *domain_token)
 {
-	return irq_find_matching_host(node, DOMAIN_BUS_ANY);
+	return irq_find_matching_host(domain_token, DOMAIN_BUS_ANY);
 }
 
 /**
  * irq_domain_add_linear() - Allocate and register a linear revmap irq_domain.
- * @of_node: pointer to interrupt controller's device tree node.
+ * @domain_token: optional firmware-specific identifier for
+ *                the interrupt controller
  * @size: Number of interrupts in the domain.
  * @ops: map/unmap domain callbacks
  * @host_data: Controller private data pointer
  */
-static inline struct irq_domain *irq_domain_add_linear(struct device_node *of_node,
+static inline struct irq_domain *irq_domain_add_linear(void *domain_token,
 					 unsigned int size,
 					 const struct irq_domain_ops *ops,
 					 void *host_data)
 {
-	return __irq_domain_add(of_node, size, size, 0, ops, host_data);
+	return __irq_domain_add(domain_token, size, size, 0, ops, host_data);
 }
-static inline struct irq_domain *irq_domain_add_nomap(struct device_node *of_node,
+static inline struct irq_domain *irq_domain_add_nomap(void *domain_token,
 					 unsigned int max_irq,
 					 const struct irq_domain_ops *ops,
 					 void *host_data)
 {
-	return __irq_domain_add(of_node, 0, max_irq, max_irq, ops, host_data);
+	return __irq_domain_add(domain_token, 0, max_irq, max_irq, ops, host_data);
 }
 static inline struct irq_domain *irq_domain_add_legacy_isa(
-				struct device_node *of_node,
+				void *domain_token,
 				const struct irq_domain_ops *ops,
 				void *host_data)
 {
-	return irq_domain_add_legacy(of_node, NUM_ISA_INTERRUPTS, 0, 0, ops,
+	return irq_domain_add_legacy(domain_token, NUM_ISA_INTERRUPTS, 0, 0, ops,
 				     host_data);
 }
-static inline struct irq_domain *irq_domain_add_tree(struct device_node *of_node,
+static inline struct irq_domain *irq_domain_add_tree(void *domain_token,
 					 const struct irq_domain_ops *ops,
 					 void *host_data)
 {
-	return __irq_domain_add(of_node, 0, ~0, 0, ops, host_data);
+	return __irq_domain_add(domain_token, 0, ~0, 0, ops, host_data);
 }
 
 extern void irq_domain_remove(struct irq_domain *host);
@@ -347,6 +348,11 @@ static inline bool irq_domain_is_hierarchy(struct irq_domain *domain)
 #endif	/* CONFIG_IRQ_DOMAIN_HIERARCHY */
 
 #else /* CONFIG_IRQ_DOMAIN */
+static inline struct device_node *irq_domain_get_of_node(struct irq_domain *d)
+{
+	return d->domain_token;
+}
+
 static inline void irq_dispose_mapping(unsigned int virq) { }
 static inline void irq_domain_activate_irq(struct irq_data *data) { }
 static inline void irq_domain_deactivate_irq(struct irq_data *data) { }
