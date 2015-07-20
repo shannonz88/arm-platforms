@@ -1,5 +1,6 @@
 #define pr_fmt(fmt)  "irq: " fmt
 
+#include <linux/acpi.h>
 #include <linux/debugfs.h>
 #include <linux/hardirq.h>
 #include <linux/interrupt.h>
@@ -556,6 +557,23 @@ unsigned int irq_create_of_mapping(struct of_phandle_args *irq_data)
 	return virq;
 }
 EXPORT_SYMBOL_GPL(irq_create_of_mapping);
+
+#ifdef CONFIG_ACPI
+unsigned int irq_create_acpi_mapping(struct irq_domain *d,
+				     struct acpi_gsi_descriptor *irq_data)
+{
+	struct of_phandle_args args;
+	int i;
+
+	for (i = 0; i < min(irq_data->param_count, MAX_PHANDLE_ARGS); i++)
+		args.args[i] = irq_data->param[i];
+
+	args.np = d ? d->domain_token : NULL;
+	args.args_count = i;
+
+	return irq_create_of_mapping(&args);
+}
+#endif
 
 /**
  * irq_dispose_mapping() - Unmap an interrupt
