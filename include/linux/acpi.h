@@ -214,6 +214,11 @@ struct acpi_gsi_descriptor {
 unsigned int irq_create_acpi_mapping(struct irq_domain *d,
 				     struct acpi_gsi_descriptor *irq_data);
 
+void acpi_set_irq_model(enum acpi_irq_model_id model,
+			unsigned long domain_token,
+			int (*populate)(struct acpi_gsi_descriptor *,
+					u32, unsigned int));
+
 #ifdef CONFIG_X86_IO_APIC
 extern int acpi_get_override_irq(u32 gsi, int *trigger, int *polarity);
 #else

@@ -16,6 +16,9 @@ enum acpi_irq_model_id acpi_irq_model;
 
 static void *acpi_gsi_domain_token;
 
+static int (*acpi_gsi_descriptor_populate)(struct acpi_gsi_descriptor *data,
+					   u32 gsi, unsigned int irq_type);
+
 static unsigned int acpi_gsi_get_irq_type(int trigger, int polarity)
 {
 	switch (polarity) {
@@ -71,9 +74,19 @@ EXPORT_SYMBOL_GPL(acpi_gsi_to_irq);
 int acpi_register_gsi(struct device *dev, u32 gsi, int trigger,
 		      int polarity)
 {
+	int err;
 	unsigned int irq;
 	unsigned int irq_type = acpi_gsi_get_irq_type(trigger, polarity);
 	struct irq_domain *d = irq_find_host(acpi_gsi_domain_token);
+
+	if (acpi_gsi_descriptor_populate) {
+		struct acpi_gsi_descriptor data;
+		err = acpi_gsi_descriptor_populate(&data, gsi, irq_type);
+		if (err)
+			return err;
+
+		return irq_create_acpi_mapping(d, &data);
+	}
 
 	irq = irq_create_mapping(d, gsi);
 	if (!irq)
@@ -99,3 +112,22 @@ void acpi_unregister_gsi(u32 gsi)
 	irq_dispose_mapping(irq);
 }
 EXPORT_SYMBOL_GPL(acpi_unregister_gsi);
+
+/**
+ * acpi_set_irq_model - Setup the GSI irqdomain information
+ * @model: the value assigned to acpi_irq_model
+ * @domain_token: the irq_domain identifier for mapping and looking up
+ *                GSI interrupts
+ * @populate: provided by the interrupt controller, populating a
+ *            struct acpi_gsi_descriptor based on a GSI and
+ *            the interrupt trigger information
+ */
+void acpi_set_irq_model(enum acpi_irq_model_id model,
+			unsigned long domain_token,
+			int (*populate)(struct acpi_gsi_descriptor *,
+					u32, unsigned int))
+{
+	acpi_irq_model = model;
+	acpi_gsi_domain_token = (void *)domain_token;
+	acpi_gsi_descriptor_populate = populate;
+}
