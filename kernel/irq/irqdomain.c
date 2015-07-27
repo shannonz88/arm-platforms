@@ -189,7 +189,7 @@ EXPORT_SYMBOL_GPL(irq_domain_add_legacy);
 /**
  * irq_find_matching_host() - Locates a domain for a given device node
  * @node: device-tree node of the interrupt controller
- * @data: domain-specific data
+ * @bus_token: domain-specific data
  */
 struct irq_domain *irq_find_matching_host(struct device_node *node,
 					  enum irq_domain_bus_token bus_token)
