@@ -114,10 +114,10 @@ EXPORT_SYMBOL_GPL(acpi_unregister_gsi);
  *            struct acpi_gsi_descriptor based on a GSI and
  *            the interrupt trigger information
  */
-void acpi_set_irq_model(enum acpi_irq_model_id model,
-			unsigned long domain_token,
-			int (*populate)(struct acpi_gsi_descriptor *,
-					u32, unsigned int))
+void __init acpi_set_irq_model(enum acpi_irq_model_id model,
+			       unsigned long domain_token,
+			       int (*populate)(struct acpi_gsi_descriptor *,
+					       u32, unsigned int))
 {
 	acpi_irq_model = model;
 	acpi_gsi_domain_token = (void *)domain_token;
