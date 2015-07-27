@@ -211,7 +211,9 @@ EXPORT_SYMBOL_GPL(irq_domain_add_legacy);
 
 /**
  * irq_find_matching_host() - Locates a domain for a given device node
- * @node: device-tree node of the interrupt controller
+ * @domain_token: global identifier of the interrupt controller. If this
+ *                is a valid kernel pointer, it is assumed to be a
+ *                struct device_node pointer.
  * @bus_token: domain-specific data
  */
 struct irq_domain *irq_find_matching_host(void *domain_token,
@@ -810,7 +812,7 @@ static int irq_domain_alloc_descs(int virq, unsigned int cnt,
  * @parent:	Parent irq domain to associate with the new domain
  * @flags:	Irq domain flags associated to the domain
  * @size:	Size of the domain. See below
- * @node:	Optional device-tree node of the interrupt controller
+ * @domain_token:	Optional global identifier of the interrupt controller
  * @ops:	Pointer to the interrupt domain callbacks
  * @host_data:	Controller private data pointer
  *
@@ -823,16 +825,16 @@ static int irq_domain_alloc_descs(int virq, unsigned int cnt,
 struct irq_domain *irq_domain_add_hierarchy(struct irq_domain *parent,
 					    unsigned int flags,
 					    unsigned int size,
-					    struct device_node *node,
+					    void *domain_token,
 					    const struct irq_domain_ops *ops,
 					    void *host_data)
 {
 	struct irq_domain *domain;
 
 	if (size)
-		domain = irq_domain_add_linear(node, size, ops, host_data);
+		domain = irq_domain_add_linear(domain_token, size, ops, host_data);
 	else
-		domain = irq_domain_add_tree(node, ops, host_data);
+		domain = irq_domain_add_tree(domain_token, ops, host_data);
 	if (domain) {
 		domain->parent = parent;
 		domain->flags |= flags;

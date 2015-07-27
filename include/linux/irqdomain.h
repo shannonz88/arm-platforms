@@ -293,7 +293,7 @@ extern void irq_domain_set_info(struct irq_domain *domain, unsigned int virq,
 #ifdef	CONFIG_IRQ_DOMAIN_HIERARCHY
 extern struct irq_domain *irq_domain_add_hierarchy(struct irq_domain *parent,
 			unsigned int flags, unsigned int size,
-			struct device_node *node,
+			void *domain_token,
 			const struct irq_domain_ops *ops, void *host_data);
 extern int __irq_domain_alloc_irqs(struct irq_domain *domain, int irq_base,
 				   unsigned int nr_irqs, int node, void *arg,
