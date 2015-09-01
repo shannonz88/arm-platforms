@@ -13,7 +13,6 @@
 #define _ASM_ACPI_H
 
 #include <linux/mm.h>
-#include <linux/irqchip/arm-gic-acpi.h>
 
 #include <asm/cputype.h>
 #include <asm/psci.h>
