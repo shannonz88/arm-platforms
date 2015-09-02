@@ -763,6 +763,52 @@ int acpi_dev_prop_read(struct acpi_device *adev, const char *propname,
 
 struct acpi_device *acpi_get_next_child(struct device *dev,
 					struct acpi_device *child);
+
+struct acpi_probe_entry;
+typedef bool (*acpi_probe_entry_validate_subtbl)(struct acpi_subtable_header *,
+						 struct acpi_probe_entry *);
+
+#define ACPI_TABLE_ID_LEN	5
+
+/**
+ * struct acpi_probe_entry - boot-time probing entry
+ * @id:			ACPI table name
+ * @type:		Optional subtable type to match
+ *			(if @id contains subtables)
+ * @validate_subtbl:	Optional callback to check the validity of
+ *			the subtable
+ * @probe_table:	Callback to the driver being probed when table
+ *			match is successful
+ * @probe_subtbl:	Callback to the driver being probed when table and
+ *			subtable match (and optionnal callback is successful)
+ * @driver_data:	Sideband data provided back to the driver
+ */
+struct acpi_probe_entry {
+	__u8 id[ACPI_TABLE_ID_LEN];
+	__u8 type;
+	acpi_probe_entry_validate_subtbl validate_subtbl;
+	union {
+		acpi_tbl_table_handler probe_table;
+		acpi_tbl_entry_handler probe_subtbl;
+	};
+	kernel_ulong_t driver_data;
+};
+
+#define ACPI_DECLARE(table, name, table_id, subtable, valid, data, fn)	\
+	static const struct acpi_probe_entry __acpi_probe_##name	\
+		__used __section(__##table##_acpi_probe_table)		\
+		 = {							\
+			.id = table_id,					\
+			.type = subtable,				\
+			.validate_subtbl = valid,			\
+			.probe_table = (acpi_tbl_table_handler)fn,	\
+			.driver_data = data, 				\
+		   }
+
+#define DEVICE_ACPI_DECLARE(name, table_id, fn)				\
+	ACPI_DECLARE(device, name, table_id, 0, NULL, 0, fn)
+
+int acpi_probe_device_table(const char *id);
 #else
 static inline int acpi_dev_get_property(struct acpi_device *adev,
 					const char *name, acpi_object_type type,
@@ -813,6 +859,16 @@ static inline struct acpi_device *acpi_get_next_child(struct device *dev,
 	return NULL;
 }
 
+#define ACPI_DECLARE(table, name, table_id, subtable, validate, data, fn) \
+	static const void * __acpi_table_##name[]			\
+		__attribute__((unused))					\
+		 = { (void *) table_id,					\
+		     (void *) subtable,					\
+		     (void *) valid,					\
+		     (void *) fn,					\
+		     (void *) data }
+
+static inline int acpi_probe_device_table(const char *id) { return 0; }
 #endif
 
 #endif	/*_LINUX_ACPI_H*/

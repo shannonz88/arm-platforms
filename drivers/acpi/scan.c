@@ -2793,3 +2793,44 @@ int __init acpi_scan_init(void)
 	mutex_unlock(&acpi_scan_lock);
 	return result;
 }
+
+static const struct acpi_probe_entry device_acpi_probe_end
+		__used __section(__device_acpi_probe_table_end);
+extern struct acpi_probe_entry __device_acpi_probe_table[];
+static struct acpi_probe_entry *ape;
+static int acpi_probe_count;
+static DEFINE_SPINLOCK(acpi_probe_lock);
+
+static int __init acpi_match_madt(struct acpi_subtable_header *header,
+				  const unsigned long end)
+{
+	if (!ape->validate_subtbl || ape->validate_subtbl(header, ape))
+		if (!ape->probe_subtbl(header, end))
+			acpi_probe_count++;
+
+	return 0;
+}
+
+int __init acpi_probe_device_table(const char *id)
+{
+	int count = 0;
+
+	if (acpi_disabled)
+		return 0;
+
+	spin_lock(&acpi_probe_lock);
+	for (ape = __device_acpi_probe_table; ape->probe_table; ape++) {
+		if (!ACPI_COMPARE_NAME(id, ape->id))
+			continue;
+		if (ACPI_COMPARE_NAME(ACPI_SIG_MADT, ape->id)) {
+			acpi_probe_count = 0;
+			acpi_table_parse_madt(ape->type, acpi_match_madt, 0);
+			count += acpi_probe_count;
+		} else {
+			count = acpi_table_parse(ape->id, ape->probe_table);
+		}
+	}
+	spin_unlock(&acpi_probe_lock);
+
+	return count;
+}
