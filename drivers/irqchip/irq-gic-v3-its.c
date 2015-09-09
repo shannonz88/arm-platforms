@@ -39,8 +39,10 @@
 #include "irqchip.h"
 
 #define ITS_FLAGS_CMDQ_NEEDS_FLUSHING		(1 << 0)
+#define ITS_FLAGS_FORCE_SHAREABLE		(1 << 1)
 
 #define RDIST_FLAGS_PROPBASE_NEEDS_FLUSHING	(1 << 0)
+#define RDIST_FLAGS_FORCE_SHAREABLE		(1 << 1)
 
 /*
  * Collection structure - just an ID, and a redistributor address to
@@ -920,7 +922,8 @@ retry_baser:
 		writeq_relaxed(val, its->base + GITS_BASER + i * 8);
 		tmp = readq_relaxed(its->base + GITS_BASER + i * 8);
 
-		if ((val ^ tmp) & GITS_BASER_SHAREABILITY_MASK) {
+		if ((val ^ tmp) & GITS_BASER_SHAREABILITY_MASK &&
+		    !(its->flags & ITS_FLAGS_FORCE_SHAREABLE)) {
 			/*
 			 * Shareability didn't stick. Just use
 			 * whatever the read reported, which is likely
@@ -1035,7 +1038,8 @@ static void its_cpu_init_lpis(void)
 	writeq_relaxed(val, rbase + GICR_PROPBASER);
 	tmp = readq_relaxed(rbase + GICR_PROPBASER);
 
-	if ((tmp ^ val) & GICR_PROPBASER_SHAREABILITY_MASK) {
+	if ((tmp ^ val) & GICR_PROPBASER_SHAREABILITY_MASK &&
+	    !(gic_rdists->flags & RDIST_FLAGS_FORCE_SHAREABLE)) {
 		if (!(tmp & GICR_PROPBASER_SHAREABILITY_MASK)) {
 			/*
 			 * The HW reports non-shareable, we must
@@ -1059,7 +1063,8 @@ static void its_cpu_init_lpis(void)
 	writeq_relaxed(val, rbase + GICR_PENDBASER);
 	tmp = readq_relaxed(rbase + GICR_PENDBASER);
 
-	if (!(tmp & GICR_PENDBASER_SHAREABILITY_MASK)) {
+	if (!(tmp & GICR_PENDBASER_SHAREABILITY_MASK) &&
+	    !(gic_rdists->flags & RDIST_FLAGS_FORCE_SHAREABLE)) {
 		/*
 		 * The HW reports non-shareable, we must remove the
 		 * cacheability attributes as well.
@@ -1431,6 +1436,12 @@ static int its_force_quiescent(void __iomem *base)
 	}
 }
 
+static void its_check_quirks(struct device_node *node, struct its_node *its)
+{
+	if (of_find_property(node, "fsl,enforce-shareability", NULL))
+		its->flags |= ITS_FLAGS_FORCE_SHAREABLE;
+}
+
 static int its_probe(struct device_node *node, struct irq_domain *parent)
 {
 	struct resource res;
@@ -1474,6 +1485,8 @@ static int its_probe(struct device_node *node, struct irq_domain *parent)
 		goto out_unmap;
 	}
 
+	its_check_quirks(node, its);
+
 	raw_spin_lock_init(&its->lock);
 	INIT_LIST_HEAD(&its->entry);
 	INIT_LIST_HEAD(&its->its_device_list);
@@ -1506,7 +1519,8 @@ static int its_probe(struct device_node *node, struct irq_domain *parent)
 	writeq_relaxed(baser, its->base + GITS_CBASER);
 	tmp = readq_relaxed(its->base + GITS_CBASER);
 
-	if ((tmp ^ baser) & GITS_CBASER_SHAREABILITY_MASK) {
+	if ((tmp ^ baser) & GITS_CBASER_SHAREABILITY_MASK &&
+	    !(its->flags & ITS_FLAGS_FORCE_SHAREABLE)) {
 		if (!(tmp & GITS_CBASER_SHAREABILITY_MASK)) {
 			/*
 			 * The HW reports non-shareable, we must
@@ -1594,6 +1608,13 @@ static struct of_device_id its_device_id[] = {
 	{},
 };
 
+static void its_check_rdist_quirks(struct device_node *node,
+				   struct rdists *rdists)
+{
+	if (of_find_property(node, "fsl,enforce-shareability", NULL))
+		rdists->flags |= ITS_FLAGS_FORCE_SHAREABLE;
+}
+
 int its_init(struct device_node *node, struct rdists *rdists,
 	     struct irq_domain *parent_domain)
 {
@@ -1608,6 +1629,8 @@ int its_init(struct device_node *node, struct rdists *rdists,
 		pr_warn("ITS: No ITS available, not enabling LPIs\n");
 		return -ENXIO;
 	}
+
+	its_check_rdist_quirks(node, rdists);
 
 	gic_rdists = rdists;
 	gic_root_node = node;

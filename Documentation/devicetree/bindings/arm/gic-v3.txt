@@ -49,6 +49,9 @@ Optional
   occupied by the redistributors. Required if more than one such
   region is present.
 
+- fsl,enforce-shareability : Freescale system using GIC500 with extra
+  hardware enforcing shareability of transactions
+
 Sub-nodes:
 
 GICv3 has one or more Interrupt Translation Services (ITS) that are
@@ -59,6 +62,10 @@ These nodes must have the following properties:
 - msi-controller : Boolean property. Identifies the node as an MSI controller
 - reg: Specifies the base physical address and size of the ITS
   registers.
+
+These nodes can have the following optional properties:
+- fsl,enforce-shareability : Freescale system using GIC500 with extra
+  hardware enforcing shareability of transactions
 
 The main GIC node must contain the appropriate #address-cells,
 #size-cells and ranges properties for the reg property of all ITS
