@@ -586,15 +586,23 @@ err:
  */
 void of_msi_configure(struct device *dev, struct device_node *np)
 {
-	struct device_node *msi_np;
-	struct irq_domain *d;
+	struct of_phandle_args args;
+	int index = 0;
 
-	msi_np = of_parse_phandle(np, "msi-parent", 0);
-	if (!msi_np)
-		return;
+	while (!of_parse_phandle_with_opt_args(np, "msi-parent", "#msi-cells",
+					       index, &args)) {
+		struct irq_domain *d;
 
-	d = irq_find_matching_host(msi_np, DOMAIN_BUS_PLATFORM_MSI);
-	if (!d)
-		d = irq_find_host(msi_np);
-	dev_set_msi_domain(dev, d);
+		d = irq_find_matching_host(args.np, DOMAIN_BUS_PLATFORM_MSI);
+		if (!d)
+			d = irq_find_host(args.np);
+
+		if (d) {
+			dev_set_msi_domain(dev, d);
+			return;
+		}
+
+		of_node_put(args.np);
+		index++;
+	}
 }
