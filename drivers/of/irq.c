@@ -579,6 +579,48 @@ err:
 	}
 }
 
+static struct irq_domain *__of_get_msi_domain(struct device_node *np,
+					      enum irq_domain_bus_token token)
+{
+	struct irq_domain *d;
+
+	d = irq_find_matching_host(np, token);
+	if (!d)
+		d = irq_find_host(np);
+
+	return d;
+}
+
+struct irq_domain *of_msi_get_domain(struct device_node *np,
+				     enum irq_domain_bus_token token)
+{
+	struct irq_domain *d = NULL;
+	int index = 0;
+
+	/* Check for a single msi-parent property */
+	np = of_parse_phandle(np, "msi-parent", 0);
+	if (!of_property_read_bool(np, "#msi-cells")) {
+		d = __of_get_msi_domain(np, token);
+		if (!d)
+			of_node_put(np);
+	} else {
+		/* Check for the complex msi-parent version */
+		struct of_phandle_args args;
+		while (!of_parse_phandle_with_args(np, "msi-parent",
+						   "#msi-cells",
+						   index, &args)) {
+			d = __of_get_msi_domain(np, token);
+			if (d)
+				break;
+
+			of_node_put(args.np);
+			index++;
+		}
+	}
+
+	return d;
+}
+
 /**
  * of_msi_configure - Set the msi_domain field of a device
  * @dev: device structure to associate with an MSI irq domain
