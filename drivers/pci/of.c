@@ -64,27 +64,38 @@ struct device_node * __weak pcibios_get_phb_of_node(struct pci_bus *bus)
 struct irq_domain *pci_host_bridge_of_msi_domain(struct pci_bus *bus)
 {
 #ifdef CONFIG_IRQ_DOMAIN
-	struct device_node *np;
+	struct of_phandle_args args;
 	struct irq_domain *d;
+	int index = 0;
 
 	if (!bus->dev.of_node)
 		return NULL;
 
 	/* Start looking for a phandle to an MSI controller. */
-	np = of_parse_phandle(bus->dev.of_node, "msi-parent", 0);
+	while (!of_parse_phandle_with_opt_args(bus->dev.of_node,
+					       "msi-parent", "#msi-cells",
+					       index, &args)) {
+		d = irq_find_matching_host(args.np, DOMAIN_BUS_PCI_MSI);
+		if (d)
+			return d;
+
+		d = irq_find_host(args.np);
+		if (d)
+			return d;
+
+		of_node_put(args.np);
+		index++;
+	}
 
 	/*
 	 * If we don't have an msi-parent property, look for a domain
 	 * directly attached to the host bridge.
 	 */
-	if (!np)
-		np = bus->dev.of_node;
-
-	d = irq_find_matching_host(np, DOMAIN_BUS_PCI_MSI);
+	d = irq_find_matching_host(bus->dev.of_node, DOMAIN_BUS_PCI_MSI);
 	if (d)
 		return d;
 
-	return irq_find_host(np);
+	return irq_find_host(bus->dev.of_node);
 #else
 	return NULL;
 #endif
