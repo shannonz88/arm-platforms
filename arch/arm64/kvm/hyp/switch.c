@@ -15,6 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/types.h>
 #include <asm/kvm_asm.h>
 
 #include "hyp.h"
@@ -150,6 +151,55 @@ static void __hyp_text __vgic_restore_state(struct kvm_vcpu *vcpu)
 	__vgic_call_restore_state()(vcpu);
 }
 
+static hyp_alternate_value(__check_arm_834220,
+			   false, true,
+			   ARM64_WORKAROUND_834220);
+
+static bool __hyp_text __populate_fault_info(struct kvm_vcpu *vcpu)
+{
+	u64 esr = read_sysreg_el2(esr);
+	u8 ec = esr >> ESR_ELx_EC_SHIFT;
+	u64 hpfar, far;
+
+	vcpu->arch.fault.esr_el2 = esr;
+
+	if (ec != ESR_ELx_EC_DABT_LOW && ec != ESR_ELx_EC_IABT_LOW)
+		return true;
+
+	far = read_sysreg_el2(far);
+
+	if (!(esr & ESR_ELx_S1PTW) &&
+	    (__check_arm_834220() || (esr & ESR_ELx_FSC_TYPE) == FSC_PERM)) {
+		u64 par, tmp;
+
+		/*
+		 * Permission fault, HPFAR_EL2 is invalid. Resolve the
+		 * IPA the hard way using the guest VA.
+		 * Stage-1 translation already validated the memory
+		 * access rights. As such, we can use the EL1
+		 * translation regime, and don't have to distinguish
+		 * between EL0 and EL1 access.
+		 */
+		par = read_sysreg(par_el1);
+		asm volatile("at s1e1r, %0" : : "r" (far));
+		isb();
+
+		tmp = read_sysreg(par_el1);
+		write_sysreg(par, par_el1);
+
+		if (unlikely(tmp & 1))
+			return false; /* Translation failed, back to guest */
+
+		hpfar = ((tmp >> 12) & ((1UL << 36) - 1)) << 4;
+	} else {
+		hpfar = read_sysreg(hpfar_el2);
+	}
+
+	vcpu->arch.fault.far_el2 = far;
+	vcpu->arch.fault.hpfar_el2 = hpfar;
+	return true;
+}
+
 static int __hyp_text __guest_run(struct kvm_vcpu *vcpu)
 {
 	struct kvm_cpu_context *host_ctxt;
@@ -181,8 +231,12 @@ static int __hyp_text __guest_run(struct kvm_vcpu *vcpu)
 	__debug_restore_state(vcpu, kern_hyp_va(vcpu->arch.debug_ptr), guest_ctxt);
 
 	/* Jump in the fire! */
+again:
 	exit_code = __guest_enter(vcpu, host_ctxt);
 	/* And we're baaack! */
+
+	if (exit_code == ARM_EXCEPTION_TRAP && !__populate_fault_info(vcpu))
+		goto again;
 
 	fp_enabled = __fpsimd_enabled();
 
