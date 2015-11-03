@@ -24,6 +24,19 @@
 #include "hyp.h"
 
 /* vcpu is already in the HYP VA space */
+void __hyp_text __vgic_v2_disable(struct kvm_vcpu *vcpu)
+{
+	struct kvm *kvm = kern_hyp_va(vcpu->kvm);
+	struct vgic_dist *vgic = &kvm->arch.vgic;
+	void __iomem *base = kern_hyp_va(vgic->vctrl_base);
+
+	if (!base)
+		return;
+
+	writel_relaxed(0, base + GICH_HCR);
+}
+
+/* vcpu is already in the HYP VA space */
 void __hyp_text __vgic_v2_save_state(struct kvm_vcpu *vcpu)
 {
 	struct kvm *kvm = kern_hyp_va(vcpu->kvm);
@@ -55,8 +68,6 @@ void __hyp_text __vgic_v2_save_state(struct kvm_vcpu *vcpu)
 	cpu_if->vgic_elrsr = ((u64)elrsr1 << 32) | elrsr0;
 #endif
 	cpu_if->vgic_apr    = readl_relaxed(base + GICH_APR);
-
-	writel_relaxed(0, base + GICH_HCR);
 
 	for (i = 0; i < nr_lr; i++)
 		cpu_if->vgic_lr[i] = readl_relaxed(base + GICH_LR0 + (i * 4));

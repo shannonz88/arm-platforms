@@ -133,6 +133,10 @@ static hyp_alternate_select(__vgic_call_restore_state,
 			    __vgic_v2_restore_state, __vgic_v3_restore_state,
 			    ARM64_HAS_SYSREG_GIC_CPUIF);
 
+static hyp_alternate_select(__vgic_disable,
+			    __vgic_v2_disable, __vgic_v3_disable,
+			    ARM64_HAS_SYSREG_GIC_CPUIF);
+
 static void __hyp_text __vgic_save_state(struct kvm_vcpu *vcpu)
 {
 	__vgic_call_save_state()(vcpu);
@@ -243,6 +247,7 @@ again:
 	__sysreg_save_guest_state(guest_ctxt);
 	__sysreg32_save_state(vcpu);
 	__timer_save_state(vcpu);
+	__vgic_disable()(vcpu);
 	__vgic_save_state(vcpu);
 
 	__deactivate_traps(vcpu);

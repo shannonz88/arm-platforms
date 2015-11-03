@@ -40,6 +40,11 @@
 	} while (0)
 
 /* vcpu is already in the HYP VA space */
+void __hyp_text __vgic_v3_disable(struct kvm_vcpu *vcpu)
+{
+	write_gicreg(0, ICH_HCR_EL2);
+}
+
 void __hyp_text __vgic_v3_save_state(struct kvm_vcpu *vcpu)
 {
 	struct vgic_v3_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v3;
@@ -57,7 +62,6 @@ void __hyp_text __vgic_v3_save_state(struct kvm_vcpu *vcpu)
 	cpu_if->vgic_eisr  = read_gicreg(ICH_EISR_EL2);
 	cpu_if->vgic_elrsr = read_gicreg(ICH_ELSR_EL2);
 
-	write_gicreg(0, ICH_HCR_EL2);
 	val = read_gicreg(ICH_VTR_EL2);
 	max_lr_idx = vtr_to_max_lr_idx(val);
 	nr_pri_bits = vtr_to_nr_pri_bits(val);
