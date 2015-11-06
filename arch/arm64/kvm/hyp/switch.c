@@ -221,12 +221,7 @@ static int __hyp_text __guest_run(struct kvm_vcpu *vcpu)
 	__vgic_restore_state(vcpu);
 	__timer_restore_state(vcpu);
 
-	/*
-	 * We must restore the 32-bit state before the sysregs, thanks
-	 * to Cortex-A57 erratum #852523.
-	 */
-	__sysreg32_restore_state(vcpu);
-	__sysreg_restore_guest_state(guest_ctxt);
+	__sysreg_restore_guest_state(vcpu);
 	__debug_restore_state(vcpu, kern_hyp_va(vcpu->arch.debug_ptr), guest_ctxt);
 
 	/* Jump in the fire! */
@@ -239,8 +234,7 @@ again:
 
 	fp_enabled = __fpsimd_enabled()();
 
-	__sysreg_save_guest_state(guest_ctxt);
-	__sysreg32_save_state(vcpu);
+	__sysreg_save_guest_min_state(vcpu);
 	__timer_save_state(vcpu);
 	__vgic_disable()(vcpu);
 
@@ -248,6 +242,7 @@ again:
 	__deactivate_vm(vcpu);
 
 	__sysreg_restore_host_state(host_ctxt);
+	__sysreg_save_guest_aux_state(vcpu);
 	__vgic_save_state(vcpu);
 
 	if (fp_enabled) {

@@ -80,12 +80,6 @@ void __hyp_text __sysreg_save_host_state(struct kvm_cpu_context *ctxt)
 	__sysreg_save_common_state(ctxt);
 }
 
-void __hyp_text __sysreg_save_guest_state(struct kvm_cpu_context *ctxt)
-{
-	__sysreg_save_state(ctxt);
-	__sysreg_save_common_state(ctxt);
-}
-
 static void __hyp_text __sysreg_restore_common_state(struct kvm_cpu_context *ctxt)
 {
 	write_sysreg(ctxt->sys_regs[ACTLR_EL1],	  actlr_el1);
@@ -123,23 +117,7 @@ static void __hyp_text __sysreg_restore_state(struct kvm_cpu_context *ctxt)
 	write_sysreg_el1(ctxt->gp_regs.spsr[KVM_SPSR_EL1],spsr);
 }
 
-static hyp_alternate_select(__sysreg_call_restore_host_state,
-			    __sysreg_restore_state, __sysreg_do_nothing,
-			    ARM64_HAS_VIRT_HOST_EXTN);
-
-void __hyp_text __sysreg_restore_host_state(struct kvm_cpu_context *ctxt)
-{
-	__sysreg_call_restore_host_state()(ctxt);
-	__sysreg_restore_common_state(ctxt);
-}
-
-void __hyp_text __sysreg_restore_guest_state(struct kvm_cpu_context *ctxt)
-{
-	__sysreg_restore_state(ctxt);
-	__sysreg_restore_common_state(ctxt);
-}
-
-void __hyp_text __sysreg32_save_state(struct kvm_vcpu *vcpu)
+static void __hyp_text __sysreg32_save_state(struct kvm_vcpu *vcpu)
 {
 	u64 *spsr, *sysreg;
 
@@ -161,7 +139,7 @@ void __hyp_text __sysreg32_save_state(struct kvm_vcpu *vcpu)
 		sysreg[DBGVCR32_EL2] = read_sysreg(dbgvcr32_el2);
 }
 
-void __hyp_text __sysreg32_restore_state(struct kvm_vcpu *vcpu)
+static void __hyp_text __sysreg32_restore_state(struct kvm_vcpu *vcpu)
 {
 	u64 *spsr, *sysreg;
 
@@ -181,4 +159,58 @@ void __hyp_text __sysreg32_restore_state(struct kvm_vcpu *vcpu)
 
 	if (vcpu->arch.debug_flags & KVM_ARM64_DEBUG_DIRTY)
 		write_sysreg(sysreg[DBGVCR32_EL2], dbgvcr32_el2);
+}
+
+static hyp_alternate_select(__sysreg_call_restore_host_state,
+			    __sysreg_restore_state, __sysreg_do_nothing,
+			    ARM64_HAS_VIRT_HOST_EXTN);
+
+void __hyp_text __sysreg_restore_host_state(struct kvm_cpu_context *ctxt)
+{
+	__sysreg_call_restore_host_state()(ctxt);
+	__sysreg_restore_common_state(ctxt);
+}
+
+void __hyp_text __sysreg_restore_guest_state(struct kvm_vcpu *vcpu)
+{
+	struct kvm_cpu_context *ctxt;
+
+	ctxt = &vcpu->arch.ctxt;
+
+	/*
+	 * We must restore the 32-bit state before the sysregs, thanks
+	 * to Cortex-A57 erratum #852523.
+	 */
+	__sysreg32_restore_state(vcpu);
+	__sysreg_restore_state(ctxt);
+	__sysreg_restore_common_state(ctxt);
+}
+
+/*
+ * This is defined as the state that has to be saved for the host to
+ * be able restore its own state and to run.
+ */
+void __hyp_text __sysreg_save_guest_min_state(struct kvm_vcpu *vcpu)
+{
+	struct kvm_cpu_context *ctxt;
+
+	ctxt = &vcpu->arch.ctxt;
+
+	__sysreg_call_save_state()(ctxt);
+	__sysreg_save_common_state(ctxt);
+}
+
+static hyp_alternate_select(__sysreg_call_save_aux_state,
+			    __sysreg_do_nothing, __sysreg_save_state,
+			    ARM64_HAS_VIRT_HOST_EXTN);
+
+/* Defined as anything that's not part of the minimal state. */
+void __hyp_text __sysreg_save_guest_aux_state(struct kvm_vcpu *vcpu)
+{
+	struct kvm_cpu_context *ctxt;
+
+	ctxt = &vcpu->arch.ctxt;
+
+	__sysreg_call_save_aux_state()(ctxt);
+	__sysreg32_save_state(vcpu);
 }
