@@ -248,12 +248,12 @@ again:
 	__sysreg32_save_state(vcpu);
 	__timer_save_state(vcpu);
 	__vgic_disable()(vcpu);
-	__vgic_save_state(vcpu);
 
 	__deactivate_traps(vcpu);
 	__deactivate_vm(vcpu);
 
 	__sysreg_restore_host_state(host_ctxt);
+	__vgic_save_state(vcpu);
 
 	if (fp_enabled) {
 		__fpsimd_save_state(&guest_ctxt->gp_regs.fp_regs);
