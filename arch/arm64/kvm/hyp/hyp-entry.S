@@ -113,7 +113,11 @@ el1_trap:
 el1_irq:
 	save_x0_to_x3
 	mrs	x0, tpidr_el2
+alternative_if_not ARM64_HAS_VIRT_HOST_EXTN
 	mov	x1, #ARM_EXCEPTION_IRQ
+alternative_else
+	mov	x1, #ARM_EXCEPTION_EARLY_IRQ
+alternative_endif
 	b	__guest_exit
 
 ENTRY(__hyp_do_panic)
