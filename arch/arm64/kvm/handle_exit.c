@@ -172,6 +172,7 @@ int handle_exit(struct kvm_vcpu *vcpu, struct kvm_run *run,
 
 	switch (exception_index) {
 	case ARM_EXCEPTION_IRQ:
+	case ARM_EXCEPTION_EARLY_IRQ:
 		return 1;
 	case ARM_EXCEPTION_TRAP:
 		/*
