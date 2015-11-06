@@ -241,7 +241,19 @@ again:
 	__deactivate_traps(vcpu);
 	__deactivate_vm(vcpu);
 
-	__sysreg_restore_host_state(host_ctxt);
+	if (exit_code == ARM_EXCEPTION_EARLY_IRQ) {
+		extern void (*handle_arch_irq)(struct pt_regs *);
+
+		isb();		/* Make sure we've switched role now */
+
+		__sysreg_restore_host_state(host_ctxt);
+
+		/* Converting user_pt_regs to pt_regs - not very nice... */
+		handle_arch_irq((struct pt_regs *)&host_ctxt->gp_regs.regs);
+	} else {
+		__sysreg_restore_host_state(host_ctxt);
+	}
+
 	__sysreg_save_guest_aux_state(vcpu);
 	__vgic_save_state(vcpu);
 
