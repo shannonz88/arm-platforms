@@ -30,14 +30,9 @@ static bool __hyp_text __fpsimd_enabled_vhe(void)
 	return !!(read_sysreg(cpacr_el1) & (3 << 20));
 }
 
-static hyp_alternate_select(__fpsimd_is_enabled,
+static hyp_alternate_select(__fpsimd_enabled,
 			    __fpsimd_enabled_nvhe, __fpsimd_enabled_vhe,
 			    ARM64_HAS_VIRT_HOST_EXTN);
-
-bool __hyp_text __fpsimd_enabled(void)
-{
-	return __fpsimd_is_enabled()();
-}
 
 static void __hyp_text __activate_traps_vhe(void)
 {
@@ -242,7 +237,7 @@ again:
 	if (exit_code == ARM_EXCEPTION_TRAP && !__populate_fault_info(vcpu))
 		goto again;
 
-	fp_enabled = __fpsimd_enabled();
+	fp_enabled = __fpsimd_enabled()();
 
 	__sysreg_save_guest_state(guest_ctxt);
 	__sysreg32_save_state(vcpu);
@@ -256,6 +251,10 @@ again:
 	__vgic_save_state(vcpu);
 
 	if (fp_enabled) {
+		if (__vcpu_has_32bit_el1(vcpu)) {
+			u64 *sysreg = vcpu->arch.ctxt.sys_regs;
+			sysreg[FPEXC32_EL2] = read_sysreg(fpexc32_el2);
+		}
 		__fpsimd_save_state(&guest_ctxt->gp_regs.fp_regs);
 		__fpsimd_restore_state(&host_ctxt->gp_regs.fp_regs);
 	}
