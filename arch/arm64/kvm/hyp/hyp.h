@@ -48,6 +48,11 @@ static inline unsigned long __hyp_kern_va(unsigned long v)
 
 #define hyp_kern_va(v) (typeof(v))(__hyp_kern_va((unsigned long)(v)))
 
+static inline bool __vcpu_has_32bit_el1(struct kvm_vcpu *vcpu)
+{
+	return !(vcpu->arch.hcr_el2 & HCR_RW);
+}
+
 #define read_sysreg_elx(r,nvh,vh)					\
 	({								\
 		u64 reg;						\

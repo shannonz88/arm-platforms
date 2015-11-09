@@ -143,7 +143,7 @@ void __hyp_text __sysreg32_save_state(struct kvm_vcpu *vcpu)
 {
 	u64 *spsr, *sysreg;
 
-	if (read_sysreg(hcr_el2) & HCR_RW)
+	if (!__vcpu_has_32bit_el1(vcpu))
 		return;
 
 	spsr = vcpu->arch.ctxt.gp_regs.spsr;
@@ -168,7 +168,7 @@ void __hyp_text __sysreg32_restore_state(struct kvm_vcpu *vcpu)
 {
 	u64 *spsr, *sysreg;
 
-	if (read_sysreg(hcr_el2) & HCR_RW)
+	if (!__vcpu_has_32bit_el1(vcpu))
 		return;
 
 	spsr = vcpu->arch.ctxt.gp_regs.spsr;

@@ -72,7 +72,7 @@ static void __hyp_text __activate_traps(struct kvm_vcpu *vcpu)
 	 * we set FPEXC.EN to prevent traps to EL1, when setting the TFP bit.
 	 */
 	val = vcpu->arch.hcr_el2;
-	if (!(val & HCR_RW)) {
+	if (__vcpu_has_32bit_el1(vcpu)) {
 		write_sysreg(1 << 30, fpexc32_el2);
 		isb();
 	}
