@@ -19,6 +19,10 @@
 #ifndef __ASM_ARM_KVM_VGIC_H
 #define __ASM_ARM_KVM_VGIC_H
 
+#ifdef CONFIG_KVM_NEW_VGIC
+#include <kvm/vgic/vgic.h>
+#else
+
 #include <linux/kernel.h>
 #include <linux/kvm.h>
 #include <linux/irqreturn.h>
@@ -366,4 +370,5 @@ static inline int vgic_v3_probe(struct device_node *vgic_node,
 }
 #endif
 
+#endif	/* old VGIC include */
 #endif
