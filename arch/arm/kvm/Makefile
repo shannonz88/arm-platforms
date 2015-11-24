@@ -20,7 +20,14 @@ kvm-arm-y = $(KVM)/kvm_main.o $(KVM)/coalesced_mmio.o $(KVM)/eventfd.o $(KVM)/vf
 obj-y += kvm-arm.o init.o interrupts.o
 obj-y += arm.o handle_exit.o guest.o mmu.o emulate.o reset.o
 obj-y += coproc.o coproc_a15.o coproc_a7.o mmio.o psci.o perf.o
+
+ifeq ($(CONFIG_KVM_NEW_VGIC),y)
+obj-y += $(KVM)/arm/vgic/vgic.o
+obj-y += $(KVM)/arm/vgic/vgic_init.o
+obj-y += $(KVM)/arm/vgic/vgic_irqfd.c
+else
 obj-y += $(KVM)/arm/vgic.o
 obj-y += $(KVM)/arm/vgic-v2.o
 obj-y += $(KVM)/arm/vgic-v2-emul.o
+endif
 obj-y += $(KVM)/arm/arch_timer.o
