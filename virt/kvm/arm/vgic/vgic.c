@@ -59,9 +59,93 @@ struct vgic_irq *vgic_get_irq(struct kvm *kvm, struct kvm_vcpu *vcpu,
 	}
 }
 
+/* Must be called with the ap_list_lock and irq_lock held */
+static int vgic_insert_irq_sorted(struct vgic_irq *irq, struct kvm_vcpu *vcpu)
+{
+	/* TODO: Implement */
+	WARN(1, "Unimplemented function\n");
+	return -EINVAL;
+}
+
+/*
+ * Only valid injection if changing level for level-triggered IRQs or for a
+ * rising edge.
+ */
+static bool vgic_validate_injection(struct vgic_irq *irq, bool level)
+{
+	switch (irq->config) {
+	case VGIC_CONFIG_LEVEL:
+		return irq->line_level != level;
+	case VGIC_CONFIG_EDGE:
+		return level;
+	default:
+		BUG();
+	}
+}
+
 static void vgic_update_irq_pending(struct kvm *kvm, struct kvm_vcpu *vcpu,
 				    u32 intid, bool level)
 {
+	struct vgic_irq *irq = vgic_get_irq(kvm, vcpu, intid);
+
+	BUG_ON(in_interrupt());
+
+retry:
+	spin_lock(&irq->irq_lock);
+
+	if (!vgic_validate_injection(irq, level)) {
+		/* Nothing to see here, move along... */
+		spin_unlock(&irq->irq_lock);
+		return;
+	}
+
+	if (irq->vcpu) {
+		/*
+		 * We do not need to take any ap_list_lock here because this
+		 * irq cannot be moved or modified and the vcpu pointer will
+		 * remain constant for as long as we hold the irq_lock.
+		 */
+		irq->pending = true;
+		spin_unlock(&irq->irq_lock);
+	} else {
+		struct kvm_vcpu *vcpu = irq->target_vcpu;
+
+		/*
+		 * We must unlock the irq lock to take the ap_list_lock where
+		 * we are going to insert this new pending interrupt.
+		 */
+		spin_unlock(&irq->irq_lock);
+
+		/* someone can do stuff here, which we re-check below */
+
+		spin_lock(&vcpu->arch.vgic_cpu.ap_list_lock);
+		spin_lock(&irq->irq_lock);
+
+		/*
+		 * Did something change behind our backs?
+		 *
+		 * There are two cases:
+		 * 1) The irq got assigned pending or active behind our backs
+		 *    and set the irq->vcpu field when linking it into an
+		 *    ap_list
+		 * 2) Someone changed the affinity on this irq behind our
+		 *    backs and we are now holding the wrong ap_list_lock.
+		 *
+		 * In both cases, drop locks and simply retry.
+		 */
+		if (irq->vcpu || irq->target_vcpu != vcpu) {
+			spin_unlock(&irq->irq_lock);
+			spin_unlock(&vcpu->arch.vgic_cpu.ap_list_lock);
+			goto retry;
+		}
+
+		vgic_insert_irq_sorted(irq, vcpu);
+		irq->pending = true;
+		irq->vcpu = vcpu;
+
+		spin_unlock(&irq->irq_lock);
+		spin_unlock(&vcpu->arch.vgic_cpu.ap_list_lock);
+	}
 }
 
 /**
