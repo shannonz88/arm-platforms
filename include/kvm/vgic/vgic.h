@@ -68,6 +68,11 @@ static inline int kvm_vgic_get_max_vcpus(void)
 #define VGIC_NR_SGIS		16
 #define VGIC_NR_PPIS		16
 #define VGIC_NR_PRIVATE_IRQS	(VGIC_NR_SGIS + VGIC_NR_PPIS)
+#define VGIC_MAX_PRIVATE	(VGIC_NR_PRIVATE_IRQS - 1)
+#define VGIC_MAX_SPI		1019
+#define VGIC_MAX_RESERVED	1023
+#define VGIC_MIN_LPI		8192
+
 
 #define VGIC_V2_MAX_LRS		(1 << 6)
 #define VGIC_V3_MAX_LRS		16
@@ -187,14 +192,11 @@ int kvm_vgic_hyp_init(void);
 int kvm_vgic_get_max_vcpus(void);
 int kvm_vgic_addr(struct kvm *kvm, unsigned long type, u64 *addr, bool write);
 
+int kvm_vgic_inject_irq(struct kvm *kvm, int cpuid, unsigned int irq_num,
+			bool level);
+
 static inline void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu) { }
 static inline void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu) { }
-static inline int kvm_vgic_inject_irq(struct kvm *kvm, int cpuid,
-				      unsigned int irq_num,
-				      bool level)
-{
-	return 0;
-}
 
 static inline int kvm_vgic_inject_mapped_irq(struct kvm *kvm, int cpuid,
 					     struct irq_phys_map *map,
