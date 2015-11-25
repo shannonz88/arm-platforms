@@ -28,6 +28,11 @@
 #define VGIC_NR_SGIS		16
 #define VGIC_NR_PPIS		16
 #define VGIC_NR_PRIVATE_IRQS	(VGIC_NR_SGIS + VGIC_NR_PPIS)
+#define VGIC_MAX_PRIVATE	(VGIC_NR_PRIVATE_IRQS - 1)
+#define VGIC_MAX_SPI		1019
+#define VGIC_MAX_RESERVED	1023
+#define VGIC_MIN_LPI		8192
+
 
 struct vgic_global {
 	/* virtual control interface mapping */
@@ -60,7 +65,7 @@ struct vgic_irq {
 	u32 hwintid;			/* HW INTID number */
 	union {
 		u8	targets;	/* GICv2  */
-		u32	affinity;	/* GICv3+ */
+		u32	affinity;	/* GICv3+ 32-bit packed MPIDR */
 	};
 	u8 source;			/* GICv2 SGIs only */
 	u8 priority;
