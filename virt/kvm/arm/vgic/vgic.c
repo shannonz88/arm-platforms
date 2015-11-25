@@ -16,6 +16,19 @@
 #include <linux/kvm.h>
 #include <linux/kvm_host.h>
 
+/*
+ * Locking order is always:
+ *   vgic_cpu->ap_list_lock
+ *     vgic_irq->irq_lock
+ *
+ * (that is, always take the ap_list_lock before the struct vgic_irq lock).
+ *
+ * When taking more than one ap_list_lock at the same time, always take the
+ * lowest numbered VCPU's ap_list_lock first, so:
+ *   vcpuX->vcpu_id < vcpuY->vcpu_id:
+ *     spin_lock(vcpuX->vgic_cpu.ap_list_lock);
+ *     spin_lock(vcpuY->vgic_cpu.ap_list_lock);
+ */
 
 static inline struct vgic_irq *vgic_its_get_lpi(struct kvm *kvm, u32 intid)
 {

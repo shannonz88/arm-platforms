@@ -83,6 +83,7 @@ enum vgic_irq_config {
 };
 
 struct vgic_irq {
+	spinlock_t irq_lock;		/* Protects the content of the struct */
 	struct list_head ap_list;
 
 	struct kvm_vcpu *vcpu;		/* SGIs and PPIs: The VCPU
@@ -178,7 +179,8 @@ struct vgic_cpu {
 	int		nr_lr;
 
 	struct vgic_irq private_irqs[VGIC_NR_PRIVATE_IRQS];
-	struct list_head ap_list_head;	/* Blue list */
+	spinlock_t ap_list_lock;	/* Protects the ap_list */
+	struct list_head ap_list_head;	/* ap_list a.k.a. Blue list */
 };
 
 void kvm_vgic_early_init(struct kvm *kvm);
