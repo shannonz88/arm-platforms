@@ -13,6 +13,20 @@
  * Foundation.
  */
 
+/*
+ * Locking order is always:
+ *   vgic_cpu->ap_list_lock
+ *     vgic_irq->irq_lock
+ *
+ * (that is, always take the ap_list_lock before the struct vgic_irq lock).
+ *
+ * When taking more than one ap_list_lock at the same time, always take the
+ * lowest numbered VCPU's ap_list_lock first, so:
+ *   vcpuX->vcpu_id < vcpuY->vcpu_id:
+ *     spin_lock(vcpuX->vgic_cpu.ap_list_lock);
+ *     spin_lock(vcpuY->vgic_cpu.ap_list_lock);
+ */
+
 static inline struct vgic_irq *vgic_its_get_lpi(struct kvm *kvm, u32 intid)
 {
 	return NULL;
@@ -38,6 +52,22 @@ static struct vgic_irq *vgic_get_irq(struct kvm *kvm, struct kvm_vcpu *vcpu,
 		 */
 		return vgic_its_get_lpi(kvm, intid);
 	}
+}
+
+/* Use lower byte as target bitmap for gicv2 */
+static void irq_change_affinity(struct kvm *kvm, u32 intid, u32 new_affinity)
+{
+	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
+	struct vgic_irq *irq;
+	
+	BUG_ON(intid <= VGIC_MAX_PRIVATE);
+	irq = vgic_get_irq(kvm, NULL, intid);
+	spin_lock(irq->irq_lock);
+	if (dist->vgic_model == KVM_DEV_TYPE_ARM_VGIC_V2)
+		irq->targets = new_affinity;
+	else
+		irq->affinity = new_affinity;
+	spin_unlock(irq->irq_lock);
 }
 
 static void vgic_update_irq_pending(struct kvm *kvm, struct kvm_vcpu *vcpu,
