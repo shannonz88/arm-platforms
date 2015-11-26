@@ -101,6 +101,9 @@ struct vgic_dist {
 	u32			enabled;
 
 	struct vgic_irq		*spis;
+
+	/* To be moved - probably */
+	int			nr_lr;
 };
 
 struct vgic_v2_cpu_if {
@@ -134,9 +137,17 @@ struct vgic_cpu {
 		struct vgic_v3_cpu_if	vgic_v3;
 	};
 
+	unsigned int used_lrs;
 	struct vgic_irq private_irqs[VGIC_NR_PRIVATE_IRQS];
 	spinlock_t ap_list_lock;	/* Protects the ap_list */
 	struct list_head ap_list_head;	/* ap_list a.k.a. Blue list */
 };
+
+bool kvm_vcpu_has_pending_irqs(struct kvm_vcpu *vcpu);
+void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu);
+
+void void vgic_v2_process_maintenance(struct kvm_vcpu *vcpu);
+void vgic_v2_fold_lr_state(struct kvm_vcpu *vcpu);
+void vgic_v2_populate_lrs(struct kvm_vcpu *vcpu);
 
 #endif /* __ASM_ARM_KVM_VGIC_VGIC_H */
