@@ -80,7 +80,7 @@ enum vgic_irq_config {
 struct vgic_irq {
 	struct list_head ap_list;
 
-	struct vcpu *vcpu;		/* SGIs and PPIs: The VCPU
+	struct kvm_vcpu *vcpu;		/* SGIs and PPIs: The VCPU
 					 * SPIs and LIPs: The VCPU whose ap_list
 					 * on which this is queued.
 					 */
