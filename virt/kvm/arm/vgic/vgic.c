@@ -15,6 +15,7 @@
 
 #include <linux/kvm.h>
 #include <linux/kvm_host.h>
+#include <linux/list_sort.h>
 
 #include "vgic.h"
 
@@ -59,12 +60,54 @@ struct vgic_irq *vgic_get_irq(struct kvm *kvm, struct kvm_vcpu *vcpu,
 	}
 }
 
-/* Must be called with the ap_list_lock and irq_lock held */
-static int vgic_insert_irq_sorted(struct vgic_irq *irq, struct kvm_vcpu *vcpu)
+/*
+ * The order of items in the ap_lists defines how we'll pack things in LRs as
+ * well, the first items in the list being the first things populated in the
+ * LRs.
+ *
+ * A hard rule is that active interrupts can never be pushed out of the LRs
+ * (and therefore take priority) since we cannot reliably trap on deactivation
+ * if IRQs and therefore they have to be present in the LRs.
+ *
+ * Otherwise things should be sorted by the priority field and the GIC
+ * hardware support will take care of preemption of priority groups etc.
+ *
+ * Return negative is a sorts before b, 0 to preserve order, and positive to
+ * sort b before a.
+ */
+static int vgic_irq_cmp(void *priv, struct list_head *a, struct list_head *b)
 {
-	/* TODO: Implement */
-	WARN(1, "Unimplemented function\n");
-	return -EINVAL;
+	struct vgic_irq *irqa = container_of(a, struct vgic_irq, ap_list);
+	struct vgic_irq *irqb = container_of(b, struct vgic_irq, ap_list);
+	int ret;
+
+	spin_lock(&irqa->irq_lock);
+	spin_lock(&irqb->irq_lock);
+
+	if (irqa->active || irqb->active) {
+		ret = (int)irqb->active - (int)irqa->active;
+		goto out;
+	}
+
+	BUG_ON(!irqa->pending || !irqb->pending);
+
+	if (!irqa->enabled || !irqb->enabled) {
+		ret = (int)irqb->enabled - (int)irqa->enabled;
+		goto out;
+	}
+
+	/* Both pending and enabled, sort by priority */
+	ret = irqa->priority - irqb->priority;
+out:
+	spin_unlock(&irqb->irq_lock);
+	spin_unlock(&irqa->irq_lock);
+	return ret;
+}
+
+/* Must be called with the ap_list_lock held */
+static void vgic_sort_ap_list(struct kvm_vcpu *vcpu)
+{
+	list_sort(NULL, &vcpu->arch.vgic_cpu.ap_list_head, vgic_irq_cmp);
 }
 
 /*
@@ -139,7 +182,7 @@ retry:
 			goto retry;
 		}
 
-		vgic_insert_irq_sorted(irq, vcpu);
+		list_add_tail(&irq->ap_list, &vcpu->arch.vgic_cpu.ap_list_head);
 		irq->pending = true;
 		irq->vcpu = vcpu;
 
