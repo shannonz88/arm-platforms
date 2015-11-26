@@ -29,8 +29,8 @@
  * When taking more than one ap_list_lock at the same time, always take the
  * lowest numbered VCPU's ap_list_lock first, so:
  *   vcpuX->vcpu_id < vcpuY->vcpu_id:
- *     spin_lock(vcpuX->vgic_cpu.ap_list_lock);
- *     spin_lock(vcpuY->vgic_cpu.ap_list_lock);
+ *     spin_lock(vcpuX->arch.vgic_cpu.ap_list_lock);
+ *     spin_lock(vcpuY->arch.vgic_cpu.ap_list_lock);
  */
 
 static inline struct vgic_irq *vgic_its_get_lpi(struct kvm *kvm, u32 intid)
@@ -220,4 +220,135 @@ int kvm_vgic_inject_irq(struct kvm *kvm, int cpuid, unsigned int intid,
 	vcpu = kvm_get_vcpu(kvm, cpuid);
 	vgic_update_irq_pending(kvm, vcpu, intid, level);
 	return 0;
+}
+
+/* Tell me where things should go */
+static struct vcpu *vgic_target_oracle(struct kvm *kvm, struct vgic_irq *irq)
+{
+	/* Assume irq is locked */
+	if (!((irq->enabled && irq->pending) || irq->active))
+		return NULL;
+
+	return affinity_to_vcpu(kvm, irq);
+}
+
+/**
+ * vgic_prune_ap_list - Remove non-relevant interrupts from the list
+ *
+ * @vcpu: The VCPU pointer
+ *
+ * Go over the list of "interesting" interrupts, and prune those that we
+ * won't have to consider in the near future.
+ */
+static void vgic_prune_ap_list(struct kvm_vcpu *vcpu)
+{
+	struct vgic_irq *irq, *tmp;
+
+retry:
+	spin_lock(&vcpu->arch.vgic_cpu.ap_list_lock);
+
+	list_for_each_entry_safe(irq, tmp, &vcpu->vgic_cpu.ap_list, ap_list) {
+		struct kvm_vcpu *target_vcpu, *vpcuA, *vcpuB;
+
+		spin_lock(&irq->irq_lock);
+
+		BUG_ON(vcpu != irq->vcpu);
+
+		target_vcpu = vgic_target_oracle(vpcu->kvm, irq);
+
+		if (!target_vcpu) {
+			/* We don't need to process this interrupt any
+			 * further, move it off the list */
+			list_del_init(irq->ap_list);
+			spin_unlock(&irq->irq_lock);
+			continue;
+		}
+
+		if (target_vcpu == vcpu) {
+			/* We're on the right CPU */
+			spin_unlock(&irq->irq_lock);
+			continue;
+		}
+
+		if (irq->active) {
+			/* We have an active interrupt, we can't migrate yet */
+			spin_unlock(&irq->irq_lock);
+			continue;
+		}
+
+		/* This interrupt looks like it has to be migrated. */
+
+		spin_unlock(&irq->irq_lock);
+		spin_unlock(&vcpu->arch.vgic_cpu.ap_list_lock);
+
+		/* Ensure locking order by always locking the smallest
+		 * ID first.*/
+		if (vcpu->vcpu_id < target_vcpu->vcpu_id) {
+			vcpuA = vcpu;
+			vcpuB = target_vcpu;
+		} else {
+			vcpuA = target_vcpu;
+			vcpuB = vcpu;
+		}
+
+		spin_lock(&vpcuA->arch.vgic_cpu.ap_list_lock);
+		spin_lock(&vpcuB->arch.vgic_cpu.ap_list_lock);
+		spin_lock(&irq->irq_lock);
+
+		/*
+		 * If the affinity has been preserved, move the
+		 * interrupt around. Otherwise, it means things have
+		 * changed while the interrupt was unlocked, and we
+		 * need to replay this.
+		 *
+		 * In all cases, we cannot trust the list not to have
+		 * changed, so we restart from the beginning.
+		 */
+		if (target_vcpu == vgic_target_oracle(vpcu->kvm, irq)) {
+			list_del_init(irq->ap_list);
+			/* Should that be in vgic_insert_irq_sorted??*/
+			irq->vcpu = target_vcpu;
+			vgic_insert_irq_sorted(irq, target_vcpu);
+		}
+
+		spin_unlock(&irq->irq_lock);
+		spin_unlock(&vcpuB->arch.vgic_cpu.ap_list_lock);
+		spin_unlock(&vcpuA->arch.vgic_cpu.ap_list_lock);
+		goto retry;
+	}
+
+	spin_unlock(&vcpu->arch.vgic_cpu.ap_list_lock);
+}
+
+void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu)
+{
+	vgic_process_maintenance_interrupt(vcpu);
+	vgic_fold_lr_state(vcpu);
+	vgic_prune_ap_list(vcpu);
+}
+
+void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
+{
+	spin_lock(&vcpu->arch.vgic_cpu.ap_list_lock);
+	vgic_sort_ap_list(vcpu);
+	vgic_populate_lrs(vcpu);
+	spin_unlock(&vcpu->arch.vgic_cpu.ap_list_lock);
+}
+
+bool kvm_vcpu_has_pending_irqs(struct kvm_vcpu *vcpu)
+{
+	struct vgic_irq *irq;
+	bool pending = false;
+
+	spin_lock(&vcpu->arch.vgic_cpu.ap_list_lock);
+
+	list_for_each_entry(irq, &vcpu->vgic_cpu.ap_list, ap_list) {
+		spin_lock(&irq->irq_lock);
+		pending |= irq->pending;
+		spin_unlock(&irq->irq_lock);
+	}
+
+	spin_unlock(&vcpu->arch.vgic_cpu.ap_list_lock);
+
+	return pending;
 }
