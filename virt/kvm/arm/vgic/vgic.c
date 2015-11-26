@@ -16,6 +16,8 @@
 #include <linux/kvm.h>
 #include <linux/kvm_host.h>
 
+#include "vgic.h"
+
 /*
  * Locking order is always:
  *   vgic_cpu->ap_list_lock
@@ -35,8 +37,8 @@ static inline struct vgic_irq *vgic_its_get_lpi(struct kvm *kvm, u32 intid)
 	return NULL;
 }
 
-static struct vgic_irq *vgic_get_irq(struct kvm *kvm, struct kvm_vcpu *vcpu,
-				     u32 intid)
+struct vgic_irq *vgic_get_irq(struct kvm *kvm, struct kvm_vcpu *vcpu,
+			      u32 intid)
 {
 	if (intid <= VGIC_MAX_PRIVATE) {
 		/* SGIs and PPIs */
