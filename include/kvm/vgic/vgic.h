@@ -85,6 +85,11 @@ struct vgic_irq {
 					 * on which this is queued.
 					 */
 
+	struct kvm_vcpu *target_vcpu;	/* The VCPU that this interrupt should,
+					 * as a result of the targets reg (v2)
+					 * or the affinity reg (v3).
+					 */
+
 	u32 intid;			/* Guest visible INTID */
 	bool pending;
 	bool line_level;		/* Level only */
@@ -93,10 +98,7 @@ struct vgic_irq {
 	bool enabled;
 	bool hw;			/* Tied to HW IRQ */
 	u32 hwintid;			/* HW INTID number */
-	union {
-		u8	targets;	/* GICv2  */
-		u32	affinity;	/* GICv3+ */
-	};
+	u8 targets;			/* GICv2  */
 	u8 source;			/* GICv2 SGIs only */
 	u8 priority;
 	enum vgic_irq_config config;	/* Level or edge */
