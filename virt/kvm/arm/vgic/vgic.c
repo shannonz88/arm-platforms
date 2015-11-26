@@ -385,10 +385,12 @@ retry:
 
 static inline void vgic_process_maintenance_interrupt(struct kvm_vcpu *vcpu)
 {
+	vgic_v2_process_maintenance(vcpu);
 }
 
 static inline void vgic_fold_lr_state(struct kvm_vcpu *vcpu)
 {
+	vgic_v2_fold_lr_state(vcpu);
 }
 
 /* Requires the ap_list_lock and the irq_lock to be held. */
@@ -397,14 +399,18 @@ static inline void vgic_populate_lr(struct kvm_vcpu *vcpu,
 {
 	DEBUG_SPINLOCK_BUG_ON(!spin_is_locked(&vcpu->arch.vgic_cpu.ap_list_lock));
 	DEBUG_SPINLOCK_BUG_ON(!spin_is_locked(&irq->irq_lock));
+
+	vgic_v2_populate_lr(vcpu, irq, lr);
 }
 
 static inline void vgic_clear_lr(struct kvm_vcpu *vcpu, int lr)
 {
+	vgic_v2_clear_lr(vcpu, lr);
 }
 
 static inline void vgic_set_underflow(struct kvm_vcpu *vcpu)
 {
+	vgic_v2_set_underflow(vcpu);
 }
 
 static int compute_ap_list_depth(struct kvm_vcpu *vcpu)
@@ -429,14 +435,12 @@ static int compute_ap_list_depth(struct kvm_vcpu *vcpu)
 static void vgic_flush_lr_state(struct kvm_vcpu *vcpu)
 {
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
-	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
-	u32 model = dist->vgic_model;
 	struct vgic_irq *irq;
 	int count = 0;
 
 	DEBUG_SPINLOCK_BUG_ON(!spin_is_locked(vgic_cpu->ap_list_lock));
 
-	if (unlikely(!dist->enabled))
+	if (unlikely(!vcpu->kvm->arch.vgic.enabled))
 		goto out_clean;
 
 	if (compute_ap_list_depth(vcpu) > kvm_vgic_global_state.nr_lr) {
@@ -454,14 +458,9 @@ static void vgic_flush_lr_state(struct kvm_vcpu *vcpu)
 		 * If we get an SGI with multiple sources, try to get
 		 * them in all at once.
 		 */
-		if (model == KVM_DEV_TYPE_ARM_VGIC_V2 &&
-		    vgic_irq_is_sgi(irq->intid)) {
-			while (irq->source &&
-			       count < kvm_vgic_global_state.nr_lr)
-				vgic_populate_lr(vcpu, irq, count++);
-		} else {
+		do {
 			vgic_populate_lr(vcpu, irq, count++);
-		}
+		} while (irq->source && count < kvm_vgic_global_state.nr_lr);
 
 next:
 		spin_unlock(&irq->irq_lock);
