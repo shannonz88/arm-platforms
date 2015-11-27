@@ -115,6 +115,12 @@ enum vgic_type {
 	VGIC_V3,		/* New fancy GICv3 */
 };
 
+struct vgic_global {
+	enum vgic_type	type;
+};
+
+extern struct vgic_global kvm_vgic_global_state;
+
 struct vgic_dist {
 	spinlock_t		lock;
 	bool			in_kernel;
@@ -125,6 +131,7 @@ struct vgic_dist {
 
 	int			nr_spis;
 
+	/* TODO: Consider moving to global state */
 	/* Virtual control interface mapping */
 	void __iomem		*vctrl_base;
 
@@ -222,9 +229,5 @@ static inline int kvm_vgic_vcpu_active_irq(struct kvm_vcpu *vcpu)
 bool kvm_vcpu_has_pending_irqs(struct kvm_vcpu *vcpu);
 void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu);
 void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu);
-
-void vgic_v2_process_maintenance(struct kvm_vcpu *vcpu);
-void vgic_v2_fold_lr_state(struct kvm_vcpu *vcpu);
-void vgic_v2_populate_lrs(struct kvm_vcpu *vcpu);
 
 #endif /* __ASM_ARM_KVM_VGIC_VGIC_H */

@@ -18,4 +18,9 @@
 struct vgic_irq *vgic_get_irq(struct kvm *kvm, struct kvm_vcpu *vcpu,
 			      u32 intid);
 
+void vgic_v2_process_maintenance(struct kvm_vcpu *vcpu);
+void vgic_v2_fold_lr_state(struct kvm_vcpu *vcpu);
+void vgic_v2_populate_lrs(struct kvm_vcpu *vcpu);
+
+
 #endif

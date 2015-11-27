@@ -19,6 +19,8 @@
 
 #include "vgic.h"
 
+struct vgic_global kvm_vgic_global_state;
+
 /*
  * Locking order is always:
  *   vgic_cpu->ap_list_lock
@@ -223,13 +225,13 @@ int kvm_vgic_inject_irq(struct kvm *kvm, int cpuid, unsigned int intid,
 }
 
 /* Tell me where things should go */
-static struct vcpu *vgic_target_oracle(struct kvm *kvm, struct vgic_irq *irq)
+static struct kvm_vcpu *vgic_target_oracle(struct kvm *kvm, struct vgic_irq *irq)
 {
 	/* Assume irq is locked */
 	if (!((irq->enabled && irq->pending) || irq->active))
 		return NULL;
 
-	return affinity_to_vcpu(kvm, irq);
+	return irq->target_vcpu;
 }
 
 /**
@@ -242,24 +244,25 @@ static struct vcpu *vgic_target_oracle(struct kvm *kvm, struct vgic_irq *irq)
  */
 static void vgic_prune_ap_list(struct kvm_vcpu *vcpu)
 {
+	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 	struct vgic_irq *irq, *tmp;
 
 retry:
-	spin_lock(&vcpu->arch.vgic_cpu.ap_list_lock);
+	spin_lock(&vgic_cpu->ap_list_lock);
 
-	list_for_each_entry_safe(irq, tmp, &vcpu->vgic_cpu.ap_list, ap_list) {
-		struct kvm_vcpu *target_vcpu, *vpcuA, *vcpuB;
+	list_for_each_entry_safe(irq, tmp, &vgic_cpu->ap_list_head, ap_list) {
+		struct kvm_vcpu *target_vcpu, *vcpuA, *vcpuB;
 
 		spin_lock(&irq->irq_lock);
 
 		BUG_ON(vcpu != irq->vcpu);
 
-		target_vcpu = vgic_target_oracle(vpcu->kvm, irq);
+		target_vcpu = vgic_target_oracle(vcpu->kvm, irq);
 
 		if (!target_vcpu) {
 			/* We don't need to process this interrupt any
 			 * further, move it off the list */
-			list_del_init(irq->ap_list);
+			list_del_init(&irq->ap_list);
 			spin_unlock(&irq->irq_lock);
 			continue;
 		}
@@ -279,7 +282,7 @@ retry:
 		/* This interrupt looks like it has to be migrated. */
 
 		spin_unlock(&irq->irq_lock);
-		spin_unlock(&vcpu->arch.vgic_cpu.ap_list_lock);
+		spin_unlock(&vgic_cpu->ap_list_lock);
 
 		/* Ensure locking order by always locking the smallest
 		 * ID first.*/
@@ -291,8 +294,8 @@ retry:
 			vcpuB = vcpu;
 		}
 
-		spin_lock(&vpcuA->arch.vgic_cpu.ap_list_lock);
-		spin_lock(&vpcuB->arch.vgic_cpu.ap_list_lock);
+		spin_lock(&vcpuA->arch.vgic_cpu.ap_list_lock);
+		spin_lock(&vcpuB->arch.vgic_cpu.ap_list_lock);
 		spin_lock(&irq->irq_lock);
 
 		/*
@@ -304,11 +307,11 @@ retry:
 		 * In all cases, we cannot trust the list not to have
 		 * changed, so we restart from the beginning.
 		 */
-		if (target_vcpu == vgic_target_oracle(vpcu->kvm, irq)) {
-			list_del_init(irq->ap_list);
+		if (target_vcpu == vgic_target_oracle(vcpu->kvm, irq)) {
+			list_del_init(&irq->ap_list);
 			/* Should that be in vgic_insert_irq_sorted??*/
 			irq->vcpu = target_vcpu;
-			vgic_insert_irq_sorted(irq, target_vcpu);
+			list_add_tail(&irq->ap_list, &vgic_cpu->ap_list_head);
 		}
 
 		spin_unlock(&irq->irq_lock);
@@ -317,7 +320,31 @@ retry:
 		goto retry;
 	}
 
-	spin_unlock(&vcpu->arch.vgic_cpu.ap_list_lock);
+	spin_unlock(&vgic_cpu->ap_list_lock);
+}
+
+static inline void vgic_process_maintenance_interrupt(struct kvm_vcpu *vcpu)
+{
+	if (kvm_vgic_global_state.type == VGIC_V2)
+		vgic_v2_process_maintenance(vcpu);
+	else
+		WARN(1, "GICv3 Not Implemented\n");
+}
+
+static inline void vgic_fold_lr_state(struct kvm_vcpu *vcpu)
+{
+	if (kvm_vgic_global_state.type == VGIC_V2)
+		vgic_v2_fold_lr_state(vcpu);
+	else
+		WARN(1, "GICv3 Not Implemented\n");
+}
+
+static inline void vgic_populate_lrs(struct kvm_vcpu *vcpu)
+{
+	if (kvm_vgic_global_state.type == VGIC_V2)
+		vgic_v2_populate_lrs(vcpu);
+	else
+		WARN(1, "GICv3 Not Implemented\n");
 }
 
 void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu)
@@ -337,12 +364,13 @@ void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 
 bool kvm_vcpu_has_pending_irqs(struct kvm_vcpu *vcpu)
 {
+	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 	struct vgic_irq *irq;
 	bool pending = false;
 
 	spin_lock(&vcpu->arch.vgic_cpu.ap_list_lock);
 
-	list_for_each_entry(irq, &vcpu->vgic_cpu.ap_list, ap_list) {
+	list_for_each_entry(irq, &vgic_cpu->ap_list_head, ap_list) {
 		spin_lock(&irq->irq_lock);
 		pending |= irq->pending;
 		spin_unlock(&irq->irq_lock);

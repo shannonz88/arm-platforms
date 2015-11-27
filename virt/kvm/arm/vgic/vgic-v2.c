@@ -13,6 +13,7 @@
  * Foundation.
  */
 
+#include <linux/irqchip/arm-gic.h>
 #include <linux/kvm.h>
 #include <linux/kvm_host.h>
 
@@ -32,16 +33,16 @@ static unsigned long *u64_to_bitmask(u64 *val)
 	return (unsigned long *)val;
 }
 
-void void vgic_v2_process_maintenance(struct kvm_vcpu *vcpu)
+void vgic_v2_process_maintenance(struct kvm_vcpu *vcpu)
 {
 	struct vgic_v2_cpu_if *cpuif = &vcpu->arch.vgic_cpu.vgic_v2;
 
-	if (cpuif->misr & GICH_MISR_EOI) {
+	if (cpuif->vgic_misr & GICH_MISR_EOI) {
 		u64 eisr = cpuif->vgic_eisr;
 		unsigned long *eisr_bmap = u64_to_bitmask(&eisr);
 		int lr;
 
-		for_each_set_bit(lr, eisr_bmap, vgic_global_info.nr_lr) {
+		for_each_set_bit(lr, eisr_bmap, vcpu->arch.vgic_cpu.nr_lr) {
 			struct vgic_irq *irq;
 			u32 intid = cpuif->vgic_lr[lr] & GICH_LR_VIRTUALID;
 			irq = vgic_get_irq(vcpu->kvm, vcpu, intid);
@@ -54,7 +55,7 @@ void void vgic_v2_process_maintenance(struct kvm_vcpu *vcpu)
 			 * to reset the IRQ level, which grabs the dist->lock
 			 * so we call this before taking the dist->lock.
 			 */
-			kvm_notify_acked_irq(kvm, 0,
+			kvm_notify_acked_irq(vcpu->kvm, 0,
 					     intid - VGIC_NR_PRIVATE_IRQS);
 
 			cpuif->vgic_lr[lr] &= ~GICH_LR_STATE; /* Useful?? */
@@ -62,7 +63,7 @@ void void vgic_v2_process_maintenance(struct kvm_vcpu *vcpu)
 		}
 	}
 
-	if (cpuif->misr & GICH_MISR_U)
+	if (cpuif->vgic_misr & GICH_MISR_U)
 		cpuif->vgic_hcr &= ~GICH_HCR_UIE;
 
 	/*
@@ -112,10 +113,11 @@ void vgic_v2_fold_lr_state(struct kvm_vcpu *vcpu)
 
 void vgic_v2_populate_lrs(struct kvm_vcpu *vcpu)
 {
+	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 	struct vgic_irq *irq;
 	int count = 0;
 
-	list_for_each_entry(irq, &vcpu->arch.vgic_cpu.ap_list, ap_list) {
+	list_for_each_entry(irq, &vgic_cpu->ap_list_head, ap_list) {
 		u32 val;
 
 		spin_lock(&irq->irq_lock);
@@ -133,7 +135,7 @@ void vgic_v2_populate_lrs(struct kvm_vcpu *vcpu)
 
 		if (irq->hw) {
 			val |= GICH_LR_HW;
-			val |= irq->hwirq << GICH_LR_PHYSID_CPUID_SHIFT;
+			val |= irq->hwintid << GICH_LR_PHYSID_CPUID_SHIFT;
 		} else {
 			if (irq->config == VGIC_CONFIG_LEVEL)
 				val |= GICH_LR_EOI;
@@ -145,7 +147,7 @@ void vgic_v2_populate_lrs(struct kvm_vcpu *vcpu)
 		vcpu->arch.vgic_cpu.vgic_v2.vgic_lr[count++] = val;
 		spin_unlock(&irq->irq_lock);
 
-		if (count == vcpu->kvm->arch.vgic.nr_lr)
+		if (count == vcpu->arch.vgic_cpu.nr_lr)
 			break;
 	}
 
