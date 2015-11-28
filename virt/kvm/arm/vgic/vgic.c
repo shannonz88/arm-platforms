@@ -224,14 +224,27 @@ int kvm_vgic_inject_irq(struct kvm *kvm, int cpuid, unsigned int intid,
 	return 0;
 }
 
-/* Tell me where things should go */
-static struct kvm_vcpu *vgic_target_oracle(struct kvm *kvm, struct vgic_irq *irq)
+/**
+ * kvm_vgic_target_oracle - compute the target vcpu for an irq
+ *
+ * @irq:	The irq to route
+ *
+ * Based on the current state of the interrupt (enabled, pending,
+ * active, vcpu and target_vcpu), compute the next vcpu this should be
+ * given to. Return NULL if this shouldn't be injected at all.
+ */
+static struct kvm_vcpu *vgic_target_oracle(struct vgic_irq *irq)
 {
-	/* Assume irq is locked */
-	if (!((irq->enabled && irq->pending) || irq->active))
-		return NULL;
+	/* If the interrpt is active, it must stay on the current vcpu */
+	if (irq->active)
+		return irq->vcpu;
 
-	return irq->target_vcpu;
+	/* If enabled and pending, it can migrate to a new one */
+	if (irq->enabled && irq->pending)
+		return irq->target_vcpu;
+
+	/* Otherwise, it is considered idle */
+	return NULL;
 }
 
 /**
@@ -257,7 +270,7 @@ retry:
 
 		BUG_ON(vcpu != irq->vcpu);
 
-		target_vcpu = vgic_target_oracle(vcpu->kvm, irq);
+		target_vcpu = vgic_target_oracle(irq);
 
 		if (!target_vcpu) {
 			/* We don't need to process this interrupt any
@@ -269,12 +282,6 @@ retry:
 
 		if (target_vcpu == vcpu) {
 			/* We're on the right CPU */
-			spin_unlock(&irq->irq_lock);
-			continue;
-		}
-
-		if (irq->active) {
-			/* We have an active interrupt, we can't migrate yet */
 			spin_unlock(&irq->irq_lock);
 			continue;
 		}
@@ -307,7 +314,7 @@ retry:
 		 * In all cases, we cannot trust the list not to have
 		 * changed, so we restart from the beginning.
 		 */
-		if (target_vcpu == vgic_target_oracle(vcpu->kvm, irq)) {
+		if (target_vcpu == vgic_target_oracle(irq)) {
 			list_del_init(&irq->ap_list);
 			/* Should that be in vgic_insert_irq_sorted??*/
 			irq->vcpu = target_vcpu;
