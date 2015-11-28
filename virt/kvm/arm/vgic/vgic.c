@@ -81,6 +81,7 @@ static int vgic_irq_cmp(void *priv, struct list_head *a, struct list_head *b)
 {
 	struct vgic_irq *irqa = container_of(a, struct vgic_irq, ap_list);
 	struct vgic_irq *irqb = container_of(b, struct vgic_irq, ap_list);
+	bool penda, pendb;
 	int ret;
 
 	spin_lock(&irqa->irq_lock);
@@ -91,10 +92,11 @@ static int vgic_irq_cmp(void *priv, struct list_head *a, struct list_head *b)
 		goto out;
 	}
 
-	BUG_ON(!irqa->pending || !irqb->pending);
+	penda = irqa->enabled && irqa->pending;
+	pendb = irqb->enabled && irqb->pending;
 
-	if (!irqa->enabled || !irqb->enabled) {
-		ret = (int)irqb->enabled - (int)irqa->enabled;
+	if (!penda || !pendb) {
+		ret = (int)pendb - (int)penda;
 		goto out;
 	}
 
