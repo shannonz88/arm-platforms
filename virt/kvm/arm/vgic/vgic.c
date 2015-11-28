@@ -346,12 +346,47 @@ static inline void vgic_fold_lr_state(struct kvm_vcpu *vcpu)
 		WARN(1, "GICv3 Not Implemented\n");
 }
 
-static inline void vgic_populate_lrs(struct kvm_vcpu *vcpu)
+static inline void vgic_populate_lr(struct kvm_vcpu *vcpu,
+				    struct vgic_irq *irq, int lr)
 {
 	if (kvm_vgic_global_state.type == VGIC_V2)
-		vgic_v2_populate_lrs(vcpu);
+		vgic_v2_populate_lr(vcpu, irq, lr);
 	else
 		WARN(1, "GICv3 Not Implemented\n");
+}
+
+static int compute_ap_list_depth(struct kvm_vcpu *vcpu)
+{
+	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
+	struct vgic_irq *irq;
+	int count = 0;
+
+	list_for_each_entry(irq, &vgic_cpu->ap_list_head, ap_list)
+		count++;
+
+	return count;
+}
+
+static void vgic_populate_lrs(struct kvm_vcpu *vcpu)
+{
+	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
+	struct vgic_irq *irq;
+	int count = 0;
+
+	if (compute_ap_list_depth(vcpu) > vcpu->arch.vgic_cpu.nr_lr)
+		vgic_sort_ap_list(vcpu);
+
+	list_for_each_entry(irq, &vgic_cpu->ap_list_head, ap_list) {
+		spin_lock(&irq->irq_lock);
+		if (vgic_target_oracle(irq) == vcpu)
+			vgic_populate_lr(vcpu, irq, count++);
+		spin_unlock(&irq->irq_lock);
+
+		if (count == vcpu->arch.vgic_cpu.nr_lr)
+			break;
+	}
+
+	vcpu->arch.vgic_cpu.used_lrs = count;
 }
 
 void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu)
@@ -364,7 +399,6 @@ void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu)
 void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 {
 	spin_lock(&vcpu->arch.vgic_cpu.ap_list_lock);
-	vgic_sort_ap_list(vcpu);
 	vgic_populate_lrs(vcpu);
 	spin_unlock(&vcpu->arch.vgic_cpu.ap_list_lock);
 }

@@ -111,47 +111,34 @@ void vgic_v2_fold_lr_state(struct kvm_vcpu *vcpu)
 	}
 }
 
-void vgic_v2_populate_lrs(struct kvm_vcpu *vcpu)
+/* Requires the irq to be locked already */
+void kvm_vgic_v2_populate_lr(struct kvm_vcpu *vcpu, struct vgic_irq *irq, int lr)
 {
-	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
-	struct vgic_irq *irq;
-	int count = 0;
+	u32 val;
 
-	list_for_each_entry(irq, &vgic_cpu->ap_list_head, ap_list) {
-		u32 val;
+	val = irq->intid;
 
-		spin_lock(&irq->irq_lock);
-
-		val = irq->intid;
-
-		if (irq->pending) {
-			val |= GICH_LR_PENDING_BIT;
-			if (irq->config == VGIC_CONFIG_EDGE)
-				irq->pending = false;
-		}
-
-		if (irq->active)
-			val |= GICH_LR_ACTIVE_BIT;
-
-		if (irq->hw) {
-			val |= GICH_LR_HW;
-			val |= irq->hwintid << GICH_LR_PHYSID_CPUID_SHIFT;
-		} else {
-			if (irq->config == VGIC_CONFIG_LEVEL)
-				val |= GICH_LR_EOI;
-		}
-
-		if (irq->intid < VGIC_NR_SGIS)
-			val |= irq->source << GICH_LR_PHYSID_CPUID_SHIFT;
-
-		vcpu->arch.vgic_cpu.vgic_v2.vgic_lr[count++] = val;
-		spin_unlock(&irq->irq_lock);
-
-		if (count == vcpu->arch.vgic_cpu.nr_lr)
-			break;
+	if (irq->pending) {
+		val |= GICH_LR_PENDING_BIT;
+		if (irq->config == VGIC_CONFIG_EDGE)
+			irq->pending = false;
 	}
 
-	vcpu->arch.vgic_cpu.used_lrs = count;
+	if (irq->active)
+		val |= GICH_LR_ACTIVE_BIT;
+
+	if (irq->hw) {
+		val |= GICH_LR_HW;
+		val |= irq->hwintid << GICH_LR_PHYSID_CPUID_SHIFT;
+	} else {
+		if (irq->config == VGIC_CONFIG_LEVEL)
+			val |= GICH_LR_EOI;
+	}
+
+	if (irq->intid < VGIC_NR_SGIS)
+		val |= irq->source << GICH_LR_PHYSID_CPUID_SHIFT;
+
+	vcpu->arch.vgic_cpu.vgic_v2.vgic_lr[lr] = val;
 }
 
 /* Use lower byte as target bitmap for gicv2 */
