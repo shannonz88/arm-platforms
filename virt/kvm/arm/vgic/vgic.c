@@ -389,6 +389,10 @@ static void vgic_populate_lrs(struct kvm_vcpu *vcpu)
 	}
 
 	vcpu->arch.vgic_cpu.used_lrs = count;
+
+	/* Nuke remaining LRs */
+	for ( ; count < vcpu->arch.vgic_cpu.nr_lr; count++)
+		vgic_populate_lr(vcpu, NULL, count);
 }
 
 void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu)

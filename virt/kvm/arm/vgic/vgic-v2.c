@@ -116,6 +116,11 @@ void kvm_vgic_v2_populate_lr(struct kvm_vcpu *vcpu, struct vgic_irq *irq, int lr
 {
 	u32 val;
 
+	if (!irq) {
+		val = 0;
+		goto out;
+	}
+
 	val = irq->intid;
 
 	if (irq->pending) {
@@ -138,6 +143,7 @@ void kvm_vgic_v2_populate_lr(struct kvm_vcpu *vcpu, struct vgic_irq *irq, int lr
 	if (irq->intid < VGIC_NR_SGIS)
 		val |= irq->source << GICH_LR_PHYSID_CPUID_SHIFT;
 
+out:
 	vcpu->arch.vgic_cpu.vgic_v2.vgic_lr[lr] = val;
 }
 
