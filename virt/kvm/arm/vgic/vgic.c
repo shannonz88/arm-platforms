@@ -229,7 +229,7 @@ int kvm_vgic_inject_irq(struct kvm *kvm, int cpuid, unsigned int intid,
 /**
  * kvm_vgic_target_oracle - compute the target vcpu for an irq
  *
- * @irq:	The irq to route
+ * @irq:	The irq to route. Must be already locked.
  *
  * Based on the current state of the interrupt (enabled, pending,
  * active, vcpu and target_vcpu), compute the next vcpu this should be
