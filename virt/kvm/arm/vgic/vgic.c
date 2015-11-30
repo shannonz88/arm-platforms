@@ -337,7 +337,7 @@ static inline void vgic_process_maintenance_interrupt(struct kvm_vcpu *vcpu)
 	if (kvm_vgic_global_state.type == VGIC_V2)
 		vgic_v2_process_maintenance(vcpu);
 	else
-		WARN(1, "GICv3 Not Implemented\n");
+		vgic_v3_process_maintenance(vcpu);
 }
 
 static inline void vgic_fold_lr_state(struct kvm_vcpu *vcpu)
@@ -345,7 +345,7 @@ static inline void vgic_fold_lr_state(struct kvm_vcpu *vcpu)
 	if (kvm_vgic_global_state.type == VGIC_V2)
 		vgic_v2_fold_lr_state(vcpu);
 	else
-		WARN(1, "GICv3 Not Implemented\n");
+		vgic_v3_fold_lr_state(vcpu);
 }
 
 static inline void vgic_populate_lr(struct kvm_vcpu *vcpu,
@@ -354,7 +354,7 @@ static inline void vgic_populate_lr(struct kvm_vcpu *vcpu,
 	if (kvm_vgic_global_state.type == VGIC_V2)
 		vgic_v2_populate_lr(vcpu, irq, lr);
 	else
-		WARN(1, "GICv3 Not Implemented\n");
+		vgic_v3_populate_lr(vcpu, irq, lr);
 }
 
 static int compute_ap_list_depth(struct kvm_vcpu *vcpu)
