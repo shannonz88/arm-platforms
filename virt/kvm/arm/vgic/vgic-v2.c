@@ -125,8 +125,18 @@ void kvm_vgic_v2_populate_lr(struct kvm_vcpu *vcpu, struct vgic_irq *irq, int lr
 
 	if (irq->pending) {
 		val |= GICH_LR_PENDING_BIT;
+
 		if (irq->config == VGIC_CONFIG_EDGE)
 			irq->pending = false;
+
+		if (irq->intid < VGIC_NR_SGIS) {
+			u32 src = ffs(irq->source);
+			BUG_ON(!src);
+			val |= (src - 1) << GICH_LR_PHYSID_CPUID_SHIFT;
+			irq->source &= ~(1 << (src - 1));
+			if (irq->source)
+				irq->pending = true;
+		}
 	}
 
 	if (irq->active)
@@ -139,9 +149,6 @@ void kvm_vgic_v2_populate_lr(struct kvm_vcpu *vcpu, struct vgic_irq *irq, int lr
 		if (irq->config == VGIC_CONFIG_LEVEL)
 			val |= GICH_LR_EOI;
 	}
-
-	if (irq->intid < VGIC_NR_SGIS)
-		val |= irq->source << GICH_LR_PHYSID_CPUID_SHIFT;
 
 out:
 	vcpu->arch.vgic_cpu.vgic_v2.vgic_lr[lr] = val;
