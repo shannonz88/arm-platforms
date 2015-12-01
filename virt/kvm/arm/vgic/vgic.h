@@ -40,6 +40,10 @@ void vgic_v3_fold_lr_state(struct kvm_vcpu *vcpu);
 void vgic_v3_populate_lr(struct kvm_vcpu *vcpu, struct vgic_irq *irq, int lr);
 void vgic_v3_clear_lr(struct kvm_vcpu *vcpu, int lr);
 void vgic_v3_set_underflow(struct kvm_vcpu *vcpu);
+int vgic_v3_dist_access(struct kvm_vcpu *vcpu, bool is_write,
+			int offset, int len, void *val);
+int vgic_v3_redist_access(struct kvm_vcpu *vcpu, bool is_write,
+			  int offset, int len, void *val);
 #else
 static inline void vgic_v3_process_maintenance(struct kvm_vcpu *vcpu)
 {
@@ -60,6 +64,18 @@ static inline void vgic_v3_clear_lr(struct kvm_vcpu *vcpu, int lr)
 
 static inline void vgic_v3_set_underflow(struct kvm_vcpu *vcpu)
 {
+}
+
+static inline int vgic_v3_dist_access(struct kvm_vcpu *vcpu, bool is_write,
+				      int offset, int len, void *val)
+{
+	return -ENXIO;
+}
+
+static inline int vgic_v3_redist_access(struct kvm_vcpu *vcpu, bool is_write,
+					int offset, int len, void *val)
+{
+	return -ENXIO;
 }
 #endif
 
