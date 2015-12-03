@@ -125,6 +125,86 @@ void kvm_pmu_disable_counter(struct kvm_vcpu *vcpu, u32 val)
 	}
 }
 
+static unsigned long kvm_pmu_valid_counter_mask(struct kvm_vcpu *vcpu)
+{
+	u32 val;
+
+	if (!vcpu_mode_is_32bit(vcpu))
+	val = (vcpu_sys_reg(vcpu, PMCR_EL0) >> ARMV8_PMCR_N_SHIFT)
+	      & ARMV8_PMCR_N_MASK;
+	else
+	val = (vcpu_cp15(vcpu, c9_PMCR) >> ARMV8_PMCR_N_SHIFT)
+	      & ARMV8_PMCR_N_MASK;
+
+	return GENMASK(val - 1, 0) | BIT(ARMV8_COUNTER_MASK);
+}
+
+/**
+ * kvm_pmu_overflow_clear - clear PMU overflow interrupt
+ * @vcpu: The vcpu pointer
+ * @val: the value guest writes to PMOVSCLR register
+ * @reg: the current value of PMOVSCLR register
+ */
+void kvm_pmu_overflow_clear(struct kvm_vcpu *vcpu, u32 val)
+{
+	u32 mask = kvm_pmu_valid_counter_mask(vcpu);
+
+	if (!vcpu_mode_is_32bit(vcpu)) {
+		vcpu_sys_reg(vcpu, PMOVSCLR_EL0) &= mask;
+		vcpu_sys_reg(vcpu, PMOVSCLR_EL0) &= ~val;
+		vcpu_sys_reg(vcpu, PMOVSSET_EL0) &= mask;
+		vcpu_sys_reg(vcpu, PMOVSSET_EL0) &= ~val;
+		val = vcpu_sys_reg(vcpu, PMOVSSET_EL0);
+	} else {
+		vcpu_cp15(vcpu, c9_PMOVSCLR) &= mask;
+		vcpu_cp15(vcpu, c9_PMOVSCLR) &= ~val;
+		vcpu_cp15(vcpu, c9_PMOVSSET) &= mask;
+		vcpu_cp15(vcpu, c9_PMOVSSET) &= ~val;
+		val = vcpu_cp15(vcpu, c9_PMOVSSET);
+	}
+
+	/* If all overflow bits are cleared, kick the vcpu to clear interrupt
+	 * pending status.
+	 */
+	if (val == 0)
+		kvm_vcpu_kick(vcpu);
+}
+
+/**
+ * kvm_pmu_overflow_set - set PMU overflow interrupt
+ * @vcpu: The vcpu pointer
+ * @val: the value guest writes to PMOVSSET register
+ */
+void kvm_pmu_overflow_set(struct kvm_vcpu *vcpu, u32 val)
+{
+	u32 mask = kvm_pmu_valid_counter_mask(vcpu);
+
+	val &= mask;
+	if (val == 0)
+		return;
+
+	if (!vcpu_mode_is_32bit(vcpu)) {
+		vcpu_sys_reg(vcpu, PMOVSSET_EL0) &= mask;
+		vcpu_sys_reg(vcpu, PMOVSSET_EL0) |= val;
+		vcpu_sys_reg(vcpu, PMOVSCLR_EL0) &= mask;
+		vcpu_sys_reg(vcpu, PMOVSCLR_EL0) |= val;
+		val = vcpu_sys_reg(vcpu, PMCNTENSET_EL0)
+		      & vcpu_sys_reg(vcpu, PMINTENSET_EL1)
+		      & vcpu_sys_reg(vcpu, PMOVSSET_EL0);
+	} else {
+		vcpu_cp15(vcpu, c9_PMOVSSET) &= mask;
+		vcpu_cp15(vcpu, c9_PMOVSSET) |= val;
+		vcpu_cp15(vcpu, c9_PMOVSCLR) &= mask;
+		vcpu_cp15(vcpu, c9_PMOVSCLR) |= val;
+		val = vcpu_cp15(vcpu, c9_PMCNTENSET)
+		      & vcpu_cp15(vcpu, c9_PMINTENSET)
+		      & vcpu_cp15(vcpu, c9_PMOVSSET);
+	}
+
+	if (val != 0)
+		kvm_vcpu_kick(vcpu);
+}
+
 /**
  * kvm_pmu_set_counter_event_type - set selected counter to monitor some event
  * @vcpu: The vcpu pointer
