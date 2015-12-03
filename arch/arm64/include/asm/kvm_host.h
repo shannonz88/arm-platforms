@@ -115,6 +115,28 @@ enum vcpu_sysreg {
 	MDSCR_EL1,	/* Monitor Debug System Control Register */
 	MDCCINT_EL1,	/* Monitor Debug Comms Channel Interrupt Enable Reg */
 
+	/* Performance Monitors Registers */
+	PMCR_EL0,	/* Control Register */
+	PMOVSSET_EL0,	/* Overflow Flag Status Set Register */
+	PMOVSCLR_EL0,	/* Overflow Flag Status Clear Register */
+	PMSELR_EL0,	/* Event Counter Selection Register */
+	PMCEID0_EL0,	/* Common Event Identification Register 0 */
+	PMCEID1_EL0,	/* Common Event Identification Register 1 */
+	PMEVCNTR0_EL0,	/* Event Counter Register (0-30) */
+	PMEVCNTR30_EL0 = PMEVCNTR0_EL0 + 30,
+	PMCCNTR_EL0,	/* Cycle Counter Register */
+	PMEVTYPER0_EL0,	/* Event Type Register (0-30) */
+	PMEVTYPER30_EL0 = PMEVTYPER0_EL0 + 30,
+	PMCCFILTR_EL0,	/* Cycle Count Filter Register */
+	PMXEVCNTR_EL0,	/* Selected Event Count Register */
+	PMXEVTYPER_EL0,	/* Selected Event Type Register */
+	PMCNTENSET_EL0,	/* Count Enable Set Register */
+	PMCNTENCLR_EL0,	/* Count Enable Clear Register */
+	PMINTENSET_EL1,	/* Interrupt Enable Set Register */
+	PMINTENCLR_EL1,	/* Interrupt Enable Clear Register */
+	PMUSERENR_EL0,	/* User Enable Register */
+	PMSWINC_EL0,	/* Software Increment Register */
+
 	/* 32bit specific registers. Keep them at the end of the range */
 	DACR32_EL2,	/* Domain Access Control Register */
 	IFSR32_EL2,	/* Instruction Fault Status Register */
@@ -144,6 +166,24 @@ enum vcpu_sysreg {
 #define c6_IFAR		(c6_DFAR + 1)	/* Instruction Fault Address Register */
 #define c7_PAR		(PAR_EL1 * 2)	/* Physical Address Register */
 #define c7_PAR_high	(c7_PAR + 1)	/* PAR top 32 bits */
+
+/* Performance Monitors*/
+#define c9_PMCR		(PMCR_EL0 * 2)
+#define c9_PMOVSSET	(PMOVSSET_EL0 * 2)
+#define c9_PMOVSCLR	(PMOVSCLR_EL0 * 2)
+#define c9_PMCCNTR	(PMCCNTR_EL0 * 2)
+#define c9_PMSELR	(PMSELR_EL0 * 2)
+#define c9_PMCEID0	(PMCEID0_EL0 * 2)
+#define c9_PMCEID1	(PMCEID1_EL0 * 2)
+#define c9_PMXEVCNTR	(PMXEVCNTR_EL0 * 2)
+#define c9_PMXEVTYPER	(PMXEVTYPER_EL0 * 2)
+#define c9_PMCNTENSET	(PMCNTENSET_EL0 * 2)
+#define c9_PMCNTENCLR	(PMCNTENCLR_EL0 * 2)
+#define c9_PMINTENSET	(PMINTENSET_EL1 * 2)
+#define c9_PMINTENCLR	(PMINTENCLR_EL1 * 2)
+#define c9_PMUSERENR	(PMUSERENR_EL0 * 2)
+#define c9_PMSWINC	(PMSWINC_EL0 * 2)
+
 #define c10_PRRR	(MAIR_EL1 * 2)	/* Primary Region Remap Register */
 #define c10_NMRR	(c10_PRRR + 1)	/* Normal Memory Remap Register */
 #define c12_VBAR	(VBAR_EL1 * 2)	/* Vector Base Address Register */
@@ -154,6 +194,11 @@ enum vcpu_sysreg {
 #define c10_AMAIR0	(AMAIR_EL1 * 2)	/* Aux Memory Attr Indirection Reg */
 #define c10_AMAIR1	(c10_AMAIR0 + 1)/* Aux Memory Attr Indirection Reg */
 #define c14_CNTKCTL	(CNTKCTL_EL1 * 2) /* Timer Control Register (PL1) */
+
+/* Performance Monitors*/
+#define c14_PMEVCNTR0	(PMEVCNTR0_EL0 * 2)
+#define c14_PMEVTYPER0	(PMEVTYPER0_EL0 * 2)
+#define c14_PMCCFILTR	(PMCCFILTR_EL0 * 2)
 
 #define cp14_DBGDSCRext	(MDSCR_EL1 * 2)
 #define cp14_DBGBCR0	(DBGBCR0_EL1 * 2)
