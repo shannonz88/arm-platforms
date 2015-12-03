@@ -38,4 +38,17 @@ struct kvm_pmu {
 #endif
 };
 
+#ifdef CONFIG_KVM_ARM_PMU
+unsigned long kvm_pmu_get_counter_value(struct kvm_vcpu *vcpu, u32 select_idx);
+void kvm_pmu_set_counter_event_type(struct kvm_vcpu *vcpu, u32 data,
+				    u32 select_idx);
+#else
+unsigned long kvm_pmu_get_counter_value(struct kvm_vcpu *vcpu, u32 select_idx)
+{
+	return 0;
+}
+void kvm_pmu_set_counter_event_type(struct kvm_vcpu *vcpu, u32 data,
+				    u32 select_idx) {}
+#endif
+
 #endif
