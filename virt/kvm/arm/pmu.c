@@ -206,6 +206,46 @@ void kvm_pmu_overflow_set(struct kvm_vcpu *vcpu, u32 val)
 }
 
 /**
+ * kvm_pmu_software_increment - do software increment
+ * @vcpu: The vcpu pointer
+ * @val: the value guest writes to PMSWINC register
+ */
+void kvm_pmu_software_increment(struct kvm_vcpu *vcpu, u32 val)
+{
+	int i;
+	u32 type, enable, reg;
+
+	if (val == 0)
+		return;
+
+	for (i = 0; i < ARMV8_MAX_COUNTERS; i++) {
+		if (!((val >> i) & 0x1))
+			continue;
+		if (!vcpu_mode_is_32bit(vcpu)) {
+			type = vcpu_sys_reg(vcpu, PMEVTYPER0_EL0 + i)
+			       & ARMV8_EVTYPE_EVENT;
+			enable = vcpu_sys_reg(vcpu, PMCNTENSET_EL0);
+			if ((type == 0) && ((enable >> i) & 0x1)) {
+				vcpu_sys_reg(vcpu, PMEVCNTR0_EL0 + i)++;
+				reg = vcpu_sys_reg(vcpu, PMEVCNTR0_EL0 + i);
+				if ((reg & 0xFFFFFFFF) == 0)
+					kvm_pmu_overflow_set(vcpu, 1 >> i);
+			}
+		} else {
+			type = vcpu_cp15(vcpu, c14_PMEVTYPER0 + i)
+			       & ARMV8_EVTYPE_EVENT;
+			enable = vcpu_cp15(vcpu, c9_PMCNTENSET);
+			if ((type == 0) && ((enable >> i) & 0x1)) {
+				vcpu_cp15(vcpu, c14_PMEVCNTR0 + i)++;
+				reg = vcpu_cp15(vcpu, c14_PMEVCNTR0 + i);
+				if ((reg & 0xFFFFFFFF) == 0)
+					kvm_pmu_overflow_set(vcpu, 1 >> i);
+			}
+		}
+	}
+}
+
+/**
  * kvm_pmu_set_counter_event_type - set selected counter to monitor some event
  * @vcpu: The vcpu pointer
  * @data: The data guest writes to PMXEVTYPER_EL0
@@ -227,6 +267,10 @@ void kvm_pmu_set_counter_event_type(struct kvm_vcpu *vcpu, u32 data,
 
 	kvm_pmu_stop_counter(pmc);
 	eventsel = data & ARMV8_EVTYPE_EVENT;
+
+	/* For software increment event it does't need to create perf event */
+	if (eventsel == 0)
+		return;
 
 	memset(&attr, 0, sizeof(struct perf_event_attr));
 	attr.type = PERF_TYPE_RAW;

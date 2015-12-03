@@ -560,6 +560,11 @@ static bool access_pmu_regs(struct kvm_vcpu *vcpu,
 			kvm_pmu_overflow_clear(vcpu, *vcpu_reg(vcpu, p->Rt));
 			break;
 		}
+		case PMSWINC_EL0: {
+			val = *vcpu_reg(vcpu, p->Rt);
+			kvm_pmu_software_increment(vcpu, val);
+			break;
+		}
 		case PMCR_EL0: {
 			/* Only update writeable bits of PMCR */
 			val = vcpu_sys_reg(vcpu, r->reg);
@@ -595,6 +600,8 @@ static bool access_pmu_regs(struct kvm_vcpu *vcpu,
 			*vcpu_reg(vcpu, p->Rt) = val;
 			break;
 		}
+		case PMSWINC_EL0:
+			return read_zero(vcpu, p);
 		case PMCR_EL0: {
 			/* PMCR.P & PMCR.C are RAZ */
 			val = vcpu_sys_reg(vcpu, r->reg)
@@ -807,7 +814,7 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	  access_pmu_regs, reset_unknown, PMOVSCLR_EL0 },
 	/* PMSWINC_EL0 */
 	{ Op0(0b11), Op1(0b011), CRn(0b1001), CRm(0b1100), Op2(0b100),
-	  trap_raz_wi },
+	  access_pmu_regs, reset_unknown, PMSWINC_EL0 },
 	/* PMSELR_EL0 */
 	{ Op0(0b11), Op1(0b011), CRn(0b1001), CRm(0b1100), Op2(0b101),
 	  access_pmu_regs, reset_unknown, PMSELR_EL0 },
@@ -1112,6 +1119,11 @@ static bool access_pmu_cp15_regs(struct kvm_vcpu *vcpu,
 			kvm_pmu_overflow_clear(vcpu, *vcpu_reg(vcpu, p->Rt));
 			break;
 		}
+		case c9_PMSWINC: {
+			val = *vcpu_reg(vcpu, p->Rt);
+			kvm_pmu_software_increment(vcpu, val);
+			break;
+		}
 		case c9_PMCR: {
 			/* Only update writeable bits of PMCR */
 			val = vcpu_cp15(vcpu, r->reg);
@@ -1147,6 +1159,8 @@ static bool access_pmu_cp15_regs(struct kvm_vcpu *vcpu,
 			*vcpu_reg(vcpu, p->Rt) = val;
 			break;
 		}
+		case c9_PMSWINC:
+			return read_zero(vcpu, p);
 		case c9_PMCR: {
 			/* PMCR.P & PMCR.C are RAZ */
 			val = vcpu_cp15(vcpu, r->reg)
@@ -1199,6 +1213,8 @@ static const struct sys_reg_desc cp15_regs[] = {
 	  NULL, c9_PMCNTENCLR },
 	{ Op1( 0), CRn( 9), CRm(12), Op2( 3), access_pmu_cp15_regs,
 	  NULL, c9_PMOVSCLR },
+	{ Op1( 0), CRn( 9), CRm(12), Op2( 4), access_pmu_cp15_regs,
+	  NULL, c9_PMSWINC },
 	{ Op1( 0), CRn( 9), CRm(12), Op2( 5), access_pmu_cp15_regs,
 	  NULL, c9_PMSELR },
 	{ Op1( 0), CRn( 9), CRm(12), Op2( 6), access_pmu_cp15_regs,
