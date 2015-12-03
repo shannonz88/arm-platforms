@@ -2647,6 +2647,10 @@ static struct kvm_device_ops *kvm_device_ops_table[KVM_DEV_TYPE_MAX] = {
 #ifdef CONFIG_KVM_XICS
 	[KVM_DEV_TYPE_XICS]		= &kvm_xics_ops,
 #endif
+
+#ifdef CONFIG_KVM_ARM_PMU
+	[KVM_DEV_TYPE_ARM_PMU_V3]	= &kvm_arm_pmu_ops,
+#endif
 };
 
 int kvm_register_device_ops(struct kvm_device_ops *ops, u32 type)

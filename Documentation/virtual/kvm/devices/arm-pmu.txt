@@ -1,0 +1,16 @@
+ARM Virtual Performance Monitor Unit (vPMU)
+===========================================
+
+Device types supported:
+  KVM_DEV_TYPE_ARM_PMU_V3         ARM Performance Monitor Unit v3
+
+Instantiate one PMU instance for per VCPU through this API.
+
+Groups:
+  KVM_DEV_ARM_PMU_GRP_IRQ
+  Attributes:
+    A value describing the interrupt number of PMU overflow interrupt. This
+    interrupt should be a PPI.
+
+  Errors:
+    -EINVAL: Value set is out of the expected range (from 16 to 31)

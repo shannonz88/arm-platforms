@@ -19,9 +19,12 @@
 #include <linux/kvm.h>
 #include <linux/kvm_host.h>
 #include <linux/perf_event.h>
+#include <linux/uaccess.h>
 #include <asm/kvm_emulate.h>
 #include <kvm/arm_pmu.h>
 #include <kvm/arm_vgic.h>
+
+#include "vgic.h"
 
 /**
  * kvm_pmu_get_counter_value - get PMU counter value
@@ -436,3 +439,87 @@ void kvm_pmu_set_counter_event_type(struct kvm_vcpu *vcpu, u32 data,
 
 	pmc->perf_event = event;
 }
+
+static int kvm_arm_pmu_set_irq(struct kvm *kvm, int irq)
+{
+	int j;
+	struct kvm_vcpu *vcpu;
+
+	kvm_for_each_vcpu(j, vcpu, kvm) {
+		struct kvm_pmu *pmu = &vcpu->arch.pmu;
+
+		kvm_debug("Set kvm ARM PMU irq: %d\n", irq);
+		pmu->irq_num = irq;
+	}
+
+	return 0;
+}
+
+static int kvm_arm_pmu_create(struct kvm_device *dev, u32 type)
+{
+	int i;
+	struct kvm_vcpu *vcpu;
+	struct kvm *kvm = dev->kvm;
+
+	kvm_for_each_vcpu(i, vcpu, kvm) {
+		struct kvm_pmu *pmu = &vcpu->arch.pmu;
+
+		memset(pmu, 0, sizeof(*pmu));
+		kvm_pmu_vcpu_reset(vcpu);
+		pmu->irq_num = -1;
+	}
+
+	return 0;
+}
+
+static void kvm_arm_pmu_destroy(struct kvm_device *dev)
+{
+	kfree(dev);
+}
+
+static int kvm_arm_pmu_set_attr(struct kvm_device *dev,
+				struct kvm_device_attr *attr)
+{
+	switch (attr->group) {
+	case KVM_DEV_ARM_PMU_GRP_IRQ: {
+		int __user *uaddr = (int __user *)(long)attr->addr;
+		int reg;
+
+		if (get_user(reg, uaddr))
+			return -EFAULT;
+
+		if (reg < VGIC_NR_SGIS || reg >= VGIC_NR_PRIVATE_IRQS)
+			return -EINVAL;
+
+		return kvm_arm_pmu_set_irq(dev->kvm, reg);
+	}
+	}
+
+	return -ENXIO;
+}
+
+static int kvm_arm_pmu_get_attr(struct kvm_device *dev,
+				struct kvm_device_attr *attr)
+{
+	return 0;
+}
+
+static int kvm_arm_pmu_has_attr(struct kvm_device *dev,
+				struct kvm_device_attr *attr)
+{
+	switch (attr->group) {
+	case KVM_DEV_ARM_PMU_GRP_IRQ:
+		return 0;
+	}
+
+	return -ENXIO;
+}
+
+struct kvm_device_ops kvm_arm_pmu_ops = {
+	.name = "kvm-arm-pmu",
+	.create = kvm_arm_pmu_create,
+	.destroy = kvm_arm_pmu_destroy,
+	.set_attr = kvm_arm_pmu_set_attr,
+	.get_attr = kvm_arm_pmu_get_attr,
+	.has_attr = kvm_arm_pmu_has_attr,
+};
