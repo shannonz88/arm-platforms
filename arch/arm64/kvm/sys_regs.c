@@ -519,6 +519,27 @@ static bool access_pmu_regs(struct kvm_vcpu *vcpu,
 			vcpu_sys_reg(vcpu, PMEVTYPER0_EL0 + idx) = val;
 			break;
 		}
+		case PMCNTENSET_EL0: {
+			val = *vcpu_reg(vcpu, p->Rt);
+			kvm_pmu_enable_counter(vcpu, val,
+				   vcpu_sys_reg(vcpu, PMCR_EL0) & ARMV8_PMCR_E);
+			/* Value 1 of PMCNTENSET_EL0 and PMCNTENCLR_EL0 means
+			 * corresponding counter enabled.
+			 */
+			vcpu_sys_reg(vcpu, r->reg) |= val;
+			vcpu_sys_reg(vcpu, PMCNTENCLR_EL0) |= val;
+			break;
+		}
+		case PMCNTENCLR_EL0: {
+			val = *vcpu_reg(vcpu, p->Rt);
+			kvm_pmu_disable_counter(vcpu, val);
+			/* Value 0 of PMCNTENSET_EL0 and PMCNTENCLR_EL0 means
+			 * corresponding counter disabled.
+			 */
+			vcpu_sys_reg(vcpu, r->reg) &= ~val;
+			vcpu_sys_reg(vcpu, PMCNTENSET_EL0) &= ~val;
+			break;
+		}
 		case PMCR_EL0: {
 			/* Only update writeable bits of PMCR */
 			val = vcpu_sys_reg(vcpu, r->reg);
@@ -757,10 +778,10 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	  access_pmu_regs, reset_pmcr, PMCR_EL0, },
 	/* PMCNTENSET_EL0 */
 	{ Op0(0b11), Op1(0b011), CRn(0b1001), CRm(0b1100), Op2(0b001),
-	  trap_raz_wi },
+	  access_pmu_regs, reset_unknown, PMCNTENSET_EL0 },
 	/* PMCNTENCLR_EL0 */
 	{ Op0(0b11), Op1(0b011), CRn(0b1001), CRm(0b1100), Op2(0b010),
-	  trap_raz_wi },
+	  access_pmu_regs, reset_unknown, PMCNTENCLR_EL0 },
 	/* PMOVSCLR_EL0 */
 	{ Op0(0b11), Op1(0b011), CRn(0b1001), CRm(0b1100), Op2(0b011),
 	  trap_raz_wi },
@@ -1030,6 +1051,27 @@ static bool access_pmu_cp15_regs(struct kvm_vcpu *vcpu,
 			vcpu_cp15(vcpu, c14_PMEVTYPER0 + idx) = val;
 			break;
 		}
+		case c9_PMCNTENSET: {
+			val = *vcpu_reg(vcpu, p->Rt);
+			kvm_pmu_enable_counter(vcpu, val,
+				       vcpu_cp15(vcpu, c9_PMCR) & ARMV8_PMCR_E);
+			/* Value 1 of PMCNTENSET_EL0 and PMCNTENCLR_EL0 means
+			 * corresponding counter enabled.
+			 */
+			vcpu_cp15(vcpu, r->reg) |= val;
+			vcpu_cp15(vcpu, c9_PMCNTENCLR) |= val;
+			break;
+		}
+		case c9_PMCNTENCLR: {
+			val = *vcpu_reg(vcpu, p->Rt);
+			kvm_pmu_disable_counter(vcpu, val);
+			/* Value 0 of PMCNTENSET_EL0 and PMCNTENCLR_EL0 means
+			 * corresponding counter disabled.
+			 */
+			vcpu_cp15(vcpu, r->reg) &= ~val;
+			vcpu_cp15(vcpu, c9_PMCNTENSET) &= ~val;
+			break;
+		}
 		case c9_PMCR: {
 			/* Only update writeable bits of PMCR */
 			val = vcpu_cp15(vcpu, r->reg);
@@ -1111,8 +1153,10 @@ static const struct sys_reg_desc cp15_regs[] = {
 	/* PMU */
 	{ Op1( 0), CRn( 9), CRm(12), Op2( 0), access_pmu_cp15_regs,
 	  NULL, c9_PMCR },
-	{ Op1( 0), CRn( 9), CRm(12), Op2( 1), trap_raz_wi },
-	{ Op1( 0), CRn( 9), CRm(12), Op2( 2), trap_raz_wi },
+	{ Op1( 0), CRn( 9), CRm(12), Op2( 1), access_pmu_cp15_regs,
+	  NULL, c9_PMCNTENSET },
+	{ Op1( 0), CRn( 9), CRm(12), Op2( 2), access_pmu_cp15_regs,
+	  NULL, c9_PMCNTENCLR },
 	{ Op1( 0), CRn( 9), CRm(12), Op2( 3), trap_raz_wi },
 	{ Op1( 0), CRn( 9), CRm(12), Op2( 5), access_pmu_cp15_regs,
 	  NULL, c9_PMSELR },
