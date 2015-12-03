@@ -571,6 +571,7 @@ static bool access_pmu_regs(struct kvm_vcpu *vcpu,
 			val &= ~ARMV8_PMCR_MASK;
 			val |= *vcpu_reg(vcpu, p->Rt) & ARMV8_PMCR_MASK;
 			vcpu_sys_reg(vcpu, r->reg) = val;
+			kvm_pmu_handle_pmcr(vcpu, val);
 			break;
 		}
 		case PMCEID0_EL0:
@@ -1212,6 +1213,7 @@ static bool access_pmu_cp15_regs(struct kvm_vcpu *vcpu,
 			val &= ~ARMV8_PMCR_MASK;
 			val |= *vcpu_reg(vcpu, p->Rt) & ARMV8_PMCR_MASK;
 			vcpu_cp15(vcpu, r->reg) = val;
+			kvm_pmu_handle_pmcr(vcpu, val);
 			break;
 		}
 		case c9_PMCEID0:

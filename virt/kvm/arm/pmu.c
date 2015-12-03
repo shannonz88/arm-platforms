@@ -140,6 +140,57 @@ static unsigned long kvm_pmu_valid_counter_mask(struct kvm_vcpu *vcpu)
 }
 
 /**
+ * kvm_pmu_handle_pmcr - handle PMCR register
+ * @vcpu: The vcpu pointer
+ * @val: the value guest writes to PMCR register
+ */
+void kvm_pmu_handle_pmcr(struct kvm_vcpu *vcpu, u32 val)
+{
+	struct kvm_pmu *pmu = &vcpu->arch.pmu;
+	struct kvm_pmc *pmc;
+	u32 enable;
+	int i;
+
+	if (val & ARMV8_PMCR_E) {
+		if (!vcpu_mode_is_32bit(vcpu))
+			enable = vcpu_sys_reg(vcpu, PMCNTENSET_EL0);
+		else
+			enable = vcpu_cp15(vcpu, c9_PMCNTENSET);
+
+		kvm_pmu_enable_counter(vcpu, enable, true);
+	} else {
+		kvm_pmu_disable_counter(vcpu, 0xffffffffUL);
+	}
+
+	if (val & ARMV8_PMCR_C) {
+		pmc = &pmu->pmc[ARMV8_MAX_COUNTERS - 1];
+		if (pmc->perf_event)
+			local64_set(&pmc->perf_event->count, 0);
+		if (!vcpu_mode_is_32bit(vcpu))
+			vcpu_sys_reg(vcpu, PMCCNTR_EL0) = 0;
+		else
+			vcpu_cp15(vcpu, c9_PMCCNTR) = 0;
+	}
+
+	if (val & ARMV8_PMCR_P) {
+		for (i = 0; i < ARMV8_MAX_COUNTERS - 1; i++) {
+			pmc = &pmu->pmc[i];
+			if (pmc->perf_event)
+				local64_set(&pmc->perf_event->count, 0);
+			if (!vcpu_mode_is_32bit(vcpu))
+				vcpu_sys_reg(vcpu, PMEVCNTR0_EL0 + i) = 0;
+			else
+				vcpu_cp15(vcpu, c14_PMEVCNTR0 + i) = 0;
+		}
+	}
+
+	if (val & ARMV8_PMCR_LC) {
+		pmc = &pmu->pmc[ARMV8_MAX_COUNTERS - 1];
+		pmc->bitmask = 0xffffffffffffffffUL;
+	}
+}
+
+/**
  * kvm_pmu_overflow_clear - clear PMU overflow interrupt
  * @vcpu: The vcpu pointer
  * @val: the value guest writes to PMOVSCLR register
