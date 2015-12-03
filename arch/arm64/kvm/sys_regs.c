@@ -453,6 +453,19 @@ static void reset_pmcr(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r)
 	vcpu_sys_reg(vcpu, r->reg) = val;
 }
 
+static void reset_pmceid(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r)
+{
+	u64 pmceid;
+
+	if (r->reg == PMCEID0_EL0)
+		asm volatile("mrs %0, pmceid0_el0\n" : "=r" (pmceid));
+	else
+		/* PMCEID1_EL0 */
+		asm volatile("mrs %0, pmceid1_el0\n" : "=r" (pmceid));
+
+	vcpu_sys_reg(vcpu, r->reg) = pmceid;
+}
+
 /* PMU registers accessor. */
 static bool access_pmu_regs(struct kvm_vcpu *vcpu,
 			    const struct sys_reg_params *p,
@@ -470,6 +483,9 @@ static bool access_pmu_regs(struct kvm_vcpu *vcpu,
 			vcpu_sys_reg(vcpu, r->reg) = val;
 			break;
 		}
+		case PMCEID0_EL0:
+		case PMCEID1_EL0:
+			return ignore_write(vcpu, p);
 		default:
 			vcpu_sys_reg(vcpu, r->reg) = *vcpu_reg(vcpu, p->Rt);
 			break;
@@ -694,10 +710,10 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	  access_pmu_regs, reset_unknown, PMSELR_EL0 },
 	/* PMCEID0_EL0 */
 	{ Op0(0b11), Op1(0b011), CRn(0b1001), CRm(0b1100), Op2(0b110),
-	  trap_raz_wi },
+	  access_pmu_regs, reset_pmceid, PMCEID0_EL0 },
 	/* PMCEID1_EL0 */
 	{ Op0(0b11), Op1(0b011), CRn(0b1001), CRm(0b1100), Op2(0b111),
-	  trap_raz_wi },
+	  access_pmu_regs, reset_pmceid, PMCEID1_EL0 },
 	/* PMCCNTR_EL0 */
 	{ Op0(0b11), Op1(0b011), CRn(0b1001), CRm(0b1101), Op2(0b000),
 	  trap_raz_wi },
@@ -927,6 +943,9 @@ static bool access_pmu_cp15_regs(struct kvm_vcpu *vcpu,
 			vcpu_cp15(vcpu, r->reg) = val;
 			break;
 		}
+		case c9_PMCEID0:
+		case c9_PMCEID1:
+			return ignore_write(vcpu, p);
 		default:
 			vcpu_cp15(vcpu, r->reg) = *vcpu_reg(vcpu, p->Rt);
 			break;
@@ -984,8 +1003,10 @@ static const struct sys_reg_desc cp15_regs[] = {
 	{ Op1( 0), CRn( 9), CRm(12), Op2( 3), trap_raz_wi },
 	{ Op1( 0), CRn( 9), CRm(12), Op2( 5), access_pmu_cp15_regs,
 	  NULL, c9_PMSELR },
-	{ Op1( 0), CRn( 9), CRm(12), Op2( 6), trap_raz_wi },
-	{ Op1( 0), CRn( 9), CRm(12), Op2( 7), trap_raz_wi },
+	{ Op1( 0), CRn( 9), CRm(12), Op2( 6), access_pmu_cp15_regs,
+	  NULL, c9_PMCEID0 },
+	{ Op1( 0), CRn( 9), CRm(12), Op2( 7), access_pmu_cp15_regs,
+	  NULL, c9_PMCEID1 },
 	{ Op1( 0), CRn( 9), CRm(13), Op2( 0), trap_raz_wi },
 	{ Op1( 0), CRn( 9), CRm(13), Op2( 1), trap_raz_wi },
 	{ Op1( 0), CRn( 9), CRm(13), Op2( 2), trap_raz_wi },
