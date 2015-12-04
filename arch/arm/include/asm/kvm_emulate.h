@@ -28,13 +28,13 @@
 unsigned long *vcpu_reg(struct kvm_vcpu *vcpu, u8 reg_num);
 unsigned long *vcpu_spsr(struct kvm_vcpu *vcpu);
 
-static inline unsigned long vcpu_get_reg(const struct kvm_vcpu *vcpu,
+static inline unsigned long vcpu_get_reg(struct kvm_vcpu *vcpu,
 					 u8 reg_num)
 {
 	return *vcpu_reg(vcpu, reg_num);
 }
 
-static inline void vcpu_set_reg(const struct kvm_vcpu *vcpu, u8 reg_num,
+static inline void vcpu_set_reg(struct kvm_vcpu *vcpu, u8 reg_num,
 				unsigned long val)
 {
 	*vcpu_reg(vcpu, reg_num) = val;
