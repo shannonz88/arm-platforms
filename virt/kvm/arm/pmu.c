@@ -26,6 +26,17 @@
 
 #include "vgic.h"
 
+static inline struct kvm_vcpu *kvm_pmc_to_vcpu(struct kvm_pmc *pmc)
+{
+	struct kvm_pmu *pmu;
+	struct kvm_vcpu_arch *vcpu_arch;
+
+	pmc -= pmc->idx;
+	pmu = container_of(pmc, struct kvm_pmu, pmc[0]);
+	vcpu_arch = container_of(pmu, struct kvm_vcpu_arch, pmu);
+	return container_of(vcpu_arch, struct kvm_vcpu, arch);
+}
+
 /**
  * kvm_pmu_get_counter_value - get PMU counter value
  * @vcpu: The vcpu pointer
@@ -67,7 +78,7 @@ static bool kvm_pmu_counter_is_enabled(struct kvm_vcpu *vcpu, u32 select_idx)
  */
 static void kvm_pmu_stop_counter(struct kvm_pmc *pmc)
 {
-	struct kvm_vcpu *vcpu = pmc->vcpu;
+	struct kvm_vcpu *vcpu = kvm_pmc_to_vcpu(pmc);
 	u64 counter;
 
 	if (pmc->perf_event) {
@@ -95,7 +106,6 @@ void kvm_pmu_vcpu_reset(struct kvm_vcpu *vcpu)
 	for (i = 0; i < ARMV8_MAX_COUNTERS; i++) {
 		kvm_pmu_stop_counter(&pmu->pmc[i]);
 		pmu->pmc[i].idx = i;
-		pmu->pmc[i].vcpu = vcpu;
 		pmu->pmc[i].bitmask = 0xffffffffUL;
 	}
 }
@@ -163,7 +173,7 @@ static void kvm_pmu_perf_overflow(struct perf_event *perf_event,
 				  struct pt_regs *regs)
 {
 	struct kvm_pmc *pmc = perf_event->overflow_handler_context;
-	struct kvm_vcpu *vcpu = pmc->vcpu;
+	struct kvm_vcpu *vcpu = kvm_pmc_to_vcpu(pmc);
 	int idx = pmc->idx;
 
 	kvm_pmu_overflow_set(vcpu, BIT(idx));

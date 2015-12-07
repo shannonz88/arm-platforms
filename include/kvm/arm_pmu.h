@@ -26,7 +26,6 @@
 struct kvm_pmc {
 	u8 idx;/* index into the pmu->pmc array */
 	struct perf_event *perf_event;
-	struct kvm_vcpu *vcpu;
 	u64 bitmask;
 };
 
