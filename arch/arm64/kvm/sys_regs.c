@@ -479,7 +479,7 @@ static bool pmu_counter_idx_valid(u64 pmcr, u64 idx)
 
 /* PMU registers accessor. */
 static bool access_pmu_regs(struct kvm_vcpu *vcpu,
-			    const struct sys_reg_params *p,
+			    struct sys_reg_params *p,
 			    const struct sys_reg_desc *r)
 {
 	u64 val;
@@ -489,8 +489,7 @@ static bool access_pmu_regs(struct kvm_vcpu *vcpu,
 		case PMCCNTR_EL0: {
 			val = kvm_pmu_get_counter_value(vcpu,
 							ARMV8_MAX_COUNTERS - 1);
-			vcpu_sys_reg(vcpu, r->reg) +=
-					      (s64)*vcpu_reg(vcpu, p->Rt) - val;
+			vcpu_sys_reg(vcpu, r->reg) += (s64)p->regval - val;
 			break;
 		}
 		case PMXEVCNTR_EL0: {
@@ -502,7 +501,7 @@ static bool access_pmu_regs(struct kvm_vcpu *vcpu,
 				break;
 
 			val = kvm_pmu_get_counter_value(vcpu, idx);
-			vcpu_sys_reg(vcpu, PMEVCNTR0_EL0 + idx) += (s64)*vcpu_reg(vcpu, p->Rt) - val;
+			vcpu_sys_reg(vcpu, PMEVCNTR0_EL0 + idx) += (s64)p->regval - val;
 			break;
 		}
 		case PMXEVTYPER_EL0: {
@@ -513,14 +512,14 @@ static bool access_pmu_regs(struct kvm_vcpu *vcpu,
 						   idx))
 				break;
 
-			val = *vcpu_reg(vcpu, p->Rt);
+			val = p->regval;
 			kvm_pmu_set_counter_event_type(vcpu, val, idx);
 			vcpu_sys_reg(vcpu, PMXEVTYPER_EL0) = val;
 			vcpu_sys_reg(vcpu, PMEVTYPER0_EL0 + idx) = val;
 			break;
 		}
 		case PMCNTENSET_EL0: {
-			val = *vcpu_reg(vcpu, p->Rt);
+			val = p->regval;
 			kvm_pmu_enable_counter(vcpu, val,
 				   vcpu_sys_reg(vcpu, PMCR_EL0) & ARMV8_PMCR_E);
 			/* Value 1 of PMCNTENSET_EL0 and PMCNTENCLR_EL0 means
@@ -531,7 +530,7 @@ static bool access_pmu_regs(struct kvm_vcpu *vcpu,
 			break;
 		}
 		case PMCNTENCLR_EL0: {
-			val = *vcpu_reg(vcpu, p->Rt);
+			val = p->regval;
 			kvm_pmu_disable_counter(vcpu, val);
 			/* Value 0 of PMCNTENSET_EL0 and PMCNTENCLR_EL0 means
 			 * corresponding counter disabled.
@@ -541,27 +540,27 @@ static bool access_pmu_regs(struct kvm_vcpu *vcpu,
 			break;
 		}
 		case PMINTENSET_EL1: {
-			val = *vcpu_reg(vcpu, p->Rt);
+			val = p->regval;
 			vcpu_sys_reg(vcpu, r->reg) |= val;
 			vcpu_sys_reg(vcpu, PMINTENCLR_EL1) |= val;
 			break;
 		}
 		case PMINTENCLR_EL1: {
-			val = *vcpu_reg(vcpu, p->Rt);
+			val = p->regval;
 			vcpu_sys_reg(vcpu, r->reg) &= ~val;
 			vcpu_sys_reg(vcpu, PMINTENSET_EL1) &= ~val;
 			break;
 		}
 		case PMOVSSET_EL0: {
-			kvm_pmu_overflow_set(vcpu, *vcpu_reg(vcpu, p->Rt));
+			kvm_pmu_overflow_set(vcpu, p->regval);
 			break;
 		}
 		case PMOVSCLR_EL0: {
-			kvm_pmu_overflow_clear(vcpu, *vcpu_reg(vcpu, p->Rt));
+			kvm_pmu_overflow_clear(vcpu, p->regval);
 			break;
 		}
 		case PMSWINC_EL0: {
-			val = *vcpu_reg(vcpu, p->Rt);
+			val = p->regval;
 			kvm_pmu_software_increment(vcpu, val);
 			break;
 		}
@@ -569,7 +568,7 @@ static bool access_pmu_regs(struct kvm_vcpu *vcpu,
 			/* Only update writeable bits of PMCR */
 			val = vcpu_sys_reg(vcpu, r->reg);
 			val &= ~ARMV8_PMCR_MASK;
-			val |= *vcpu_reg(vcpu, p->Rt) & ARMV8_PMCR_MASK;
+			val |= p->regval & ARMV8_PMCR_MASK;
 			vcpu_sys_reg(vcpu, r->reg) = val;
 			kvm_pmu_handle_pmcr(vcpu, val);
 			break;
@@ -578,15 +577,14 @@ static bool access_pmu_regs(struct kvm_vcpu *vcpu,
 		case PMCEID1_EL0:
 			return ignore_write(vcpu, p);
 		default:
-			vcpu_sys_reg(vcpu, r->reg) = *vcpu_reg(vcpu, p->Rt);
+			vcpu_sys_reg(vcpu, r->reg) = p->regval;
 			break;
 		}
 	} else {
 		switch (r->reg) {
 		case PMCCNTR_EL0: {
-			val = kvm_pmu_get_counter_value(vcpu,
-							ARMV8_MAX_COUNTERS - 1);
-			*vcpu_reg(vcpu, p->Rt) = val;
+			p->regval = kvm_pmu_get_counter_value(vcpu,
+							      ARMV8_MAX_COUNTERS - 1);
 			break;
 		}
 		case PMXEVCNTR_EL0: {
@@ -597,8 +595,7 @@ static bool access_pmu_regs(struct kvm_vcpu *vcpu,
 						   idx))
 				break;
 
-			val = kvm_pmu_get_counter_value(vcpu, idx);
-			*vcpu_reg(vcpu, p->Rt) = val;
+			p->regval = kvm_pmu_get_counter_value(vcpu, idx);
 			break;
 		}
 		case PMSWINC_EL0:
@@ -607,11 +604,11 @@ static bool access_pmu_regs(struct kvm_vcpu *vcpu,
 			/* PMCR.P & PMCR.C are RAZ */
 			val = vcpu_sys_reg(vcpu, r->reg)
 			      & ~(ARMV8_PMCR_P | ARMV8_PMCR_C);
-			*vcpu_reg(vcpu, p->Rt) = val;
+			p->regval = val;
 			break;
 		}
 		default:
-			*vcpu_reg(vcpu, p->Rt) = vcpu_sys_reg(vcpu, r->reg);
+			p->regval = vcpu_sys_reg(vcpu, r->reg);
 			break;
 		}
 	}
@@ -1121,7 +1118,7 @@ static const struct sys_reg_desc cp14_64_regs[] = {
 
 /* PMU CP15 registers accessor. */
 static bool access_pmu_cp15_regs(struct kvm_vcpu *vcpu,
-				 const struct sys_reg_params *p,
+				 struct sys_reg_params *p,
 				 const struct sys_reg_desc *r)
 {
 	u32 val;
@@ -1131,8 +1128,7 @@ static bool access_pmu_cp15_regs(struct kvm_vcpu *vcpu,
 		case c9_PMCCNTR: {
 			val = kvm_pmu_get_counter_value(vcpu,
 							ARMV8_MAX_COUNTERS - 1);
-			vcpu_cp15(vcpu, r->reg) += (s64)*vcpu_reg(vcpu, p->Rt)
-						   - val;
+			vcpu_cp15(vcpu, r->reg) += (s64)p->regval - val;
 			break;
 		}
 		case c9_PMXEVCNTR: {
@@ -1144,7 +1140,7 @@ static bool access_pmu_cp15_regs(struct kvm_vcpu *vcpu,
 				break;
 
 			val = kvm_pmu_get_counter_value(vcpu, idx);
-			vcpu_cp15(vcpu, c14_PMEVCNTR0 + idx) += (s64)*vcpu_reg(vcpu, p->Rt) - val;
+			vcpu_cp15(vcpu, c14_PMEVCNTR0 + idx) += (s64)p->regval - val;
 			break;
 		}
 		case c9_PMXEVTYPER: {
@@ -1155,14 +1151,14 @@ static bool access_pmu_cp15_regs(struct kvm_vcpu *vcpu,
 						   idx))
 				break;
 
-			val = *vcpu_reg(vcpu, p->Rt);
+			val = p->regval;
 			kvm_pmu_set_counter_event_type(vcpu, val, idx);
 			vcpu_cp15(vcpu, c9_PMXEVTYPER) = val;
 			vcpu_cp15(vcpu, c14_PMEVTYPER0 + idx) = val;
 			break;
 		}
 		case c9_PMCNTENSET: {
-			val = *vcpu_reg(vcpu, p->Rt);
+			val = p->regval;
 			kvm_pmu_enable_counter(vcpu, val,
 				       vcpu_cp15(vcpu, c9_PMCR) & ARMV8_PMCR_E);
 			/* Value 1 of PMCNTENSET_EL0 and PMCNTENCLR_EL0 means
@@ -1173,7 +1169,7 @@ static bool access_pmu_cp15_regs(struct kvm_vcpu *vcpu,
 			break;
 		}
 		case c9_PMCNTENCLR: {
-			val = *vcpu_reg(vcpu, p->Rt);
+			val = p->regval;
 			kvm_pmu_disable_counter(vcpu, val);
 			/* Value 0 of PMCNTENSET_EL0 and PMCNTENCLR_EL0 means
 			 * corresponding counter disabled.
@@ -1183,35 +1179,34 @@ static bool access_pmu_cp15_regs(struct kvm_vcpu *vcpu,
 			break;
 		}
 		case c9_PMINTENSET: {
-			val = *vcpu_reg(vcpu, p->Rt);
+			val = p->regval;
 			vcpu_cp15(vcpu, r->reg) |= val;
 			vcpu_cp15(vcpu, c9_PMINTENCLR) |= val;
 			break;
 		}
 		case c9_PMINTENCLR: {
-			val = *vcpu_reg(vcpu, p->Rt);
+			val = p->regval;
 			vcpu_cp15(vcpu, r->reg) &= ~val;
 			vcpu_cp15(vcpu, c9_PMINTENSET) &= ~val;
 			break;
 		}
 		case c9_PMOVSSET: {
-			kvm_pmu_overflow_set(vcpu, *vcpu_reg(vcpu, p->Rt));
+			kvm_pmu_overflow_set(vcpu, p->regval);
 			break;
 		}
 		case c9_PMOVSCLR: {
-			kvm_pmu_overflow_clear(vcpu, *vcpu_reg(vcpu, p->Rt));
+			kvm_pmu_overflow_clear(vcpu, p->regval);
 			break;
 		}
 		case c9_PMSWINC: {
-			val = *vcpu_reg(vcpu, p->Rt);
-			kvm_pmu_software_increment(vcpu, val);
+			kvm_pmu_software_increment(vcpu, p->regval);
 			break;
 		}
 		case c9_PMCR: {
 			/* Only update writeable bits of PMCR */
 			val = vcpu_cp15(vcpu, r->reg);
 			val &= ~ARMV8_PMCR_MASK;
-			val |= *vcpu_reg(vcpu, p->Rt) & ARMV8_PMCR_MASK;
+			val |= p->regval & ARMV8_PMCR_MASK;
 			vcpu_cp15(vcpu, r->reg) = val;
 			kvm_pmu_handle_pmcr(vcpu, val);
 			break;
@@ -1220,15 +1215,14 @@ static bool access_pmu_cp15_regs(struct kvm_vcpu *vcpu,
 		case c9_PMCEID1:
 			return ignore_write(vcpu, p);
 		default:
-			vcpu_cp15(vcpu, r->reg) = *vcpu_reg(vcpu, p->Rt);
+			vcpu_cp15(vcpu, r->reg) = p->regval;
 			break;
 		}
 	} else {
 		switch (r->reg) {
 		case c9_PMCCNTR: {
-			val = kvm_pmu_get_counter_value(vcpu,
-							ARMV8_MAX_COUNTERS - 1);
-			*vcpu_reg(vcpu, p->Rt) = val;
+			p->regval = kvm_pmu_get_counter_value(vcpu,
+							      ARMV8_MAX_COUNTERS - 1);
 			break;
 		}
 		case c9_PMXEVCNTR: {
@@ -1239,21 +1233,18 @@ static bool access_pmu_cp15_regs(struct kvm_vcpu *vcpu,
 						   idx))
 				break;
 
-			val = kvm_pmu_get_counter_value(vcpu, idx);
-			*vcpu_reg(vcpu, p->Rt) = val;
+			p->regval = kvm_pmu_get_counter_value(vcpu, idx);
 			break;
 		}
 		case c9_PMSWINC:
 			return read_zero(vcpu, p);
 		case c9_PMCR: {
 			/* PMCR.P & PMCR.C are RAZ */
-			val = vcpu_cp15(vcpu, r->reg)
-			      & ~(ARMV8_PMCR_P | ARMV8_PMCR_C);
-			*vcpu_reg(vcpu, p->Rt) = val;
+			p->regval = vcpu_cp15(vcpu, r->reg) & ~(ARMV8_PMCR_P | ARMV8_PMCR_C);
 			break;
 		}
 		default:
-			*vcpu_reg(vcpu, p->Rt) = vcpu_cp15(vcpu, r->reg);
+			p->regval = vcpu_cp15(vcpu, r->reg);
 			break;
 		}
 	}
