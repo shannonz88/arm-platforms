@@ -447,12 +447,22 @@ static int emulate_cp15(struct kvm_vcpu *vcpu,
 		r = find_reg(params, cp15_regs, ARRAY_SIZE(cp15_regs));
 
 	if (likely(r)) {
+		unsigned long pc = *vcpu_pc(vcpu);
+
 		/* If we don't have an accessor, we should never get here! */
 		BUG_ON(!r->access);
 
 		if (likely(r->access(vcpu, params, r))) {
-			/* Skip instruction, since it was emulated */
-			kvm_skip_instr(vcpu, kvm_vcpu_trap_il_is32bit(vcpu));
+			/*
+			 * Skip the instruction if it was emulated
+			 * without PC having changed. This allows us
+			 * to detect a fault being injected
+			 * (incrementing the PC here would cause the
+			 * vcpu to skip the first instruction of its
+			 * fault handler).
+			 */
+			if (pc == *vcpu_pc(vcpu))
+				kvm_skip_instr(vcpu, kvm_vcpu_trap_il_is32bit(vcpu));
 			return 1;
 		}
 		/* If access function fails, it should complain. */
