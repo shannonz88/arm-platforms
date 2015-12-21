@@ -41,6 +41,7 @@ int vgic_v2_dist_access(struct kvm_vcpu *vcpu, bool is_write,
 int vgic_v2_has_attr_regs(struct kvm_device *dev, struct kvm_device_attr *attr);
 void vgic_v2_set_vmcr(struct kvm_vcpu *vcpu, struct vgic_vmcr *vmcr);
 void vgic_v2_get_vmcr(struct kvm_vcpu *vcpu, struct vgic_vmcr *vmcr);
+void vgic_v2_enable(struct kvm_vcpu *vcpu);
 int vgic_v2_probe(struct device_node *vgic_node);
 
 #ifdef CONFIG_KVM_ARM_VGIC_V3
@@ -55,6 +56,7 @@ int vgic_v3_redist_access(struct kvm_vcpu *vcpu, bool is_write,
 			  int offset, int len, void *val);
 void vgic_v3_set_vmcr(struct kvm_vcpu *vcpu, struct vgic_vmcr *vmcr);
 void vgic_v3_get_vmcr(struct kvm_vcpu *vcpu, struct vgic_vmcr *vmcr);
+void vgic_v3_enable(struct kvm_vcpu *vcpu);
 int vgic_v3_probe(struct device_node *vgic_node);
 #else
 static inline void vgic_v3_process_maintenance(struct kvm_vcpu *vcpu)
@@ -100,6 +102,10 @@ void vgic_v3_get_vmcr(struct kvm_vcpu *vcpu, struct vgic_vmcr *vmcr)
 {
 }
 
+static inline void vgic_v3_enable(struct kvm_vcpu *vcpu)
+{
+}
+
 static inline int vgic_v3_probe(struct device_node *vgic_node)
 {
 	return -ENODEV;
@@ -109,6 +115,8 @@ static inline int vgic_v3_probe(struct device_node *vgic_node)
 void vgic_set_vmcr(struct kvm_vcpu *vcpu, struct vgic_vmcr *vmcr);
 void vgic_get_vmcr(struct kvm_vcpu *vcpu, struct vgic_vmcr *vmcr);
 
+int vgic_lazy_init(struct kvm *kvm);
+int vgic_init(struct kvm *kvm);
 void kvm_register_vgic_device(unsigned long type);
 
 #endif
