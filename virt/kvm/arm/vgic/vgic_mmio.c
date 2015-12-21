@@ -178,6 +178,36 @@ static int dispatch_mmio_write(struct kvm_vcpu *vcpu,
 	return region->ops.write(vcpu, dev, addr, len, val);
 }
 
+/*
+ * When userland tries to access the VGIC register handlers, we need to
+ * create a usable struct vgic_io_device to be passed to the handlers.
+ */
+static int vgic_device_mmio_access(struct kvm_vcpu *vcpu,
+				   struct vgic_register_region *regions,
+				   int nr_regions, bool is_write,
+				   int offset, int len, void *val)
+{
+	struct vgic_io_device dev = {
+		.base_addr = 0,
+		.redist_vcpu = vcpu,
+	};
+
+	if (is_write)
+		return dispatch_mmio_write(vcpu, regions, nr_regions,
+					   &dev.dev, offset, len, val);
+	else
+		return dispatch_mmio_read(vcpu, regions, nr_regions,
+					  &dev.dev, offset, len, val);
+}
+
+int vgic_v2_dist_access(struct kvm_vcpu *vcpu, bool is_write,
+			int offset, int len, void *val)
+{
+	return vgic_device_mmio_access(vcpu, vgic_v2_dist_registers,
+				       ARRAY_SIZE(vgic_v2_dist_registers),
+				       is_write, offset, len, val);
+}
+
 int vgic_mmio_read_v2dist(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
 			  gpa_t addr, int len, void *val)
 {
