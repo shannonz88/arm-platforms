@@ -35,6 +35,7 @@ void vgic_v2_clear_lr(struct kvm_vcpu *vcpu, int lr);
 void vgic_v2_set_underflow(struct kvm_vcpu *vcpu);
 int vgic_v2_dist_access(struct kvm_vcpu *vcpu, bool is_write,
 			int offset, int len, void *val);
+int vgic_v2_has_attr_regs(struct kvm_device *dev, struct kvm_device_attr *attr);
 
 #ifdef CONFIG_KVM_ARM_VGIC_V3
 void vgic_v3_process_maintenance(struct kvm_vcpu *vcpu);
