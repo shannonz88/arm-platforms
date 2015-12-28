@@ -284,6 +284,7 @@ out_free_priv_data:
 
 	return err;
 }
+EXPORT_SYMBOL_GPL(platform_msi_domain_alloc_irqs);
 
 /**
  * platform_msi_domain_free_irqs - Free MSI interrupts for @dev
@@ -414,3 +415,4 @@ int platform_msi_domain_alloc(struct irq_domain *domain, unsigned int virq,
 
 	return err;
 }
+EXPORT_SYMBOL_GPL(platform_msi_domain_free_irqs);
