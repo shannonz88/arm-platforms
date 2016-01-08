@@ -15,6 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/highmem.h>
 #include <linux/proc_fs.h>
 #include <linux/mm.h>
 #include <linux/seq_file.h>
@@ -23,10 +24,13 @@
 #include <asm/traps.h>
 
 static unsigned long bx_emul_counter;
+static unsigned long bx_patch_counter;
+static int bx_patch_mode;
 
 #ifdef CONFIG_PROC_FS
 static int bx_proc_show(struct seq_file *m, void *v)
 {
+	seq_printf(m, "Patched BX:\t%lu\n", bx_patch_counter);
 	seq_printf(m, "Emulated BX:\t%lu\n", bx_emul_counter);
 
 	return 0;
@@ -49,10 +53,33 @@ static int handle_bx_trap(struct pt_regs *regs, unsigned int instr)
 {
 	if (arm_check_condition(instr,
 				regs->ARM_cpsr) != ARM_OPCODE_CONDTEST_FAIL) {
-		int reg = instr & 0xf;
+		struct page *flt_page;
 
-		regs->ARM_pc = regs->uregs[reg];
-		bx_emul_counter++;
+		if (bx_patch_mode &&
+		    get_user_pages_fast(regs->ARM_pc, 1, 0, &flt_page) == 1) {
+			u32 movpc = 0x01a0f000;
+			void *kaddr;
+
+			kaddr = kmap(flt_page);
+
+			movpc |= (instr & 0xf000000f);
+			*(u32 *)(kaddr + (regs->ARM_pc & ~PAGE_MASK)) = movpc;
+
+			kunmap(kaddr);
+
+			dsb();
+
+			__cpuc_flush_dcache_area(kaddr, sizeof(movpc));
+			flush_icache_range(regs->ARM_pc,
+					   regs->ARM_pc + sizeof(movpc));
+			put_page(flt_page);
+			bx_patch_counter++;
+		} else {
+			int reg = instr & 0xf;
+
+			regs->ARM_pc = regs->uregs[reg];
+			bx_emul_counter++;
+		}
 	}
 	return 0;
 }
@@ -75,9 +102,18 @@ static int __init arm_bx_hook_init(void)
 		return -ENOMEM;
 #endif /* CONFIG_PROC_FS */
 
-	pr_notice("Registering BX emulation handler\n");
+	pr_notice("Registering BX emulation handler (default %s mode)\n",
+		  bx_patch_mode ? "patching" : "emulating");
 	register_undef_hook(&arm_bx_hook);
 	return 0;
 }
 
 late_initcall(arm_bx_hook_init);
+
+static int __init bx_patch_mode_setup(char *str)
+{
+	get_option(&str, &bx_patch_mode);
+	return 1;
+}
+
+__setup("bx_patch=", bx_patch_mode_setup);
