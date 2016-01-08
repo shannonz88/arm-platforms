@@ -429,6 +429,7 @@ config CPU_32v4
 	select NEED_KUSER_HELPERS
 	select TLS_REG_EMUL if SMP || !MMU
 	select CPU_NO_EFFICIENT_FFS
+	select ARMv4_BX_EMUL if !SMP
 
 config CPU_32v4T
 	bool
@@ -803,6 +804,12 @@ config TLS_REG_EMUL
 	  An SMP system using a pre-ARMv6 processor (there are apparently
 	  a few prototypes like that in existence) and therefore access to
 	  that required register must be emulated.
+
+config ARMv4_BX_EMUL
+	bool
+	help
+	  Emulate the 'bx' instruction that doesn't exist on CPUs that
+	  predates ARMv4t
 
 config NEED_KUSER_HELPERS
 	bool
