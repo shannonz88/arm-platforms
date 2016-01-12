@@ -144,6 +144,17 @@ typeof(orig) * __hyp_text fname(void)					\
 	return val;							\
 }
 
+#define hyp_alternate_value(fname, orig, alt, cond)			\
+typeof(orig) __hyp_text fname(void)					\
+{									\
+	typeof(alt) val = orig;						\
+	asm volatile(ALTERNATIVE("nop		\n",			\
+				 "mov	%0, %1	\n",			\
+				 cond)					\
+		     : "+r" (val) : "r" ((typeof(orig))alt));		\
+	return val;							\
+}
+
 void __vgic_v2_save_state(struct kvm_vcpu *vcpu);
 void __vgic_v2_restore_state(struct kvm_vcpu *vcpu);
 
