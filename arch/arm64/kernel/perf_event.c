@@ -20,6 +20,7 @@
  */
 
 #include <asm/irq_regs.h>
+#include <asm/virt.h>
 
 #include <linux/of.h>
 #include <linux/perf/arm_pmu.h>
@@ -693,10 +694,15 @@ static int armv8pmu_set_event_filter(struct hw_perf_event *event,
 		return -EPERM;
 	if (attr->exclude_user)
 		config_base |= ARMV8_EXCLUDE_EL0;
-	if (attr->exclude_kernel)
-		config_base |= ARMV8_EXCLUDE_EL1;
-	if (!attr->exclude_hv)
-		config_base |= ARMV8_INCLUDE_EL2;
+	if (is_kernel_in_hyp_mode()) {
+		if (!attr->exclude_kernel || !attr->exclude_hv)
+			config_base |= ARMV8_INCLUDE_EL2;
+	} else {
+		if (attr->exclude_kernel)
+			config_base |= ARMV8_EXCLUDE_EL1;
+		if (!attr->exclude_hv)
+			config_base |= ARMV8_INCLUDE_EL2;
+	}
 
 	/*
 	 * Install the filter into config_base as this is used to
