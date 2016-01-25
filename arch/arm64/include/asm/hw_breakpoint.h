@@ -18,6 +18,7 @@
 
 #include <asm/cputype.h>
 #include <asm/cpufeature.h>
+#include <asm/virt.h>
 
 #ifdef __KERNEL__
 
@@ -34,24 +35,6 @@ struct arch_hw_breakpoint {
 	u64 trigger;
 	struct arch_hw_breakpoint_ctrl ctrl;
 };
-
-static inline u32 encode_ctrl_reg(struct arch_hw_breakpoint_ctrl ctrl)
-{
-	return (ctrl.len << 5) | (ctrl.type << 3) | (ctrl.privilege << 1) |
-		ctrl.enabled;
-}
-
-static inline void decode_ctrl_reg(u32 reg,
-				   struct arch_hw_breakpoint_ctrl *ctrl)
-{
-	ctrl->enabled	= reg & 0x1;
-	reg >>= 1;
-	ctrl->privilege	= reg & 0x3;
-	reg >>= 2;
-	ctrl->type	= reg & 0x3;
-	reg >>= 2;
-	ctrl->len	= reg & 0xff;
-}
 
 /* Breakpoint */
 #define ARM_BREAKPOINT_EXECUTE	0
@@ -75,6 +58,36 @@ static inline void decode_ctrl_reg(u32 reg,
 #define ARM_KERNEL_STEP_NONE	0
 #define ARM_KERNEL_STEP_ACTIVE	1
 #define ARM_KERNEL_STEP_SUSPEND	2
+
+#define DBG_HMC_HYP		(1 << 13)
+#define DBG_SSC_HYP		(3 << 14)
+
+static inline u32 encode_ctrl_reg(struct arch_hw_breakpoint_ctrl ctrl)
+{
+	u32 val = (ctrl.len << 5) | (ctrl.type << 3) | ctrl.enabled;
+
+	if (is_kernel_in_hyp_mode() && ctrl.privilege == AARCH64_BREAKPOINT_EL1)
+		val |= DBG_HMC_HYP | DBG_SSC_HYP;
+	else
+		val |= ctrl.privilege << 1;
+
+	return val;
+}
+
+static inline void decode_ctrl_reg(u32 reg,
+				   struct arch_hw_breakpoint_ctrl *ctrl)
+{
+	ctrl->enabled	= reg & 0x1;
+	reg >>= 1;
+	if (is_kernel_in_hyp_mode())
+		ctrl->privilege = !!(reg & (DBG_HMC_HYP >> 1));
+	else
+		ctrl->privilege	= reg & 0x3;
+	reg >>= 2;
+	ctrl->type	= reg & 0x3;
+	reg >>= 2;
+	ctrl->len	= reg & 0xff;
+}
 
 /*
  * Limits.
