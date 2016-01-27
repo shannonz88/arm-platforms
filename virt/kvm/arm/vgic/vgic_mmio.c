@@ -686,6 +686,60 @@ static int vgic_mmio_write_sgipends(struct kvm_vcpu *vcpu,
 	return 0;
 }
 
+/*****************************/
+/* GICv3 emulation functions */
+/*****************************/
+#ifdef CONFIG_KVM_ARM_VGIC_V3
+
+static int vgic_mmio_read_v3_misc(struct kvm_vcpu *vcpu,
+				  struct kvm_io_device *dev,
+				  gpa_t addr, int len, void *val)
+{
+	u32 value = 0;
+
+	switch (addr & 0x0c) {
+	case GICD_CTLR:
+		if (vcpu->kvm->arch.vgic.enabled)
+		       value |=	GICD_CTLR_ENABLE_SS_G1;
+		value |= GICD_CTLR_ARE_NS | GICD_CTLR_DS;
+		break;
+	case GICD_TYPER:
+		value = vcpu->kvm->arch.vgic.nr_spis + VGIC_NR_PRIVATE_IRQS;
+		value = (value >> 5) - 1;
+		value |= (INTERRUPT_ID_BITS_SPIS - 1) << 19;
+		break;
+	case GICD_IIDR:
+		value = (PRODUCT_ID_KVM << 24) | (IMPLEMENTER_ARM << 0);
+		break;
+	default:
+		return 0;
+	}
+
+	write_mask32(value, addr & 3, len, val);
+	return 0;
+}
+
+static int vgic_mmio_write_v3_misc(struct kvm_vcpu *vcpu,
+				   struct kvm_io_device *dev,
+				   gpa_t addr, int len, const void *val)
+{
+	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
+	bool was_enabled = dist->enabled;
+
+	/* Of the whole region only the first byte is actually writeable. */
+	if ((addr & 0x0f) > 0)
+		return 0;
+
+	/* We only care about the enable bit, all other bits are WI. */
+	dist->enabled = *(u8*)val & GICD_CTLR_ENABLE_SS_G1;
+
+	if (!was_enabled && dist->enabled)
+		vgic_kick_vcpus(vcpu->kvm);
+
+	return 0;
+}
+
+
 /*
  * The GICv3 per-IRQ registers are split to control PPIs and SGIs in the
  * redistributors, while SPIs are covered by registers in the distributor
@@ -734,7 +788,7 @@ struct vgic_register_region vgic_v2_dist_registers[] = {
 #ifdef CONFIG_KVM_ARM_VGIC_V3
 struct vgic_register_region vgic_v3_dist_registers[] = {
 	REGISTER_DESC_WITH_LENGTH(GICD_CTLR,
-		vgic_mmio_read_nyi, vgic_mmio_write_nyi, 16),
+		vgic_mmio_read_v3_misc, vgic_mmio_write_v3_misc, 16),
 	REGISTER_DESC_WITH_BITS_PER_IRQ_SHARED(GICD_IGROUPR,
 		vgic_mmio_read_rao, vgic_mmio_write_wi, 1),
 	REGISTER_DESC_WITH_BITS_PER_IRQ_SHARED(GICD_ISENABLER,
