@@ -36,7 +36,10 @@
 #define PCIE_DBI_RO_WR_EN	0x8bc /* DBI Read-Only Write Enable Register */
 
 /* PEX LUT registers */
+#define PCIE_LUT_CTRL0		0x7F8
 #define PCIE_LUT_DBG		0x7FC /* PEX LUT Debug Register */
+#define PCIE_LUT_UDR(n)		(0x800 + (n) * 8)
+#define PCIE_LUT_LDR(n)		(0x804 + (n) * 8)
 
 struct ls_pcie_drvdata {
 	u32 lut_offset;
@@ -232,6 +235,26 @@ static int __init ls_add_pcie_port(struct pcie_port *pp,
 	return 0;
 }
 
+static void __init ls_pcie_lut_init(struct ls_pcie *pcie,
+				    struct platform_device *pdev)
+{
+	int n;
+
+	/* Default ICID */
+	writel(0x7fff, pcie->lut + PCIE_LUT_CTRL0);
+	/* Compress 8:5:3 BDF to 2:2:3 ICID for 7-bit stream ID */
+	for (n = 0; n < 4; n++) {
+		u32 udr = (n << 24) | 0xfce7;
+		u32 ldr = (n << 5) | (1UL << 31);
+
+		dev_dbg(&pdev->dev, "PEX_LUT entry %d: 0x%08x,0x%08x\n",
+			n, udr, ldr);
+		writel_relaxed(udr, pcie->lut + PCIE_LUT_UDR(n));
+		writel_relaxed(ldr, pcie->lut + PCIE_LUT_LDR(n));
+	}
+}
+
+
 static int __init ls_pcie_probe(struct platform_device *pdev)
 {
 	const struct of_device_id *match;
@@ -264,6 +287,7 @@ static int __init ls_pcie_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
+	ls_pcie_lut_init(pcie, pdev);
 	platform_set_drvdata(pdev, pcie);
 
 	return 0;
