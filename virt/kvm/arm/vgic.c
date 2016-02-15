@@ -830,8 +830,11 @@ static int vgic_handle_mmio_access(struct kvm_vcpu *vcpu,
 	offset = addr - iodev->addr;
 	range = vgic_find_range(iodev->reg_ranges, len, offset);
 	if (unlikely(!range || !range->handle_mmio)) {
-		pr_warn("Unhandled access %d %08llx %d\n", is_write, addr, len);
-		return -ENXIO;
+		/* Treat an OOR access as RAZ/WI. */
+		if (!is_write)
+			memset(val, 0, len);
+		pr_debug("Unhandled access %d %08llx %d\n", is_write, addr, len);
+		return 0;
 	}
 
 	mmio.phys_addr = addr;
