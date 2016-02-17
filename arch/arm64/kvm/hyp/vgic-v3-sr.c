@@ -202,14 +202,17 @@ void __hyp_text __vgic_v3_save_state(struct kvm_vcpu *vcpu)
 			__gic_v3_set_lr(0, i);
 		}
 
-		switch (nr_pri_bits) {
-		case 7:
-			cpu_if->vgic_ap0r[3] = read_gicreg(ICH_AP0R3_EL2);
-			cpu_if->vgic_ap0r[2] = read_gicreg(ICH_AP0R2_EL2);
-		case 6:
-			cpu_if->vgic_ap0r[1] = read_gicreg(ICH_AP0R1_EL2);
-		default:
-			cpu_if->vgic_ap0r[0] = read_gicreg(ICH_AP0R0_EL2);
+		/* ICH_AP0Rn is only valid for SRE==1 */
+		if (cpu_if->vgic_sre & ICC_SRE_EL1_SRE) {
+			switch (nr_pri_bits) {
+			case 7:
+				cpu_if->vgic_ap0r[3] = read_gicreg(ICH_AP0R3_EL2);
+				cpu_if->vgic_ap0r[2] = read_gicreg(ICH_AP0R2_EL2);
+			case 6:
+				cpu_if->vgic_ap0r[1] = read_gicreg(ICH_AP0R1_EL2);
+			default:
+				cpu_if->vgic_ap0r[0] = read_gicreg(ICH_AP0R0_EL2);
+			}
 		}
 
 		switch (nr_pri_bits) {
