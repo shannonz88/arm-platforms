@@ -25,6 +25,7 @@
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/percpu.h>
+#include <linux/rculist.h>
 #include <linux/slab.h>
 
 #include <linux/irqchip.h>
@@ -43,6 +44,18 @@ struct redist_region {
 	bool			single_redist;
 };
 
+struct ppi_partition {
+	cpumask_t		mask;
+	struct device_node	*node;
+	unsigned int		part_num;
+};
+
+struct partition_entry {
+	struct list_head	entry;
+	struct rcu_head		rcu;
+	struct ppi_partition	*part;
+};
+
 struct gic_chip_data {
 	void __iomem		*dist_base;
 	struct redist_region	*redist_regions;
@@ -51,6 +64,10 @@ struct gic_chip_data {
 	u64			redist_stride;
 	u32			nr_redist_regions;
 	unsigned int		irq_nr;
+	unsigned int		part_nr;
+	struct ppi_partition	*parts;
+	spinlock_t		part_lock;
+	struct list_head	per_ppi_map[16];
 };
 
 static struct gic_chip_data gic_data __read_mostly;
@@ -65,6 +82,13 @@ static struct static_key supports_deactivate = STATIC_KEY_INIT_TRUE;
 
 static inline unsigned int gic_irq(struct irq_data *d)
 {
+	/*
+	 * PPI partitions are mapped to the dead zone between SPIs and
+	 * LPIs. Extract the actual PPI.
+	 */
+	if (d->hwirq < 8192 && d->hwirq >= 1024)
+		return d->hwirq & 0x1f;
+
 	return d->hwirq;
 }
 
@@ -221,8 +245,11 @@ static int gic_irq_set_irqchip_state(struct irq_data *d,
 {
 	u32 reg;
 
-	if (d->hwirq >= gic_data.irq_nr) /* PPI/SPI only */
+	if (d->hwirq >= 8192) /* PPI/SPI only */
 		return -EINVAL;
+
+	if (d->hwirq >= gic_data.irq_nr && d->hwirq <= 1023)
+		return -EINVAL;	/* Nothing there */
 
 	switch (which) {
 	case IRQCHIP_STATE_PENDING:
@@ -248,8 +275,11 @@ static int gic_irq_set_irqchip_state(struct irq_data *d,
 static int gic_irq_get_irqchip_state(struct irq_data *d,
 				     enum irqchip_irq_state which, bool *val)
 {
-	if (d->hwirq >= gic_data.irq_nr) /* PPI/SPI only */
+	if (d->hwirq >= 8192) /* PPI/SPI only */
 		return -EINVAL;
+
+	if (d->hwirq >= gic_data.irq_nr && d->hwirq <= 1023)
+		return -EINVAL;	/* Nothing there */
 
 	switch (which) {
 	case IRQCHIP_STATE_PENDING:
@@ -334,6 +364,68 @@ static u64 gic_mpidr_to_affinity(unsigned long mpidr)
 	return aff;
 }
 
+static irq_hw_number_t gic_ppi_map(irq_hw_number_t hwirq)
+{
+	unsigned int cpu = smp_processor_id();
+	struct partition_entry *entry;
+	int ppi;
+
+	BUG_ON(hwirq > 31 || hwirq < 16);
+
+	if (likely(!gic_data.part_nr))
+		return hwirq;
+
+	rcu_read_lock();
+
+	ppi = hwirq & 0xf;
+	if (likely(list_empty(&gic_data.per_ppi_map[ppi])))
+		goto out;
+
+	list_for_each_entry(entry, &gic_data.per_ppi_map[ppi], entry) {
+		if (!cpumask_test_cpu(cpu, &entry->part->mask))
+			continue;
+
+		hwirq |= entry->part->part_num << 10;
+		goto out;
+	}
+
+	WARN_ON(1);		/* No match? Something is very wrong... */
+
+out:
+	rcu_read_unlock();
+	return hwirq;
+}
+
+/* Ugly: we carry our own copy of handle_irq_domain so that we can
+ * execute rcu_read_lock/unlock within the irq_enter/exit
+ * section. Consider passing a remap helper to the generic
+ * implelemtation? */
+static int gic_handle_domain_irq(struct irq_domain *domain, unsigned int hwirq,
+				 struct pt_regs *regs)
+{
+	struct pt_regs *old_regs = set_irq_regs(regs);
+	unsigned int irq;
+	int ret = 0;
+
+	irq_enter();
+
+	if (hwirq < 32)
+		hwirq = gic_ppi_map(hwirq);
+
+	irq = irq_find_mapping(domain, hwirq);
+
+	if (unlikely(!irq || irq >= nr_irqs)) {
+		ack_bad_irq(irq);
+		ret = -EINVAL;
+	} else {
+		generic_handle_irq(irq);
+	}
+
+	irq_exit();
+	set_irq_regs(old_regs);
+	return ret;
+}
+
 static asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs)
 {
 	u32 irqnr;
@@ -343,11 +435,12 @@ static asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs
 
 		if (likely(irqnr > 15 && irqnr < 1020) || irqnr >= 8192) {
 			int err;
+			irq_hw_number_t hwirq = irqnr;
 
 			if (static_key_true(&supports_deactivate))
 				gic_write_eoir(irqnr);
 
-			err = handle_domain_irq(gic_data.domain, irqnr, regs);
+			err = gic_handle_domain_irq(gic_data.domain, hwirq, regs);
 			if (err) {
 				WARN_ONCE(true, "Unexpected interrupt received!\n");
 				if (static_key_true(&supports_deactivate)) {
@@ -713,14 +806,14 @@ static int gic_irq_domain_map(struct irq_domain *d, unsigned int irq,
 	if (hw < 16)
 		return -EPERM;
 	/* Nothing here */
-	if (hw >= gic_data.irq_nr && hw < 8192)
+	if (hw >= gic_data.irq_nr && hw < 1024)
 		return -EPERM;
 	/* Off limits */
 	if (hw >= GIC_ID_NR)
 		return -EPERM;
 
-	/* PPIs */
-	if (hw < 32) {
+	/* PPIs - either naked or remapped through partitionning */
+	if (hw < 32 || (hw >= 1024 && hw < 8192)) {
 		irq_set_percpu_devid(irq);
 		irq_domain_set_info(d, irq, hw, chip, d->host_data,
 				    handle_percpu_devid_irq, NULL, NULL);
@@ -743,6 +836,151 @@ static int gic_irq_domain_map(struct irq_domain *d, unsigned int irq,
 	return 0;
 }
 
+static int get_cpu_number(struct device_node *dn)
+{
+	const __be32 *cell;
+	u64 hwid;
+	int i;
+
+	cell = of_get_property(dn, "reg", NULL);
+	if (!cell)
+		return -1;
+
+	hwid = of_read_number(cell, of_n_addr_cells(dn));
+
+	/*
+	 * Non affinity bits must be set to 0 in the DT
+	 */
+	if (hwid & ~MPIDR_HWID_BITMASK)
+		return -1;
+
+	for (i = 0; i < num_possible_cpus(); i++)
+		if (cpu_logical_map(i) == hwid)
+			return i;
+
+	return -1;
+}
+
+static struct ppi_partition *ppi_map_partition(u32 phandle,
+					       irq_hw_number_t hwirq)
+{
+	struct ppi_partition *part = NULL;
+	struct partition_entry *part_entry, *tmp_entry;
+	struct device_node *np;
+	int i, ppi;
+
+	np = of_find_node_by_phandle(phandle);
+	if (WARN_ON(!np))
+		return NULL;
+
+	for (i = 0; i < gic_data.part_nr; i++) {
+		if (gic_data.parts[i].node == np) {
+			part = &gic_data.parts[i];
+			break;
+		}
+	}
+
+	if (WARN_ON(!part)) {
+		pr_err("Failed to find partition %s\n", np->full_name);
+		return NULL;
+	}
+
+	part_entry = kzalloc(sizeof(*part_entry), GFP_KERNEL);
+	if (WARN_ON(!part_entry))
+		return NULL;
+
+	part_entry->part = part;
+	ppi = hwirq & 0xf;
+
+	spin_lock(&gic_data.part_lock);
+	rcu_read_lock();
+	list_for_each_entry_rcu(tmp_entry, &gic_data.per_ppi_map[ppi], entry) {
+		if (tmp_entry->part == part) {
+			rcu_read_unlock();
+			spin_unlock(&gic_data.part_lock);
+			kfree(part_entry);
+			return part;
+		}
+	}
+	rcu_read_unlock();
+
+	list_add_tail_rcu(&part_entry->entry, &gic_data.per_ppi_map[ppi]);
+	spin_unlock(&gic_data.part_lock);
+
+	return part;
+}
+
+/* Create all possible partitions at boot time */
+static void gic_populate_ppi_partitions(struct device_node *gic_node)
+{
+	struct device_node *parts_node, *child_part;
+	int part_idx = 0, i;
+
+	for (i = 0; i < 16; i++)
+		INIT_LIST_HEAD(&gic_data.per_ppi_map[i]);
+	spin_lock_init(&gic_data.part_lock);
+
+	parts_node = of_find_node_by_name(gic_node, "ppi-partitions");
+	if (!parts_node)
+		return;
+
+	gic_data.part_nr = of_get_child_count(parts_node);
+
+	if (!gic_data.part_nr)
+		return;
+
+	gic_data.parts = kzalloc(sizeof(*gic_data.parts) * gic_data.part_nr,
+				 GFP_KERNEL);
+	if (WARN_ON(!gic_data.parts)) {
+		gic_data.part_nr = 0;
+		return;
+	}
+
+	for_each_child_of_node(parts_node, child_part) {
+		struct ppi_partition *part;
+		int n, i;
+
+		part = &gic_data.parts[part_idx];
+
+		part_idx++;
+
+		part->node = child_part;
+		part->part_num = part_idx;
+
+		pr_info("GIC: PPI partition %s[%d] { ",
+			child_part->name, part_idx);
+
+		n = of_property_count_elems_of_size(child_part, "affinity",
+						    sizeof(u32));
+		WARN_ON(n <= 0);
+
+		for (i = 0; i < n; i++) {
+			int err, cpu;
+			u32 cpu_phandle;
+			struct device_node *cpu_node;
+
+			err = of_property_read_u32_index(child_part, "affinity",
+							 i, &cpu_phandle);
+			if (WARN_ON(err))
+				continue;
+
+			cpu_node = of_find_node_by_phandle(cpu_phandle);
+			if (WARN_ON(!cpu_node))
+				continue;
+
+			cpu = get_cpu_number(cpu_node);
+			if (WARN_ON(cpu == -1))
+				continue;
+
+			pr_cont("%s[%d] ", cpu_node->full_name, cpu);
+
+			cpumask_set_cpu(cpu, &part->mask);
+		}
+
+		pr_cont("}\n");
+	}
+}
+
 static int gic_irq_domain_translate(struct irq_domain *d,
 				    struct irq_fwspec *fwspec,
 				    unsigned long *hwirq,
@@ -758,6 +996,16 @@ static int gic_irq_domain_translate(struct irq_domain *d,
 			break;
 		case 1:			/* PPI */
 			*hwirq = fwspec->param[1] + 16;
+			if (fwspec->param_count >= 4 && fwspec->param[3]) {
+				struct ppi_partition *part;
+
+				part = ppi_map_partition(fwspec->param[3],
+							 *hwirq);
+				if (WARN_ON(!part))
+					break;
+
+				*hwirq |= part->part_num << 10;
+			}
 			break;
 		case GIC_IRQ_TYPE_LPI:	/* LPI */
 			*hwirq = fwspec->param[1];
@@ -952,8 +1200,11 @@ static int __init gic_of_init(struct device_node *node, struct device_node *pare
 
 	err = gic_init_bases(dist_base, rdist_regs, nr_redist_regions,
 			     redist_stride, &node->fwnode);
-	if (!err)
-		return 0;
+	if (err)
+		goto out_unmap_rdist;
+
+	gic_populate_ppi_partitions(node);
+	return 0;
 
 out_unmap_rdist:
 	for (i = 0; i < nr_redist_regions; i++)

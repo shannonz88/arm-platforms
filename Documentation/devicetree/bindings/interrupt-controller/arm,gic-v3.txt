@@ -24,7 +24,12 @@ Main node required properties:
 		1 = edge triggered
 		4 = level triggered
 
-  Cells 4 and beyond are reserved for future use and must have a value
+  The 4th cell is a phandle to a node describing a set of CPUs this
+  interrupt is affine to. The interrupt must be a PPI, and the node
+  pointed to by the phandle must contain an "affinity" property,
+  containing a list of phandles to CPU nodes.
+
+  Cells 5 and beyond are reserved for future use and must have a value
   of 0 if present.
 
 - reg : Specifies base physical address(s) and size of the GIC
@@ -119,4 +124,19 @@ Examples:
 			#msi-cells = <1>;
 			reg = <0x0 0x2c400000 0 0x200000>;
 		};
+
+		ppi-partitions {
+			part0: interrupt-partition-0 {
+				affinity = <&cpu0 &cpu2>;
+			};
+
+			part1: interrupt-partition-1 {
+				affinity = <&cpu1 &cpu3>;
+			};
+		};
+	};
+
+
+	device@0 {
+		interrupts = <1 1 4 &part0>;
 	};
