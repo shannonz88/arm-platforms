@@ -64,6 +64,9 @@ int vgic_v2_map_resources(struct kvm *kvm);
 int vgic_register_dist_iodev(struct kvm *kvm, gpa_t dist_base_address,
 			     enum vgic_type);
 
+void vgic_v2_load(struct kvm_vcpu *vcpu);
+void vgic_v2_put(struct kvm_vcpu *vcpu);
+
 static inline void vgic_get_irq_kref(struct vgic_irq *irq)
 {
 	if (irq->intid < VGIC_MIN_LPI)
@@ -83,6 +86,9 @@ void vgic_v3_enable(struct kvm_vcpu *vcpu);
 int vgic_v3_probe(const struct gic_kvm_info *info);
 int vgic_v3_map_resources(struct kvm *kvm);
 int vgic_register_redist_iodevs(struct kvm *kvm, gpa_t dist_base_address);
+
+void vgic_v3_load(struct kvm_vcpu *vcpu);
+void vgic_v3_put(struct kvm_vcpu *vcpu);
 
 #ifdef CONFIG_KVM_ARM_VGIC_V3_ITS
 int vgic_register_its_iodevs(struct kvm *kvm);

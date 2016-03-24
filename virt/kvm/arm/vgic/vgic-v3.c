@@ -182,6 +182,7 @@ void vgic_v3_clear_lr(struct kvm_vcpu *vcpu, int lr)
 
 void vgic_v3_set_vmcr(struct kvm_vcpu *vcpu, struct vgic_vmcr *vmcrp)
 {
+	struct vgic_v3_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v3;
 	u32 vmcr;
 
 	vmcr  = (vmcrp->ctlr << ICH_VMCR_CTLR_SHIFT) & ICH_VMCR_CTLR_MASK;
@@ -189,12 +190,15 @@ void vgic_v3_set_vmcr(struct kvm_vcpu *vcpu, struct vgic_vmcr *vmcrp)
 	vmcr |= (vmcrp->bpr << ICH_VMCR_BPR0_SHIFT) & ICH_VMCR_BPR0_MASK;
 	vmcr |= (vmcrp->pmr << ICH_VMCR_PMR_SHIFT) & ICH_VMCR_PMR_MASK;
 
-	vcpu->arch.vgic_cpu.vgic_v3.vgic_vmcr = vmcr;
+	cpu_if->vgic_vmcr = vmcr;
 }
 
 void vgic_v3_get_vmcr(struct kvm_vcpu *vcpu, struct vgic_vmcr *vmcrp)
 {
-	u32 vmcr = vcpu->arch.vgic_cpu.vgic_v3.vgic_vmcr;
+	struct vgic_v3_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v3;
+	u32 vmcr;
+
+	vmcr = cpu_if->vgic_vmcr;
 
 	vmcrp->ctlr = (vmcr & ICH_VMCR_CTLR_MASK) >> ICH_VMCR_CTLR_SHIFT;
 	vmcrp->abpr = (vmcr & ICH_VMCR_BPR1_MASK) >> ICH_VMCR_BPR1_SHIFT;
@@ -367,4 +371,18 @@ int vgic_v3_probe(const struct gic_kvm_info *info)
 	kvm_vgic_global_state.max_gic_vcpus = VGIC_V3_MAX_CPUS;
 
 	return 0;
+}
+
+void vgic_v3_load(struct kvm_vcpu *vcpu)
+{
+	struct vgic_v3_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v3;
+
+	kvm_call_hyp(__vgic_v3_write_vmcr, cpu_if->vgic_vmcr);
+}
+
+void vgic_v3_put(struct kvm_vcpu *vcpu)
+{
+	struct vgic_v3_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v3;
+
+	cpu_if->vgic_vmcr = kvm_call_hyp(__vgic_v3_read_vmcr);
 }
