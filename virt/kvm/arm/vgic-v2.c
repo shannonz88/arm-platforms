@@ -174,7 +174,7 @@ static const struct vgic_ops vgic_v2_ops = {
 	.enable			= vgic_v2_enable,
 };
 
-static struct vgic_params vgic_v2_params;
+struct vgic_params __section(.hyp.text) vgic_v2_params;
 
 static void vgic_cpu_init_lrs(void *params)
 {
@@ -203,6 +203,8 @@ int vgic_v2_probe(struct device_node *vgic_node,
 	struct resource vctrl_res;
 	struct resource vcpu_res;
 	struct vgic_params *vgic = &vgic_v2_params;
+
+	memset(vgic, 0, sizeof(*vgic));
 
 	vgic->maint_irq = irq_of_parse_and_map(vgic_node, 0);
 	if (!vgic->maint_irq) {
