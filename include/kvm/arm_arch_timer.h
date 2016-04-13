@@ -53,8 +53,8 @@ struct arch_timer_cpu {
 	/* Timer IRQ */
 	struct kvm_irq_level		irq;
 
-	/* VGIC mapping */
-	struct irq_phys_map		*map;
+	/* The virtual IRQ number */
+	unsigned int			virt_irq;
 
 	/* Active IRQ state caching */
 	bool				active_cleared_last;

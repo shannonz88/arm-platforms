@@ -137,10 +137,10 @@ static void kvm_timer_update_irq(struct kvm_vcpu *vcpu, bool new_level)
 
 	timer->active_cleared_last = false;
 	timer->irq.level = new_level;
-	trace_kvm_timer_update_irq(vcpu->vcpu_id, timer->map->virt_irq,
+	trace_kvm_timer_update_irq(vcpu->vcpu_id, timer->virt_irq,
 				   timer->irq.level);
 	ret = kvm_vgic_inject_mapped_irq(vcpu->kvm, vcpu->vcpu_id,
-					 timer->map->virt_irq,
+					 timer->virt_irq,
 					 timer->irq.level);
 	WARN_ON(ret);
 }
@@ -246,7 +246,7 @@ void kvm_timer_flush_hwstate(struct kvm_vcpu *vcpu)
 	* to ensure that hardware interrupts from the timer triggers a guest
 	* exit.
 	*/
-	if (timer->irq.level || kvm_vgic_map_is_active(vcpu, timer->map->virt_irq))
+	if (timer->irq.level || kvm_vgic_map_is_active(vcpu, timer->virt_irq))
 		phys_active = true;
 	else
 		phys_active = false;
@@ -351,7 +351,7 @@ int kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu,
 	if (WARN_ON(IS_ERR(map)))
 		return PTR_ERR(map);
 
-	timer->map = map;
+	timer->virt_irq = irq->irq;
 	return 0;
 }
 
@@ -494,8 +494,8 @@ void kvm_timer_vcpu_terminate(struct kvm_vcpu *vcpu)
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 
 	timer_disarm(timer);
-	if (timer->map)
-		kvm_vgic_unmap_phys_irq(vcpu, timer->map->virt_irq);
+	if (timer->virt_irq)
+		kvm_vgic_unmap_phys_irq(vcpu, timer->virt_irq);
 }
 
 void kvm_timer_enable(struct kvm *kvm)
