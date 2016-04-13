@@ -1712,29 +1712,28 @@ static struct list_head *vgic_get_irq_phys_map_list(struct kvm_vcpu *vcpu,
 /**
  * kvm_vgic_map_phys_irq - map a virtual IRQ to a physical IRQ
  * @vcpu: The VCPU pointer
- * @virt_irq: The virtual irq number
- * @irq: The Linux IRQ number
+ * @virt_irq: The virtual IRQ number for the guest
+ * @phys_irq: The hardware IRQ number of the host
  *
  * Establish a mapping between a guest visible irq (@virt_irq) and a
- * Linux irq (@irq). On injection, @virt_irq will be associated with
- * the physical interrupt represented by @irq. This mapping can be
+ * hardware irq (@phys_irq). On injection, @virt_irq will be associated with
+ * the physical interrupt represented by @phys_irq. This mapping can be
  * established multiple times as long as the parameters are the same.
  *
- * Returns a valid pointer on success, and an error pointer otherwise
+ * Returns 0 on success or an error value otherwise.
  */
-struct irq_phys_map *kvm_vgic_map_phys_irq(struct kvm_vcpu *vcpu,
-					   int virt_irq, int phys_irq)
+int kvm_vgic_map_phys_irq(struct kvm_vcpu *vcpu, int virt_irq, int phys_irq)
 {
 	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
 	struct list_head *root = vgic_get_irq_phys_map_list(vcpu, virt_irq);
 	struct irq_phys_map *map;
 	struct irq_phys_map_entry *entry;
-
+	int ret = 0;
 
 	/* Create a new mapping */
 	entry = kzalloc(sizeof(*entry), GFP_KERNEL);
 	if (!entry)
-		return ERR_PTR(-ENOMEM);
+		return -ENOMEM;
 
 	spin_lock(&dist->irq_phys_map_lock);
 
@@ -1743,7 +1742,7 @@ struct irq_phys_map *kvm_vgic_map_phys_irq(struct kvm_vcpu *vcpu,
 	if (map) {
 		/* Make sure this mapping matches */
 		if (map->phys_irq != phys_irq)
-			map = ERR_PTR(-EINVAL);
+			ret = -EINVAL;
 
 		/* Found an existing, valid mapping */
 		goto out;
@@ -1759,9 +1758,9 @@ out:
 	spin_unlock(&dist->irq_phys_map_lock);
 	/* If we've found a hit in the existing list, free the useless
 	 * entry */
-	if (IS_ERR(map) || map != &entry->map)
+	if (ret || map != &entry->map)
 		kfree(entry);
-	return map;
+	return ret;
 }
 
 static struct irq_phys_map *vgic_irq_map_search(struct kvm_vcpu *vcpu,
