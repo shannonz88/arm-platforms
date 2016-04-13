@@ -246,7 +246,7 @@ void kvm_timer_flush_hwstate(struct kvm_vcpu *vcpu)
 	* to ensure that hardware interrupts from the timer triggers a guest
 	* exit.
 	*/
-	if (timer->irq.level || kvm_vgic_map_is_active(vcpu, timer->map))
+	if (timer->irq.level || kvm_vgic_map_is_active(vcpu, timer->map->virt_irq))
 		phys_active = true;
 	else
 		phys_active = false;
