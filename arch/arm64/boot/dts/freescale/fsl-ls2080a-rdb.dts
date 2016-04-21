@@ -157,12 +157,12 @@
 
 &sata0 {
 	status = "okay";
-	iommus = <&smmu 0x1400>;
+	iommus = <&smmu 0x147e>;
 };
 
 &sata1 {
 	status = "okay";
-	iommus = <&smmu 0x1400>;
+	iommus = <&smmu 0x147f>;
 };
 
 &usb0 {
