@@ -1228,6 +1228,7 @@ int vgic_register_redist_iodevs(struct kvm *kvm, gpa_t redist_base_address)
 	kvm_for_each_vcpu(c, vcpu, kvm) {
 		kvm_iodevice_init(&region->dev, &kvm_io_v3redist_ops);
 		region->base_addr = redist_base_address;
+		region->redist_vcpu = vcpu;
 
 		mutex_lock(&kvm->slots_lock);
 		ret = kvm_io_bus_register_dev(kvm, KVM_MMIO_BUS,
@@ -1241,6 +1242,7 @@ int vgic_register_redist_iodevs(struct kvm *kvm, gpa_t redist_base_address)
 		region++;
 		kvm_iodevice_init(&region->dev, &kvm_io_v3redist_private_ops);
 		region->base_addr = redist_base_address + SZ_64K;
+		region->redist_vcpu = vcpu;
 
 		mutex_lock(&kvm->slots_lock);
 		ret = kvm_io_bus_register_dev(kvm, KVM_MMIO_BUS,
