@@ -1254,6 +1254,7 @@ int vgic_register_redist_iodevs(struct kvm *kvm, gpa_t redist_base_address)
 						  &regions[c * 2].dev);
 			break;
 		}
+		region++;
 		redist_base_address += 2 * SZ_64K;
 	}
 
