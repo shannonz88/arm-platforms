@@ -1266,6 +1266,7 @@ int vgic_register_redist_iodevs(struct kvm *kvm, gpa_t redist_base_address)
 			kvm_io_bus_unregister_dev(kvm, KVM_MMIO_BUS,
 						  &regions[c * 2 + 1].dev);
 		}
+		kfree(regions);
 	} else {
 		kvm->arch.vgic.redist_iodevs = regions;
 	}
