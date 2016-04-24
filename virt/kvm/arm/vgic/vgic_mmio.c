@@ -939,32 +939,36 @@ static int dispatch_mmio_write(struct kvm_vcpu *vcpu,
 
 /*
  * When userland tries to access the VGIC register handlers, we need to
- * create a usable struct vgic_io_device to be passed to the handlers.
+ * create a usable struct vgic_io_device to be passed to the handlers and we
+ * have to set up a buffer similar to what would have happened if a guest MMIO
+ * access occurred, including doing endian conversions on BE systems.
  */
-static int vgic_device_mmio_access(struct kvm_vcpu *vcpu,
-				   struct vgic_register_region *regions,
-				   int nr_regions, bool is_write,
-				   int offset, int len, void *val)
+int vgic_v2_dist_uaccess(struct kvm_vcpu *vcpu, bool is_write,
+			int offset, u32 *val)
 {
+	int len = 4;
+	u8 buf[4];
+	int ret;
+	struct vgic_register_region *regions = vgic_v2_dist_registers;
+	int nr_regions = ARRAY_SIZE(vgic_v2_dist_registers);
+
 	struct vgic_io_device dev = {
 		.base_addr = 0,
 		.redist_vcpu = vcpu,
 	};
 
-	if (is_write)
-		return dispatch_mmio_write(vcpu, regions, nr_regions,
-					   &dev.dev, offset, len, val);
-	else
-		return dispatch_mmio_read(vcpu, regions, nr_regions,
-					  &dev.dev, offset, len, val);
-}
+	if (is_write) {
+		vgic_data_host_to_mmio_bus(buf, len, *val);
+		ret = dispatch_mmio_write(vcpu, regions, nr_regions,
+					  &dev.dev, offset, len, buf);
+	} else {
+		ret = dispatch_mmio_read(vcpu, regions, nr_regions,
+					 &dev.dev, offset, len, buf);
+		if (!ret)
+			*val = vgic_data_mmio_bus_to_host(buf, len);
+	}
 
-int vgic_v2_dist_access(struct kvm_vcpu *vcpu, bool is_write,
-			int offset, int len, void *val)
-{
-	return vgic_device_mmio_access(vcpu, vgic_v2_dist_registers,
-				       ARRAY_SIZE(vgic_v2_dist_registers),
-				       is_write, offset, len, val);
+	return ret;
 }
 
 static int vgic_mmio_read_v2dist(struct kvm_vcpu *vcpu,
@@ -1101,22 +1105,6 @@ static struct kvm_io_device_ops kvm_io_v3redist_private_ops = {
 	.read = vgic_mmio_read_v3redist_private,
 	.write = vgic_mmio_write_v3redist_private,
 };
-
-int vgic_v3_dist_access(struct kvm_vcpu *vcpu, bool is_write,
-			int offset, int len, void *val)
-{
-	return vgic_device_mmio_access(vcpu, vgic_v3_dist_registers,
-				       ARRAY_SIZE(vgic_v3_dist_registers),
-				       is_write, offset, len, val);
-}
-
-int vgic_v3_redist_access(struct kvm_vcpu *vcpu, bool is_write,
-			  int offset, int len, void *val)
-{
-	return vgic_device_mmio_access(vcpu, vgic_v3_redist_registers,
-				       ARRAY_SIZE(vgic_v3_redist_registers),
-				       is_write, offset, len, val);
-}
 #endif
 
 int vgic_register_dist_iodev(struct kvm *kvm, gpa_t dist_base_address,
