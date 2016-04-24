@@ -23,19 +23,11 @@
 #include "vgic.h"
 #include "vgic_mmio.h"
 
-static void write_mask32(u32 value, int offset, int len, void *val)
+/* extract @num bytes at @offset bytes offset in data */
+static unsigned long extract_bytes(unsigned long data, int offset, int num)
 {
-	value = value >> (offset * 8);
-	memcpy(val, &value, len);
+	return (data >> (offset * 8)) & ((1UL << (num * 8)) - 1);
 }
-
-#ifdef CONFIG_KVM_ARM_VGIC_V3
-static void write_mask64(u64 value, int offset, int len, void *val)
-{
-	value = value >> (offset * 8);
-	memcpy(val, &value, len);
-}
-#endif
 
 unsigned long vgic_mmio_read_raz(struct kvm_vcpu *vcpu, gpa_t addr, int len)
 {
@@ -58,7 +50,6 @@ static unsigned long vgic_mmio_read_v2_misc(struct kvm_vcpu *vcpu,
 					    gpa_t addr, int len)
 {
 	u32 value;
-	u64 reg;
 
 	switch (addr & 0x0c) {
 	case 0x0:
@@ -76,8 +67,7 @@ static unsigned long vgic_mmio_read_v2_misc(struct kvm_vcpu *vcpu,
 		return 0;
 	}
 
-	write_mask32(value, addr & 3, len, &reg);
-	return reg;
+	return extract_bytes(value, addr & 3, len);
 }
 
 static void vgic_mmio_write_v2_misc(struct kvm_vcpu *vcpu,
@@ -109,7 +99,6 @@ static unsigned long vgic_mmio_read_enable(struct kvm_vcpu *vcpu,
 	u32 intid = (addr & 0x7f) * 8;
 	u32 value = 0;
 	int i;
-	u64 reg;
 
 	/* Loop over all IRQs affected by this read */
 	for (i = 0; i < len * 8; i++) {
@@ -119,8 +108,7 @@ static unsigned long vgic_mmio_read_enable(struct kvm_vcpu *vcpu,
 			value |= (1U << i);
 	}
 
-	write_mask32(value, addr & 3, len, &reg);
-	return reg;
+	return extract_bytes(value, addr & 3, len);
 }
 
 static void vgic_mmio_write_senable(struct kvm_vcpu *vcpu,
@@ -161,7 +149,6 @@ static unsigned long vgic_mmio_read_pending(struct kvm_vcpu *vcpu,
 	u32 intid = (addr & 0x7f) * 8;
 	u32 value = 0;
 	int i;
-	u64 val;
 
 	/* Loop over all IRQs affected by this read */
 	for (i = 0; i < len * 8; i++) {
@@ -171,8 +158,7 @@ static unsigned long vgic_mmio_read_pending(struct kvm_vcpu *vcpu,
 			value |= (1U << i);
 	}
 
-	write_mask32(value, addr & 3, len, &val);
-	return val;
+	return extract_bytes(value, addr & 3, len);
 }
 
 static void vgic_mmio_write_spending(struct kvm_vcpu *vcpu,
@@ -221,7 +207,6 @@ static unsigned long vgic_mmio_read_active(struct kvm_vcpu *vcpu,
 	u32 intid = (addr & 0x7f) * 8;
 	u32 value = 0;
 	int i;
-	u64 val;
 
 	/* Loop over all IRQs affected by this read */
 	for (i = 0; i < len * 8; i++) {
@@ -231,8 +216,7 @@ static unsigned long vgic_mmio_read_active(struct kvm_vcpu *vcpu,
 			value |= (1U << i);
 	}
 
-	write_mask32(value, addr & 3, len, &val);
-	return val;
+	return extract_bytes(value, addr & 3, len);
 }
 
 static void vgic_mmio_write_cactive(struct kvm_vcpu *vcpu,
@@ -371,7 +355,6 @@ static unsigned long vgic_mmio_read_config(struct kvm_vcpu *vcpu,
 {
 	u32 intid = (addr & 0xff) * 4;
 	u32 value = 0;
-	u64 val;
 	int i;
 
 	for (i = 0; i < len * 4; i++) {
@@ -381,8 +364,7 @@ static unsigned long vgic_mmio_read_config(struct kvm_vcpu *vcpu,
 			value |= (2U << (i * 2));
 	}
 
-	write_mask32(value, addr & 3, len, &val);
-	return val;
+	return extract_bytes(value, addr & 3, len);
 }
 
 static void vgic_mmio_write_config(struct kvm_vcpu *vcpu,
@@ -558,7 +540,6 @@ static unsigned long vgic_mmio_read_v3_misc(struct kvm_vcpu *vcpu,
 					    gpa_t addr, int len)
 {
 	u32 value = 0;
-	u64 val;
 
 	switch (addr & 0x0c) {
 	case GICD_CTLR:
@@ -578,8 +559,7 @@ static unsigned long vgic_mmio_read_v3_misc(struct kvm_vcpu *vcpu,
 		return 0;
 	}
 
-	write_mask32(value, addr & 3, len, &val);
-	return val;
+	return extract_bytes(value, addr & 3, len);
 }
 
 static void vgic_mmio_write_v3_misc(struct kvm_vcpu *vcpu,
@@ -632,13 +612,17 @@ static unsigned long vgic_mmio_read_irouter(struct kvm_vcpu *vcpu,
 {
 	int intid = (addr & 0x1fff) / 8;
 	struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, NULL, intid);
-	u64 val = 0;
+	unsigned long mpidr;
 
 	if (!irq)
 		return 0;
 
-	write_mask64(decompress_mpidr(irq->mpidr), addr & 7, len, &val);
-	return val;
+	spin_lock(&irq->irq_lock);
+	mpidr = irq->mpidr;
+	spin_unlock(&irq->irq_lock);
+
+	mpidr = decompress_mpidr(mpidr);
+	return extract_bytes(mpidr, addr & 7, len);
 }
 
 static void vgic_mmio_write_irouter(struct kvm_vcpu *vcpu,
@@ -683,25 +667,22 @@ static unsigned long vgic_mmio_read_v3r_typer(struct kvm_vcpu *vcpu,
 	unsigned long mpidr = kvm_vcpu_get_mpidr_aff(vcpu);
 	int target_vcpu_id = vcpu->vcpu_id;
 	u64 value;
-	u64 val = 0;
 
 	value = (u64)compress_mpidr(mpidr) << 32;
 	value |= ((target_vcpu_id & 0xffff) << 8);
 	if (target_vcpu_id == atomic_read(&vcpu->kvm->online_vcpus) - 1)
 		value |= GICR_TYPER_LAST;
 
-	write_mask64(value, addr & 7, len, &val);
-	return val;
+	return extract_bytes(value, addr & 7, len);
 }
 
 static unsigned long vgic_mmio_read_v3r_iidr(struct kvm_vcpu *vcpu,
 					     gpa_t addr, int len)
 {
-	u64 val = 0;
-	write_mask32((PRODUCT_ID_KVM << 24) | (IMPLEMENTER_ARM << 0),
-		     addr & 3, len, &val);
+	u32 value;
 
-	return val;
+	value = (PRODUCT_ID_KVM << 24) | (IMPLEMENTER_ARM << 0);
+	return extract_bytes(value, addr & 3, len);
 }
 
 static unsigned long vgic_mmio_read_v3_idregs(struct kvm_vcpu *vcpu,
@@ -709,7 +690,6 @@ static unsigned long vgic_mmio_read_v3_idregs(struct kvm_vcpu *vcpu,
 {
 	u32 regnr = (addr & 0x3f) - (GICD_IDREGS & 0x3f);
 	u32 reg = 0;
-	u64 val = 0;
 
 	switch (regnr + GICD_IDREGS) {
 	case GICD_PIDR2:
@@ -718,8 +698,7 @@ static unsigned long vgic_mmio_read_v3_idregs(struct kvm_vcpu *vcpu,
 		break;
 	}
 
-	write_mask32(reg , addr & 3, len, &val);
-	return val;
+	return extract_bytes(reg, addr & 3, len);
 }
 #endif
 
