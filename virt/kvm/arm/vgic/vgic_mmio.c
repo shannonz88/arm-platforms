@@ -982,7 +982,7 @@ int vgic_mmio_read_v3dist(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
 				       ARRAY_SIZE(vgic_v3_dist_registers),
 				       offset);
 	if (!region)
-		return 1; /* huh? */
+		return -EOPNOTSUPP;
 
 	/* Private IRQs are RAZ on the GICv3 distributor. */
 	if (region->bits_per_irq) {
@@ -1012,7 +1012,7 @@ int vgic_mmio_write_v3dist(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
 				       ARRAY_SIZE(vgic_v3_dist_registers),
 				       offset);
 	if (!region)
-		return 1;
+		return -EOPNOTSUPP;
 
 	/* Private IRQs are WI on the GICv3 distributor. */
 	if (region->bits_per_irq) {
