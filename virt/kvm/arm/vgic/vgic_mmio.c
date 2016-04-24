@@ -979,6 +979,16 @@ vgic_find_mmio_region(struct vgic_register_region *region, int nr_regions,
 	return NULL;
 }
 
+static unsigned long vgic_data_mmio_bus_to_host(const void *val, int len)
+{
+	return kvm_mmio_read_buf(val, len);
+}
+
+static void vgic_data_host_to_mmio_bus(void *buf, int len, unsigned long data)
+{
+	kvm_mmio_write_buf(buf, len, data);
+}
+
 static int dispatch_mmio_read(struct kvm_vcpu *vcpu,
 			      struct vgic_register_region *regions,
 			      int nr_regions, struct kvm_io_device *dev,
