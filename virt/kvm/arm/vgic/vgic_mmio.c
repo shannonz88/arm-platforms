@@ -23,28 +23,21 @@
 #include "vgic.h"
 #include "vgic_mmio.h"
 
-void write_mask32(u32 value, int offset, int len, void *val)
+static void write_mask32(u32 value, int offset, int len, void *val)
 {
 	value = cpu_to_le32(value) >> (offset * 8);
 	memcpy(val, &value, len);
 }
 
-u32 mask32(u32 origvalue, int offset, int len, const void *val)
-{
-	origvalue &= ~((BIT_ULL(len) - 1) << (offset * 8));
-	memcpy((char *)&origvalue + (offset * 8), val, len);
-	return origvalue;
-}
-
 #ifdef CONFIG_KVM_ARM_VGIC_V3
-void write_mask64(u64 value, int offset, int len, void *val)
+static void write_mask64(u64 value, int offset, int len, void *val)
 {
 	value = cpu_to_le64(value) >> (offset * 8);
 	memcpy(val, &value, len);
 }
 
 /* FIXME: I am clearly misguided here, there must be some saner way ... */
-u64 mask64(u64 origvalue, int offset, int len, const void *val)
+static u64 mask64(u64 origvalue, int offset, int len, const void *val)
 {
 	origvalue &= ~((BIT_ULL(len) - 1) << (offset * 8));
 	memcpy((char *)&origvalue + (offset * 8), val, len);

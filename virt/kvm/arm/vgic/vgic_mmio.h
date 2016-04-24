@@ -51,9 +51,4 @@ int kvm_vgic_register_mmio_region(struct kvm *kvm, struct kvm_vcpu *vcpu,
 				  struct vgic_io_device *region,
 				  int nr_irqs, bool offset_private);
 
-void write_mask32(u32 value, int offset, int len, void *val);
-void write_mask64(u64 value, int offset, int len, void *val);
-u32 mask32(u32 origvalue, int offset, int len, const void *val);
-u64 mask64(u64 origvalue, int offset, int len, const void *val);
-
 #endif
