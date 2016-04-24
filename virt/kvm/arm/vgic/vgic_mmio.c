@@ -1051,51 +1051,53 @@ static int vgic_mmio_write_v3dist(struct kvm_vcpu *vcpu,
 	return 0;
 }
 
-struct kvm_io_device_ops kvm_io_v3dist_ops = {
+static struct kvm_io_device_ops kvm_io_v3dist_ops = {
 	.read = vgic_mmio_read_v3dist,
 	.write = vgic_mmio_write_v3dist,
 };
 
-int vgic_mmio_read_v3redist(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
-			    gpa_t addr, int len, void *val)
+static int vgic_mmio_read_v3redist(struct kvm_vcpu *vcpu,
+				   struct kvm_io_device *dev,
+				   gpa_t addr, int len, void *val)
 {
 	return dispatch_mmio_read(vcpu, vgic_v3_redist_registers,
 				  ARRAY_SIZE(vgic_v3_redist_registers), dev,
 				  addr, len, val);
 }
 
-int vgic_mmio_write_v3redist(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
-			     gpa_t addr, int len, const void *val)
+static int vgic_mmio_write_v3redist(struct kvm_vcpu *vcpu,
+				    struct kvm_io_device *dev,
+				    gpa_t addr, int len, const void *val)
 {
 	return dispatch_mmio_write(vcpu, vgic_v3_redist_registers,
 				   ARRAY_SIZE(vgic_v3_redist_registers), dev,
 				   addr, len, val);
 }
 
-struct kvm_io_device_ops kvm_io_v3redist_ops = {
+static struct kvm_io_device_ops kvm_io_v3redist_ops = {
 	.read = vgic_mmio_read_v3redist,
 	.write = vgic_mmio_write_v3redist,
 };
 
-int vgic_mmio_read_v3redist_private(struct kvm_vcpu *vcpu,
-				    struct kvm_io_device *dev,
-				    gpa_t addr, int len, void *val)
+static int vgic_mmio_read_v3redist_private(struct kvm_vcpu *vcpu,
+					   struct kvm_io_device *dev,
+					   gpa_t addr, int len, void *val)
 {
 	return dispatch_mmio_read(vcpu, vgic_v3_private_registers,
 				  ARRAY_SIZE(vgic_v3_private_registers), dev,
 				  addr, len, val);
 }
 
-int vgic_mmio_write_v3redist_private(struct kvm_vcpu *vcpu,
-				     struct kvm_io_device *dev,
-				     gpa_t addr, int len, const void *val)
+static int vgic_mmio_write_v3redist_private(struct kvm_vcpu *vcpu,
+					    struct kvm_io_device *dev,
+					    gpa_t addr, int len, const void *val)
 {
 	return dispatch_mmio_write(vcpu, vgic_v3_private_registers,
 				   ARRAY_SIZE(vgic_v3_private_registers), dev,
 				   addr, len, val);
 }
 
-struct kvm_io_device_ops kvm_io_v3redist_private_ops = {
+static struct kvm_io_device_ops kvm_io_v3redist_private_ops = {
 	.read = vgic_mmio_read_v3redist_private,
 	.write = vgic_mmio_write_v3redist_private,
 };
