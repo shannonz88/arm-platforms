@@ -25,14 +25,14 @@
 
 static void write_mask32(u32 value, int offset, int len, void *val)
 {
-	value = cpu_to_le32(value) >> (offset * 8);
+	value = value >> (offset * 8);
 	memcpy(val, &value, len);
 }
 
 #ifdef CONFIG_KVM_ARM_VGIC_V3
 static void write_mask64(u64 value, int offset, int len, void *val)
 {
-	value = cpu_to_le64(value) >> (offset * 8);
+	value = value >> (offset * 8);
 	memcpy(val, &value, len);
 }
 #endif
@@ -864,13 +864,54 @@ vgic_find_mmio_region(struct vgic_register_region *region, int nr_regions,
 	return NULL;
 }
 
+/*
+ * kvm_mmio_read_buf() returns a value in a format where it can be converted
+ * to a byte array and be directly observed as the guest wanted it to appear
+ * in memory if it had done the store itself, which is LE for the GIC, as the
+ * guest knows the GIC is always LE.
+ *
+ * We convert this value to the CPUs native format to deal with it as a data
+ * value.
+ */
 static unsigned long vgic_data_mmio_bus_to_host(const void *val, int len)
 {
-	return kvm_mmio_read_buf(val, len);
+	unsigned long data = kvm_mmio_read_buf(val, len);
+	switch (len) {
+	case 1:
+		return data;
+	case 2:
+		return le16_to_cpu(data);
+	case 4:
+		return le32_to_cpu(data);
+	default:
+		return le64_to_cpu(data);
+	}
 }
 
+/*
+ * kvm_mmio_write_buf() expects a value in a format such that if converted to
+ * a byte array it is observed as the guest would see it if it could perform
+ * the load directly.  Since the GIC is LE, and the guest knows this, the
+ * guest expects a value in little endian format.
+ *
+ * We convert the data value from the CPUs native format to LE so that the
+ * value is returned in the proper format.
+ */
 static void vgic_data_host_to_mmio_bus(void *buf, int len, unsigned long data)
 {
+	switch (len) {
+	case 1:
+		break;
+	case 2:
+		data = cpu_to_le16(data);
+		break;
+	case 4:
+		data = cpu_to_le32(data);
+		break;
+	default:
+		data = cpu_to_le64(data);
+	}
+
 	kvm_mmio_write_buf(buf, len, data);
 }
 
