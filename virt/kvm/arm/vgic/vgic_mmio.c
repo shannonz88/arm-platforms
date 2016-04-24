@@ -35,14 +35,6 @@ static void write_mask64(u64 value, int offset, int len, void *val)
 	value = cpu_to_le64(value) >> (offset * 8);
 	memcpy(val, &value, len);
 }
-
-/* FIXME: I am clearly misguided here, there must be some saner way ... */
-static u64 mask64(u64 origvalue, int offset, int len, const void *val)
-{
-	origvalue &= ~((BIT_ULL(len) - 1) << (offset * 8));
-	memcpy((char *)&origvalue + (offset * 8), val, len);
-	return origvalue;
-}
 #endif
 
 unsigned long vgic_mmio_read_raz(struct kvm_vcpu *vcpu, gpa_t addr, int len)
@@ -654,18 +646,33 @@ static void vgic_mmio_write_irouter(struct kvm_vcpu *vcpu,
 {
 	int intid = (addr & 0x1fff) / 8;
 	struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, NULL, intid);
+	int offset = addr & 4;
 	u64 mpidr;
 
 	if (!irq)
 		return;
 
-	mpidr = decompress_mpidr(irq->mpidr);
-	mpidr = mask64(mpidr, addr & 7, len, &val);
+	/*
+	 * There are only two supported options:
+	 * (1) aligned 64-bit access
+	 * (2) aligned 32-bit access
+	 */
+	if (len != 4 && len != 8)
+		return;
 
 	spin_lock(&irq->irq_lock);
 
+	mpidr = decompress_mpidr(irq->mpidr);
+	while (len) {
+		int shift = offset * 8;
+		u64 mask = 0xffffffff << shift;
+
+		mpidr &= ~mask;
+		mpidr |= val & mask;
+		offset -= 4;
+		len -= 4;
+	}
 	irq->mpidr = compress_mpidr(mpidr);
-	irq->target_vcpu = kvm_mpidr_to_vcpu(vcpu->kvm, mpidr);
 
 	spin_unlock(&irq->irq_lock);
 }
