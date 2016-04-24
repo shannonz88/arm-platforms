@@ -967,16 +967,18 @@ int vgic_v2_dist_access(struct kvm_vcpu *vcpu, bool is_write,
 				       is_write, offset, len, val);
 }
 
-int vgic_mmio_read_v2dist(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
-			  gpa_t addr, int len, void *val)
+static int vgic_mmio_read_v2dist(struct kvm_vcpu *vcpu,
+				 struct kvm_io_device *dev,
+				 gpa_t addr, int len, void *val)
 {
 	return dispatch_mmio_read(vcpu, vgic_v2_dist_registers,
 				  ARRAY_SIZE(vgic_v2_dist_registers), dev,
 				  addr, len, val);
 }
 
-int vgic_mmio_write_v2dist(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
-			   gpa_t addr, int len, const void *val)
+static int vgic_mmio_write_v2dist(struct kvm_vcpu *vcpu,
+				  struct kvm_io_device *dev,
+				  gpa_t addr, int len, const void *val)
 {
 	return dispatch_mmio_write(vcpu, vgic_v2_dist_registers,
 				   ARRAY_SIZE(vgic_v2_dist_registers), dev,
@@ -989,8 +991,9 @@ struct kvm_io_device_ops kvm_io_v2dist_ops = {
 };
 
 #ifdef CONFIG_KVM_ARM_VGIC_V3
-int vgic_mmio_read_v3dist(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
-			  gpa_t addr, int len, void *val)
+static int vgic_mmio_read_v3dist(struct kvm_vcpu *vcpu,
+				 struct kvm_io_device *dev,
+				 gpa_t addr, int len, void *val)
 {
 	struct vgic_io_device *iodev = container_of(dev,
 						    struct vgic_io_device, dev);
@@ -1019,8 +1022,9 @@ out:
 	return 0;
 }
 
-int vgic_mmio_write_v3dist(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
-			   gpa_t addr, int len, const void *val)
+static int vgic_mmio_write_v3dist(struct kvm_vcpu *vcpu,
+				  struct kvm_io_device *dev,
+				  gpa_t addr, int len, const void *val)
 {
 	struct vgic_io_device *iodev = container_of(dev,
 						    struct vgic_io_device, dev);
