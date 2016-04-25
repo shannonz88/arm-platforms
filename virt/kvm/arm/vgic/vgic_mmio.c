@@ -657,6 +657,7 @@ static void vgic_mmio_write_irouter(struct kvm_vcpu *vcpu,
 		len -= 4;
 	}
 	irq->mpidr = compress_mpidr(mpidr);
+	irq->target_vcpu = kvm_mpidr_to_vcpu(vcpu->kvm, mpidr);
 
 	spin_unlock(&irq->irq_lock);
 }
