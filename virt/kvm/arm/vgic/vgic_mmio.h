@@ -16,11 +16,21 @@
 #ifndef __KVM_ARM_VGIC_MMIO_H__
 #define __KVM_ARM_VGIC_MMIO_H__
 
+struct vgic_register_ops {
+	unsigned long (*read)(struct kvm_vcpu *vcpu,
+			      gpa_t addr,
+			      int len);
+	void (*write)(struct kvm_vcpu *vcpu,
+		     gpa_t addr,
+		     int len,
+		     unsigned long val);
+};
+
 struct vgic_register_region {
 	int reg_offset;
 	int len;
 	int bits_per_irq;
-	struct kvm_io_device_ops ops;
+	struct vgic_register_ops ops;
 };
 
 /*
@@ -36,18 +46,9 @@ struct vgic_register_region {
 	{.reg_offset = name, .bits_per_irq = 0, .len = length, \
 	 .ops.read = read_ops, .ops.write = write_ops}
 
-int vgic_mmio_read_raz(struct kvm_vcpu *vcpu, struct kvm_io_device *this,
-		       gpa_t addr, int len, void *val);
-int vgic_mmio_write_wi(struct kvm_vcpu *vcpu, struct kvm_io_device *this,
-		       gpa_t addr, int len, const void *val);
 int kvm_vgic_register_mmio_region(struct kvm *kvm, struct kvm_vcpu *vcpu,
 				  struct vgic_register_region *reg_desc,
 				  struct vgic_io_device *region,
 				  int nr_irqs, bool offset_private);
-
-void write_mask32(u32 value, int offset, int len, void *val);
-void write_mask64(u64 value, int offset, int len, void *val);
-u32 mask32(u32 origvalue, int offset, int len, const void *val);
-u64 mask64(u64 origvalue, int offset, int len, const void *val);
 
 #endif

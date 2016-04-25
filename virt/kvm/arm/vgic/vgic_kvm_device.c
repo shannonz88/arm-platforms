@@ -373,7 +373,7 @@ static int vgic_attr_regs_access(struct kvm_device *dev,
 			*reg = vgic_read_vcpuif(vcpu, addr);
 		break;
 	case KVM_DEV_ARM_VGIC_GRP_DIST_REGS:
-		ret = vgic_v2_dist_access(vcpu, is_write, addr, 4, reg);
+		ret = vgic_v2_dist_uaccess(vcpu, is_write, addr, reg);
 		break;
 	default:
 		ret = -EINVAL;

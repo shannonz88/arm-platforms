@@ -23,60 +23,31 @@
 #include "vgic.h"
 #include "vgic_mmio.h"
 
-void write_mask32(u32 value, int offset, int len, void *val)
+/* extract @num bytes at @offset bytes offset in data */
+static unsigned long extract_bytes(unsigned long data, int offset, int num)
 {
-	value = cpu_to_le32(value) >> (offset * 8);
-	memcpy(val, &value, len);
+	return (data >> (offset * 8)) & ((1UL << (num * 8)) - 1);
 }
 
-u32 mask32(u32 origvalue, int offset, int len, const void *val)
-{
-	origvalue &= ~((BIT_ULL(len) - 1) << (offset * 8));
-	memcpy((char *)&origvalue + (offset * 8), val, len);
-	return origvalue;
-}
-
-#ifdef CONFIG_KVM_ARM_VGIC_V3
-void write_mask64(u64 value, int offset, int len, void *val)
-{
-	value = cpu_to_le64(value) >> (offset * 8);
-	memcpy(val, &value, len);
-}
-
-/* FIXME: I am clearly misguided here, there must be some saner way ... */
-u64 mask64(u64 origvalue, int offset, int len, const void *val)
-{
-	origvalue &= ~((BIT_ULL(len) - 1) << (offset * 8));
-	memcpy((char *)&origvalue + (offset * 8), val, len);
-	return origvalue;
-}
-#endif
-
-int vgic_mmio_read_raz(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
-		       gpa_t addr, int len, void *val)
-{
-	memset(val, 0, len);
-
-	return 0;
-}
-
-int vgic_mmio_read_rao(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
-		       gpa_t addr, int len, void *val)
-{
-	memset(val, 0xff, len);
-
-	return 0;
-}
-
-int vgic_mmio_write_wi(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
-		       gpa_t addr, int len, const void *val)
+unsigned long vgic_mmio_read_raz(struct kvm_vcpu *vcpu, gpa_t addr, int len)
 {
 	return 0;
 }
 
-static int vgic_mmio_read_v2_misc(struct kvm_vcpu *vcpu,
-				  struct kvm_io_device *dev,
-				  gpa_t addr, int len, void *val)
+static unsigned long vgic_mmio_read_rao(struct kvm_vcpu *vcpu,
+					gpa_t addr, int len)
+{
+	return -1UL;
+}
+
+static void vgic_mmio_write_wi(struct kvm_vcpu *vcpu, gpa_t addr,
+			       int len, unsigned long val)
+{
+	/* Ignore */
+}
+
+static unsigned long vgic_mmio_read_v2_misc(struct kvm_vcpu *vcpu,
+					    gpa_t addr, int len)
 {
 	u32 value;
 
@@ -96,13 +67,11 @@ static int vgic_mmio_read_v2_misc(struct kvm_vcpu *vcpu,
 		return 0;
 	}
 
-	write_mask32(value, addr & 3, len, val);
-	return 0;
+	return extract_bytes(value, addr & 3, len);
 }
 
-static int vgic_mmio_write_v2_misc(struct kvm_vcpu *vcpu,
-				   struct kvm_io_device *dev,
-				   gpa_t addr, int len, const void *val)
+static void vgic_mmio_write_v2_misc(struct kvm_vcpu *vcpu,
+				    gpa_t addr, int len, unsigned long val)
 {
 	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
 	bool was_enabled = dist->enabled;
@@ -112,32 +81,24 @@ static int vgic_mmio_write_v2_misc(struct kvm_vcpu *vcpu,
 	 * GICD_CTLR are reserved.
 	 */
 	if ((addr & 0x0f) >= 1)
-		return 0;
+		return;
 
-	vcpu->kvm->arch.vgic.enabled = (*(u32 *)val) ? true : false;
+	vcpu->kvm->arch.vgic.enabled = (val) ? true : false;
 
 	if (!was_enabled && dist->enabled)
 		vgic_kick_vcpus(vcpu->kvm);
-
-	return 0;
 }
 
 /*
  * Read accesses to both GICD_ICENABLER and GICD_ISENABLER return the value
  * of the enabled bit, so there is only one function for both here.
  */
-static int vgic_mmio_read_enable(struct kvm_vcpu *vcpu,
-				 struct kvm_io_device *dev,
-				 gpa_t addr, int len, void *val)
+static unsigned long vgic_mmio_read_enable(struct kvm_vcpu *vcpu,
+					   gpa_t addr, int len)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
 	u32 intid = (addr & 0x7f) * 8;
 	u32 value = 0;
 	int i;
-
-	if (iodev->redist_vcpu)
-		vcpu = iodev->redist_vcpu;
 
 	/* Loop over all IRQs affected by this read */
 	for (i = 0; i < len * 8; i++) {
@@ -147,46 +108,31 @@ static int vgic_mmio_read_enable(struct kvm_vcpu *vcpu,
 			value |= (1U << i);
 	}
 
-	write_mask32(value, addr & 3, len, val);
-	return 0;
+	return extract_bytes(value, addr & 3, len);
 }
 
-static int vgic_mmio_write_senable(struct kvm_vcpu *vcpu,
-				   struct kvm_io_device *dev,
-				   gpa_t addr, int len, const void *val)
+static void vgic_mmio_write_senable(struct kvm_vcpu *vcpu,
+				    gpa_t addr, int len, unsigned long val)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
 	u32 intid = (addr & 0x7f) * 8;
 	int i;
 
-	if (iodev->redist_vcpu)
-		vcpu = iodev->redist_vcpu;
-
-	for_each_set_bit(i, val, len * 8) {
+	for_each_set_bit(i, &val, len * 8) {
 		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
 
 		spin_lock(&irq->irq_lock);
 		irq->enabled = true;
 		vgic_queue_irq_unlock(vcpu->kvm, irq);
 	}
-
-	return 0;
 }
 
-static int vgic_mmio_write_cenable(struct kvm_vcpu *vcpu,
-				   struct kvm_io_device *dev,
-				   gpa_t addr, int len, const void *val)
+static void vgic_mmio_write_cenable(struct kvm_vcpu *vcpu,
+				    gpa_t addr, int len, unsigned long val)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
 	u32 intid = (addr & 0x7f) * 8;
 	int i;
 
-	if (iodev->redist_vcpu)
-		vcpu = iodev->redist_vcpu;
-
-	for_each_set_bit(i, val, len * 8) {
+	for_each_set_bit(i, &val, len * 8) {
 		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
 
 		spin_lock(&irq->irq_lock);
@@ -195,21 +141,14 @@ static int vgic_mmio_write_cenable(struct kvm_vcpu *vcpu,
 
 		spin_unlock(&irq->irq_lock);
 	}
-	return 0;
 }
 
-static int vgic_mmio_read_pending(struct kvm_vcpu *vcpu,
-				  struct kvm_io_device *dev,
-				  gpa_t addr, int len, void *val)
+static unsigned long vgic_mmio_read_pending(struct kvm_vcpu *vcpu,
+					    gpa_t addr, int len)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
 	u32 intid = (addr & 0x7f) * 8;
 	u32 value = 0;
 	int i;
-
-	if (iodev->redist_vcpu)
-		vcpu = iodev->redist_vcpu;
 
 	/* Loop over all IRQs affected by this read */
 	for (i = 0; i < len * 8; i++) {
@@ -219,23 +158,16 @@ static int vgic_mmio_read_pending(struct kvm_vcpu *vcpu,
 			value |= (1U << i);
 	}
 
-	write_mask32(value, addr & 3, len, val);
-	return 0;
+	return extract_bytes(value, addr & 3, len);
 }
 
-static int vgic_mmio_write_spending(struct kvm_vcpu *vcpu,
-				    struct kvm_io_device *dev,
-				    gpa_t addr, int len, const void *val)
+static void vgic_mmio_write_spending(struct kvm_vcpu *vcpu,
+				     gpa_t addr, int len, unsigned long val)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
 	u32 intid = (addr & 0x7f) * 8;
 	int i;
 
-	if (iodev->redist_vcpu)
-		vcpu = iodev->redist_vcpu;
-
-	for_each_set_bit(i, val, len * 8) {
+	for_each_set_bit(i, &val, len * 8) {
 		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
 
 		spin_lock(&irq->irq_lock);
@@ -245,23 +177,15 @@ static int vgic_mmio_write_spending(struct kvm_vcpu *vcpu,
 
 		vgic_queue_irq_unlock(vcpu->kvm, irq);
 	}
-
-	return 0;
 }
 
-static int vgic_mmio_write_cpending(struct kvm_vcpu *vcpu,
-				    struct kvm_io_device *dev,
-				    gpa_t addr, int len, const void *val)
+static void vgic_mmio_write_cpending(struct kvm_vcpu *vcpu,
+				     gpa_t addr, int len, unsigned long val)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
 	u32 intid = (addr & 0x7f) * 8;
 	int i;
 
-	if (iodev->redist_vcpu)
-		vcpu = iodev->redist_vcpu;
-
-	for_each_set_bit(i, val, len * 8) {
+	for_each_set_bit(i, &val, len * 8) {
 		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
 
 		spin_lock(&irq->irq_lock);
@@ -275,21 +199,14 @@ static int vgic_mmio_write_cpending(struct kvm_vcpu *vcpu,
 
 		spin_unlock(&irq->irq_lock);
 	}
-	return 0;
 }
 
-static int vgic_mmio_read_active(struct kvm_vcpu *vcpu,
-				 struct kvm_io_device *dev,
-				 gpa_t addr, int len, void *val)
+static unsigned long vgic_mmio_read_active(struct kvm_vcpu *vcpu,
+					   gpa_t addr, int len)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
 	u32 intid = (addr & 0x7f) * 8;
 	u32 value = 0;
 	int i;
-
-	if (iodev->redist_vcpu)
-		vcpu = iodev->redist_vcpu;
 
 	/* Loop over all IRQs affected by this read */
 	for (i = 0; i < len * 8; i++) {
@@ -299,23 +216,16 @@ static int vgic_mmio_read_active(struct kvm_vcpu *vcpu,
 			value |= (1U << i);
 	}
 
-	write_mask32(value, addr & 3, len, val);
-	return 0;
+	return extract_bytes(value, addr & 3, len);
 }
 
-static int vgic_mmio_write_cactive(struct kvm_vcpu *vcpu,
-				   struct kvm_io_device *dev,
-				   gpa_t addr, int len, const void *val)
+static void vgic_mmio_write_cactive(struct kvm_vcpu *vcpu,
+				    gpa_t addr, int len, unsigned long val)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
 	u32 intid = (addr & 0x7f) * 8;
 	int i;
 
-	if (iodev->redist_vcpu)
-		vcpu = iodev->redist_vcpu;
-
-	for_each_set_bit(i, val, len * 8) {
+	for_each_set_bit(i, &val, len * 8) {
 		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
 
 		spin_lock(&irq->irq_lock);
@@ -342,22 +252,15 @@ static int vgic_mmio_write_cactive(struct kvm_vcpu *vcpu,
 
 		spin_unlock(&irq->irq_lock);
 	}
-	return 0;
 }
 
-static int vgic_mmio_write_sactive(struct kvm_vcpu *vcpu,
-				   struct kvm_io_device *dev,
-				   gpa_t addr, int len, const void *val)
+static void vgic_mmio_write_sactive(struct kvm_vcpu *vcpu,
+				    gpa_t addr, int len, unsigned long val)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
 	u32 intid = (addr & 0x7f) * 8;
 	int i;
 
-	if (iodev->redist_vcpu)
-		vcpu = iodev->redist_vcpu;
-
-	for_each_set_bit(i, val, len * 8) {
+	for_each_set_bit(i, &val, len * 8) {
 		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
 
 		spin_lock(&irq->irq_lock);
@@ -414,65 +317,45 @@ retry:
 
 		kvm_vcpu_kick(vcpu);
 	}
-	return 0;
 }
 
-static int vgic_mmio_read_priority(struct kvm_vcpu *vcpu,
-				   struct kvm_io_device *dev,
-				   gpa_t addr, int len, void *val)
+static unsigned long vgic_mmio_read_priority(struct kvm_vcpu *vcpu,
+					     gpa_t addr, int len)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
 	u32 intid = addr & 0x3ff;
 	int i;
-
-	if (iodev->redist_vcpu)
-		vcpu = iodev->redist_vcpu;
+	u64 val = 0;
 
 	for (i = 0; i < len; i++) {
 		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
 
-		((u8 *)val)[i] = irq->priority;
+		val |= (u64)irq->priority << (i * 8);
 	}
 
-	return 0;
+	return val;
 }
 
-static int vgic_mmio_write_priority(struct kvm_vcpu *vcpu,
-				    struct kvm_io_device *dev,
-				    gpa_t addr, int len, const void *val)
+static void vgic_mmio_write_priority(struct kvm_vcpu *vcpu,
+				    gpa_t addr, int len, unsigned long val)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
 	u32 intid = addr & 0x3ff;
 	int i;
-
-	if (iodev->redist_vcpu)
-		vcpu = iodev->redist_vcpu;
 
 	for (i = 0; i < len; i++) {
 		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
 
 		spin_lock(&irq->irq_lock);
-		irq->priority = ((u8 *)val)[i];
+		irq->priority = (val >> (i * 8)) & 0xff;
 		spin_unlock(&irq->irq_lock);
 	}
-
-	return 0;
 }
 
-static int vgic_mmio_read_config(struct kvm_vcpu *vcpu,
-				 struct kvm_io_device *dev,
-				 gpa_t addr, int len, void *val)
+static unsigned long vgic_mmio_read_config(struct kvm_vcpu *vcpu,
+					   gpa_t addr, int len)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
 	u32 intid = (addr & 0xff) * 4;
 	u32 value = 0;
 	int i;
-
-	if (iodev->redist_vcpu)
-		vcpu = iodev->redist_vcpu;
 
 	for (i = 0; i < len * 4; i++) {
 		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
@@ -481,21 +364,14 @@ static int vgic_mmio_read_config(struct kvm_vcpu *vcpu,
 			value |= (2U << (i * 2));
 	}
 
-	write_mask32(value, addr & 3, len, val);
-	return 0;
+	return extract_bytes(value, addr & 3, len);
 }
 
-static int vgic_mmio_write_config(struct kvm_vcpu *vcpu,
-				  struct kvm_io_device *dev,
-				  gpa_t addr, int len, const void *val)
+static void vgic_mmio_write_config(struct kvm_vcpu *vcpu,
+				   gpa_t addr, int len, unsigned long val)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
 	u32 intid = (addr & 0xff) * 4;
 	int i;
-
-	if (iodev->redist_vcpu)
-		vcpu = iodev->redist_vcpu;
 
 	for (i = 0; i < len * 4; i++) {
 		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
@@ -509,7 +385,7 @@ static int vgic_mmio_write_config(struct kvm_vcpu *vcpu,
 		 */
 
 		spin_lock(&irq->irq_lock);
-		if (test_bit(i * 2 + 1, val)) {
+		if (test_bit(i * 2 + 1, &val)) {
 			irq->config = VGIC_CONFIG_EDGE;
 		} else {
 			irq->config = VGIC_CONFIG_LEVEL;
@@ -517,36 +393,33 @@ static int vgic_mmio_write_config(struct kvm_vcpu *vcpu,
 		}
 		spin_unlock(&irq->irq_lock);
 	}
-
-	return 0;
 }
 
-static int vgic_mmio_read_target(struct kvm_vcpu *vcpu,
-				 struct kvm_io_device *dev,
-				 gpa_t addr, int len, void *val)
+static unsigned long vgic_mmio_read_target(struct kvm_vcpu *vcpu,
+					   gpa_t addr, int len)
 {
 	u32 intid = addr & 0x3ff;
 	int i;
+	u64 val = 0;
 
 	for (i = 0; i < len; i++) {
 		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
 
-		((u8 *)val)[i] = irq->targets;
+		val |= (u64)irq->targets << (i * 8);
 	}
 
-	return 0;
+	return val;
 }
 
-static int vgic_mmio_write_target(struct kvm_vcpu *vcpu,
-				  struct kvm_io_device *dev,
-				  gpa_t addr, int len, const void *val)
+static void vgic_mmio_write_target(struct kvm_vcpu *vcpu,
+				   gpa_t addr, int len, unsigned long val)
 {
 	u32 intid = addr & 0x3ff;
 	int i;
 
 	/* GICD_ITARGETSR[0-7] are read-only */
 	if (intid < VGIC_NR_PRIVATE_IRQS)
-		return 0;
+		return;
 
 	for (i = 0; i < len; i++) {
 		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, NULL, intid + i);
@@ -554,25 +427,21 @@ static int vgic_mmio_write_target(struct kvm_vcpu *vcpu,
 
 		spin_lock(&irq->irq_lock);
 
-		irq->targets = ((u8 *)val)[i];
+		irq->targets = (val >> (i * 8)) & 0xff;
 		target = irq->targets ? __ffs(irq->targets) : 0;
 		irq->target_vcpu = kvm_get_vcpu(vcpu->kvm, target);
 
 		spin_unlock(&irq->irq_lock);
 	}
-
-	return 0;
 }
 
-static int vgic_mmio_write_sgir(struct kvm_vcpu *source_vcpu,
-				struct kvm_io_device *dev,
-				gpa_t addr, int len, const void *val)
+static void vgic_mmio_write_sgir(struct kvm_vcpu *source_vcpu,
+				 gpa_t addr, int len, unsigned long val)
 {
 	int nr_vcpus = atomic_read(&source_vcpu->kvm->online_vcpus);
-	u32 value = *(u32 *)val;
-	int intid = value & 0xf;
-	int targets = (value >> 16) & 0xff;
-	int mode = (value >> 24) & 0x03;
+	int intid = val & 0xf;
+	int targets = (val >> 16) & 0xff;
+	int mode = (val >> 24) & 0x03;
 	int c;
 	struct kvm_vcpu *vcpu;
 
@@ -587,7 +456,7 @@ static int vgic_mmio_write_sgir(struct kvm_vcpu *source_vcpu,
 		targets = (1U << source_vcpu->vcpu_id);
 		break;
 	case 0x3:		/* reserved */
-		return 0;
+		return;
 	}
 
 	kvm_for_each_vcpu(c, vcpu, source_vcpu->kvm) {
@@ -604,28 +473,25 @@ static int vgic_mmio_write_sgir(struct kvm_vcpu *source_vcpu,
 
 		vgic_queue_irq_unlock(source_vcpu->kvm, irq);
 	}
-
-	return 0;
 }
 
-static int vgic_mmio_read_sgipend(struct kvm_vcpu *vcpu,
-				  struct kvm_io_device *dev,
-				  gpa_t addr, int len, void *val)
+static unsigned long vgic_mmio_read_sgipend(struct kvm_vcpu *vcpu,
+					    gpa_t addr, int len)
 {
 	u32 intid = addr & 0x0f;
 	int i;
+	u64 val = 0;
 
 	for (i = 0; i < len; i++) {
 		struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, intid + i);
 
-		((u8 *)val)[i] = irq->source;
+		val |= (u64)irq->source << (i * 8);
 	}
-	return 0;
+	return val;
 }
 
-static int vgic_mmio_write_sgipendc(struct kvm_vcpu *vcpu,
-				    struct kvm_io_device *dev,
-				    gpa_t addr, int len, const void *val)
+static void vgic_mmio_write_sgipendc(struct kvm_vcpu *vcpu,
+				    gpa_t addr, int len, unsigned long val)
 {
 	u32 intid = addr & 0x0f;
 	int i;
@@ -635,18 +501,16 @@ static int vgic_mmio_write_sgipendc(struct kvm_vcpu *vcpu,
 
 		spin_lock(&irq->irq_lock);
 
-		irq->source &= ~((u8 *)val)[i];
+		irq->source &= ~((val >> (i * 8)) & 0xff);
 		if (!irq->source)
 			irq->pending = false;
 
 		spin_unlock(&irq->irq_lock);
 	}
-	return 0;
 }
 
-static int vgic_mmio_write_sgipends(struct kvm_vcpu *vcpu,
-				    struct kvm_io_device *dev,
-				    gpa_t addr, int len, const void *val)
+static void vgic_mmio_write_sgipends(struct kvm_vcpu *vcpu,
+				    gpa_t addr, int len, unsigned long val)
 {
 	u32 intid = addr & 0x0f;
 	int i;
@@ -656,7 +520,7 @@ static int vgic_mmio_write_sgipends(struct kvm_vcpu *vcpu,
 
 		spin_lock(&irq->irq_lock);
 
-		irq->source |= ((u8 *)val)[i];
+		irq->source |= (val >> (i * 8)) & 0xff;
 
 		if (irq->source) {
 			irq->pending = true;
@@ -665,7 +529,6 @@ static int vgic_mmio_write_sgipends(struct kvm_vcpu *vcpu,
 			spin_unlock(&irq->irq_lock);
 		}
 	}
-	return 0;
 }
 
 /*****************************/
@@ -673,9 +536,8 @@ static int vgic_mmio_write_sgipends(struct kvm_vcpu *vcpu,
 /*****************************/
 #ifdef CONFIG_KVM_ARM_VGIC_V3
 
-static int vgic_mmio_read_v3_misc(struct kvm_vcpu *vcpu,
-				  struct kvm_io_device *dev,
-				  gpa_t addr, int len, void *val)
+static unsigned long vgic_mmio_read_v3_misc(struct kvm_vcpu *vcpu,
+					    gpa_t addr, int len)
 {
 	u32 value = 0;
 
@@ -697,28 +559,24 @@ static int vgic_mmio_read_v3_misc(struct kvm_vcpu *vcpu,
 		return 0;
 	}
 
-	write_mask32(value, addr & 3, len, val);
-	return 0;
+	return extract_bytes(value, addr & 3, len);
 }
 
-static int vgic_mmio_write_v3_misc(struct kvm_vcpu *vcpu,
-				   struct kvm_io_device *dev,
-				   gpa_t addr, int len, const void *val)
+static void vgic_mmio_write_v3_misc(struct kvm_vcpu *vcpu,
+				   gpa_t addr, int len, unsigned long val)
 {
 	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
 	bool was_enabled = dist->enabled;
 
 	/* Of the whole region only the first byte is actually writeable. */
 	if ((addr & 0x0f) > 0)
-		return 0;
+		return;
 
 	/* We only care about the enable bit, all other bits are WI. */
-	dist->enabled = *(u8*)val & GICD_CTLR_ENABLE_SS_G1;
+	dist->enabled = val & GICD_CTLR_ENABLE_SS_G1;
 
 	if (!was_enabled && dist->enabled)
 		vgic_kick_vcpus(vcpu->kvm);
-
-	return 0;
 }
 
 /*
@@ -749,55 +607,65 @@ static unsigned long decompress_mpidr(u32 value)
 	return mpidr;
 }
 
-static int vgic_mmio_read_irouter(struct kvm_vcpu *vcpu,
-				  struct kvm_io_device *dev,
-				  gpa_t addr, int len, void *val)
+static unsigned long vgic_mmio_read_irouter(struct kvm_vcpu *vcpu,
+					    gpa_t addr, int len)
 {
 	int intid = (addr & 0x1fff) / 8;
 	struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, NULL, intid);
-
-	if (!irq) {
-		memset(val, 0, len);
-		return 0;
-	}
-
-	write_mask64(decompress_mpidr(irq->mpidr), addr & 7, len, val);
-
-	return 0;
-}
-
-static int vgic_mmio_write_irouter(struct kvm_vcpu *vcpu,
-				   struct kvm_io_device *dev,
-				   gpa_t addr, int len, const void *val)
-{
-	int intid = (addr & 0x1fff) / 8;
-	struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, NULL, intid);
-	u64 mpidr;
+	unsigned long mpidr;
 
 	if (!irq)
 		return 0;
 
-	mpidr = decompress_mpidr(irq->mpidr);
-	mpidr = mask64(mpidr, addr & 7, len, val);
+	spin_lock(&irq->irq_lock);
+	mpidr = irq->mpidr;
+	spin_unlock(&irq->irq_lock);
+
+	mpidr = decompress_mpidr(mpidr);
+	return extract_bytes(mpidr, addr & 7, len);
+}
+
+static void vgic_mmio_write_irouter(struct kvm_vcpu *vcpu,
+				   gpa_t addr, int len, unsigned long val)
+{
+	int intid = (addr & 0x1fff) / 8;
+	struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, NULL, intid);
+	int offset = addr & 4;
+	u64 mpidr;
+
+	if (!irq)
+		return;
+
+	/*
+	 * There are only two supported options:
+	 * (1) aligned 64-bit access
+	 * (2) aligned 32-bit access
+	 */
+	if (len != 4 && len != 8)
+		return;
 
 	spin_lock(&irq->irq_lock);
 
+	mpidr = decompress_mpidr(irq->mpidr);
+	while (len) {
+		int shift = offset * 8;
+		u64 mask = 0xffffffff << shift;
+
+		mpidr &= ~mask;
+		mpidr |= val & mask;
+		offset -= 4;
+		len -= 4;
+	}
 	irq->mpidr = compress_mpidr(mpidr);
-	irq->target_vcpu = kvm_mpidr_to_vcpu(vcpu->kvm, mpidr);
 
 	spin_unlock(&irq->irq_lock);
-
-	return 0;
 }
 
-static int vgic_mmio_read_v3r_typer(struct kvm_vcpu *vcpu,
-				    struct kvm_io_device *dev,
-				    gpa_t addr, int len, void *val)
+static unsigned long vgic_mmio_read_v3r_typer(struct kvm_vcpu *vcpu,
+					      gpa_t addr, int len)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
-	unsigned long mpidr = kvm_vcpu_get_mpidr_aff(iodev->redist_vcpu);
-	int target_vcpu_id = iodev->redist_vcpu->vcpu_id;
+	unsigned long mpidr = kvm_vcpu_get_mpidr_aff(vcpu);
+	int target_vcpu_id = vcpu->vcpu_id;
 	u64 value;
 
 	value = (u64)compress_mpidr(mpidr) << 32;
@@ -805,23 +673,20 @@ static int vgic_mmio_read_v3r_typer(struct kvm_vcpu *vcpu,
 	if (target_vcpu_id == atomic_read(&vcpu->kvm->online_vcpus) - 1)
 		value |= GICR_TYPER_LAST;
 
-	write_mask64(value, addr & 7, len, val);
-	return 0;
+	return extract_bytes(value, addr & 7, len);
 }
 
-static int vgic_mmio_read_v3r_iidr(struct kvm_vcpu *vcpu,
-				   struct kvm_io_device *dev,
-				   gpa_t addr, int len, void *val)
+static unsigned long vgic_mmio_read_v3r_iidr(struct kvm_vcpu *vcpu,
+					     gpa_t addr, int len)
 {
-	write_mask32((PRODUCT_ID_KVM << 24) | (IMPLEMENTER_ARM << 0),
-		     addr & 3, len, val);
+	u32 value;
 
-	return 0;
+	value = (PRODUCT_ID_KVM << 24) | (IMPLEMENTER_ARM << 0);
+	return extract_bytes(value, addr & 3, len);
 }
 
-static int vgic_mmio_read_v3_idregs(struct kvm_vcpu *vcpu,
-				    struct kvm_io_device *dev,
-				    gpa_t addr, int len, void *val)
+static unsigned long vgic_mmio_read_v3_idregs(struct kvm_vcpu *vcpu,
+					      gpa_t addr, int len)
 {
 	u32 regnr = (addr & 0x3f) - (GICD_IDREGS & 0x3f);
 	u32 reg = 0;
@@ -833,8 +698,7 @@ static int vgic_mmio_read_v3_idregs(struct kvm_vcpu *vcpu,
 		break;
 	}
 
-	write_mask32(reg , addr & 3, len, val);
-	return 0;
+	return extract_bytes(reg, addr & 3, len);
 }
 #endif
 
@@ -979,6 +843,57 @@ vgic_find_mmio_region(struct vgic_register_region *region, int nr_regions,
 	return NULL;
 }
 
+/*
+ * kvm_mmio_read_buf() returns a value in a format where it can be converted
+ * to a byte array and be directly observed as the guest wanted it to appear
+ * in memory if it had done the store itself, which is LE for the GIC, as the
+ * guest knows the GIC is always LE.
+ *
+ * We convert this value to the CPUs native format to deal with it as a data
+ * value.
+ */
+static unsigned long vgic_data_mmio_bus_to_host(const void *val, int len)
+{
+	unsigned long data = kvm_mmio_read_buf(val, len);
+	switch (len) {
+	case 1:
+		return data;
+	case 2:
+		return le16_to_cpu(data);
+	case 4:
+		return le32_to_cpu(data);
+	default:
+		return le64_to_cpu(data);
+	}
+}
+
+/*
+ * kvm_mmio_write_buf() expects a value in a format such that if converted to
+ * a byte array it is observed as the guest would see it if it could perform
+ * the load directly.  Since the GIC is LE, and the guest knows this, the
+ * guest expects a value in little endian format.
+ *
+ * We convert the data value from the CPUs native format to LE so that the
+ * value is returned in the proper format.
+ */
+static void vgic_data_host_to_mmio_bus(void *buf, int len, unsigned long data)
+{
+	switch (len) {
+	case 1:
+		break;
+	case 2:
+		data = cpu_to_le16(data);
+		break;
+	case 4:
+		data = cpu_to_le32(data);
+		break;
+	default:
+		data = cpu_to_le64(data);
+	}
+
+	kvm_mmio_write_buf(buf, len, data);
+}
+
 static int dispatch_mmio_read(struct kvm_vcpu *vcpu,
 			      struct vgic_register_region *regions,
 			      int nr_regions, struct kvm_io_device *dev,
@@ -987,13 +902,18 @@ static int dispatch_mmio_read(struct kvm_vcpu *vcpu,
 	struct vgic_io_device *iodev = container_of(dev,
 						    struct vgic_io_device, dev);
 	struct vgic_register_region *region;
+	struct kvm_vcpu *r_vcpu;
+	unsigned long data;
 
 	region = vgic_find_mmio_region(regions, nr_regions,
 				       addr - iodev->base_addr);
 	if (!region)
 		return -EOPNOTSUPP;
 
-	return region->ops.read(vcpu, dev, addr, len, val);
+	r_vcpu = iodev->redist_vcpu ? iodev->redist_vcpu : vcpu;
+	data = region->ops.read(r_vcpu, addr, len);
+	vgic_data_host_to_mmio_bus(val, len, data);
+	return 0;
 }
 
 static int dispatch_mmio_write(struct kvm_vcpu *vcpu,
@@ -1004,55 +924,65 @@ static int dispatch_mmio_write(struct kvm_vcpu *vcpu,
 	struct vgic_io_device *iodev = container_of(dev,
 						    struct vgic_io_device, dev);
 	struct vgic_register_region *region;
+	struct kvm_vcpu *r_vcpu;
+	unsigned long data = vgic_data_mmio_bus_to_host(val, len);
 
 	region = vgic_find_mmio_region(regions, nr_regions,
 				       addr - iodev->base_addr);
 	if (!region)
 		return -EOPNOTSUPP;
 
-	return region->ops.write(vcpu, dev, addr, len, val);
+	r_vcpu = iodev->redist_vcpu ? iodev->redist_vcpu : vcpu;
+	region->ops.write(r_vcpu, addr, len, data);
+	return 0;
 }
 
 /*
  * When userland tries to access the VGIC register handlers, we need to
- * create a usable struct vgic_io_device to be passed to the handlers.
+ * create a usable struct vgic_io_device to be passed to the handlers and we
+ * have to set up a buffer similar to what would have happened if a guest MMIO
+ * access occurred, including doing endian conversions on BE systems.
  */
-static int vgic_device_mmio_access(struct kvm_vcpu *vcpu,
-				   struct vgic_register_region *regions,
-				   int nr_regions, bool is_write,
-				   int offset, int len, void *val)
+int vgic_v2_dist_uaccess(struct kvm_vcpu *vcpu, bool is_write,
+			int offset, u32 *val)
 {
+	int len = 4;
+	u8 buf[4];
+	int ret;
+	struct vgic_register_region *regions = vgic_v2_dist_registers;
+	int nr_regions = ARRAY_SIZE(vgic_v2_dist_registers);
+
 	struct vgic_io_device dev = {
 		.base_addr = 0,
 		.redist_vcpu = vcpu,
 	};
 
-	if (is_write)
-		return dispatch_mmio_write(vcpu, regions, nr_regions,
-					   &dev.dev, offset, len, val);
-	else
-		return dispatch_mmio_read(vcpu, regions, nr_regions,
-					  &dev.dev, offset, len, val);
+	if (is_write) {
+		vgic_data_host_to_mmio_bus(buf, len, *val);
+		ret = dispatch_mmio_write(vcpu, regions, nr_regions,
+					  &dev.dev, offset, len, buf);
+	} else {
+		ret = dispatch_mmio_read(vcpu, regions, nr_regions,
+					 &dev.dev, offset, len, buf);
+		if (!ret)
+			*val = vgic_data_mmio_bus_to_host(buf, len);
+	}
+
+	return ret;
 }
 
-int vgic_v2_dist_access(struct kvm_vcpu *vcpu, bool is_write,
-			int offset, int len, void *val)
-{
-	return vgic_device_mmio_access(vcpu, vgic_v2_dist_registers,
-				       ARRAY_SIZE(vgic_v2_dist_registers),
-				       is_write, offset, len, val);
-}
-
-int vgic_mmio_read_v2dist(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
-			  gpa_t addr, int len, void *val)
+static int vgic_mmio_read_v2dist(struct kvm_vcpu *vcpu,
+				 struct kvm_io_device *dev,
+				 gpa_t addr, int len, void *val)
 {
 	return dispatch_mmio_read(vcpu, vgic_v2_dist_registers,
 				  ARRAY_SIZE(vgic_v2_dist_registers), dev,
 				  addr, len, val);
 }
 
-int vgic_mmio_write_v2dist(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
-			   gpa_t addr, int len, const void *val)
+static int vgic_mmio_write_v2dist(struct kvm_vcpu *vcpu,
+				  struct kvm_io_device *dev,
+				  gpa_t addr, int len, const void *val)
 {
 	return dispatch_mmio_write(vcpu, vgic_v2_dist_registers,
 				   ARRAY_SIZE(vgic_v2_dist_registers), dev,
@@ -1065,118 +995,116 @@ struct kvm_io_device_ops kvm_io_v2dist_ops = {
 };
 
 #ifdef CONFIG_KVM_ARM_VGIC_V3
-int vgic_mmio_read_v3dist(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
-			  gpa_t addr, int len, void *val)
+static int vgic_mmio_read_v3dist(struct kvm_vcpu *vcpu,
+				 struct kvm_io_device *dev,
+				 gpa_t addr, int len, void *val)
 {
 	struct vgic_io_device *iodev = container_of(dev,
 						    struct vgic_io_device, dev);
 	struct vgic_register_region *region;
 	int offset = addr - iodev->base_addr;
+	unsigned long data;
 
 	region = vgic_find_mmio_region(vgic_v3_dist_registers,
 				       ARRAY_SIZE(vgic_v3_dist_registers),
 				       offset);
 	if (!region)
-		return 1;
+		return -EOPNOTSUPP;
 
 	/* Private IRQs are RAZ on the GICv3 distributor. */
 	if (region->bits_per_irq) {
 		offset -= region->reg_offset;
-		if ((offset * 8 / region->bits_per_irq) < VGIC_NR_PRIVATE_IRQS)
-			return vgic_mmio_read_raz(vcpu, dev, addr, len, val);
+		if ((offset * 8 / region->bits_per_irq) < VGIC_NR_PRIVATE_IRQS) {
+			data = vgic_mmio_read_raz(vcpu, addr, len);
+			goto out;
+		}
 	}
 
-	return region->ops.read(vcpu, dev, addr, len, val);
+	data = region->ops.read(vcpu, addr, len);
+out:
+	vgic_data_host_to_mmio_bus(val, len, data);
+	return 0;
 }
 
-int vgic_mmio_write_v3dist(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
-			   gpa_t addr, int len, const void *val)
+static int vgic_mmio_write_v3dist(struct kvm_vcpu *vcpu,
+				  struct kvm_io_device *dev,
+				  gpa_t addr, int len, const void *val)
 {
 	struct vgic_io_device *iodev = container_of(dev,
 						    struct vgic_io_device, dev);
 	struct vgic_register_region *region;
 	int offset = addr - iodev->base_addr;
+	unsigned long data = vgic_data_mmio_bus_to_host(val, len);
 
 	region = vgic_find_mmio_region(vgic_v3_dist_registers,
 				       ARRAY_SIZE(vgic_v3_dist_registers),
 				       offset);
 	if (!region)
-		return 1;
+		return -EOPNOTSUPP;
 
 	/* Private IRQs are WI on the GICv3 distributor. */
 	if (region->bits_per_irq) {
 		offset -= region->reg_offset;
-		if ((offset * 8 / region->bits_per_irq) < VGIC_NR_PRIVATE_IRQS)
-			return vgic_mmio_write_wi(vcpu, dev, addr, len, val);
+		if ((offset * 8 / region->bits_per_irq) < VGIC_NR_PRIVATE_IRQS) {
+			vgic_mmio_write_wi(vcpu, addr, len, 0);
+			return 0;
+		}
 	}
 
-	return region->ops.write(vcpu, dev, addr, len, val);
+	region->ops.write(vcpu, addr, len, data);
+	return 0;
 }
 
-struct kvm_io_device_ops kvm_io_v3dist_ops = {
+static struct kvm_io_device_ops kvm_io_v3dist_ops = {
 	.read = vgic_mmio_read_v3dist,
 	.write = vgic_mmio_write_v3dist,
 };
 
-int vgic_mmio_read_v3redist(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
-			    gpa_t addr, int len, void *val)
+static int vgic_mmio_read_v3redist(struct kvm_vcpu *vcpu,
+				   struct kvm_io_device *dev,
+				   gpa_t addr, int len, void *val)
 {
 	return dispatch_mmio_read(vcpu, vgic_v3_redist_registers,
 				  ARRAY_SIZE(vgic_v3_redist_registers), dev,
 				  addr, len, val);
 }
 
-int vgic_mmio_write_v3redist(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
-			     gpa_t addr, int len, const void *val)
+static int vgic_mmio_write_v3redist(struct kvm_vcpu *vcpu,
+				    struct kvm_io_device *dev,
+				    gpa_t addr, int len, const void *val)
 {
 	return dispatch_mmio_write(vcpu, vgic_v3_redist_registers,
 				   ARRAY_SIZE(vgic_v3_redist_registers), dev,
 				   addr, len, val);
 }
 
-struct kvm_io_device_ops kvm_io_v3redist_ops = {
+static struct kvm_io_device_ops kvm_io_v3redist_ops = {
 	.read = vgic_mmio_read_v3redist,
 	.write = vgic_mmio_write_v3redist,
 };
 
-int vgic_mmio_read_v3redist_private(struct kvm_vcpu *vcpu,
-				    struct kvm_io_device *dev,
-				    gpa_t addr, int len, void *val)
+static int vgic_mmio_read_v3redist_private(struct kvm_vcpu *vcpu,
+					   struct kvm_io_device *dev,
+					   gpa_t addr, int len, void *val)
 {
 	return dispatch_mmio_read(vcpu, vgic_v3_private_registers,
 				  ARRAY_SIZE(vgic_v3_private_registers), dev,
 				  addr, len, val);
 }
 
-int vgic_mmio_write_v3redist_private(struct kvm_vcpu *vcpu,
-				     struct kvm_io_device *dev,
-				     gpa_t addr, int len, const void *val)
+static int vgic_mmio_write_v3redist_private(struct kvm_vcpu *vcpu,
+					    struct kvm_io_device *dev,
+					    gpa_t addr, int len, const void *val)
 {
 	return dispatch_mmio_write(vcpu, vgic_v3_private_registers,
 				   ARRAY_SIZE(vgic_v3_private_registers), dev,
 				   addr, len, val);
 }
 
-struct kvm_io_device_ops kvm_io_v3redist_private_ops = {
+static struct kvm_io_device_ops kvm_io_v3redist_private_ops = {
 	.read = vgic_mmio_read_v3redist_private,
 	.write = vgic_mmio_write_v3redist_private,
 };
-
-int vgic_v3_dist_access(struct kvm_vcpu *vcpu, bool is_write,
-			int offset, int len, void *val)
-{
-	return vgic_device_mmio_access(vcpu, vgic_v3_dist_registers,
-				       ARRAY_SIZE(vgic_v3_dist_registers),
-				       is_write, offset, len, val);
-}
-
-int vgic_v3_redist_access(struct kvm_vcpu *vcpu, bool is_write,
-			  int offset, int len, void *val)
-{
-	return vgic_device_mmio_access(vcpu, vgic_v3_redist_registers,
-				       ARRAY_SIZE(vgic_v3_redist_registers),
-				       is_write, offset, len, val);
-}
 #endif
 
 int vgic_register_dist_iodev(struct kvm *kvm, gpa_t dist_base_address,
