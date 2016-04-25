@@ -26,7 +26,7 @@
 /* extract @num bytes at @offset bytes offset in data */
 static unsigned long extract_bytes(unsigned long data, int offset, int num)
 {
-	return (data >> (offset * 8)) & ((1UL << (num * 8)) - 1);
+	return (data >> (offset * 8)) & GENMASK_ULL(num * 8 - 1, 0);
 }
 
 unsigned long vgic_mmio_read_raz(struct kvm_vcpu *vcpu, gpa_t addr, int len)
