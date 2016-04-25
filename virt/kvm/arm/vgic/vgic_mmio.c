@@ -718,7 +718,7 @@ static unsigned long vgic_mmio_read_v3_idregs(struct kvm_vcpu *vcpu,
 	 .len = (bpi * (1024 - VGIC_NR_PRIVATE_IRQS)) / 8, \
 	 .ops.read = read_ops, .ops.write = write_ops, }
 
-struct vgic_register_region vgic_v2_dist_registers[] = {
+static const struct vgic_register_region vgic_v2_dist_registers[] = {
 	REGISTER_DESC_WITH_LENGTH(GIC_DIST_CTRL,
 		vgic_mmio_read_v2_misc, vgic_mmio_write_v2_misc, 12),
 	REGISTER_DESC_WITH_BITS_PER_IRQ(GIC_DIST_IGROUP,
@@ -750,7 +750,7 @@ struct vgic_register_region vgic_v2_dist_registers[] = {
 };
 
 #ifdef CONFIG_KVM_ARM_VGIC_V3
-struct vgic_register_region vgic_v3_dist_registers[] = {
+static const struct vgic_register_region vgic_v3_dist_registers[] = {
 	REGISTER_DESC_WITH_LENGTH(GICD_CTLR,
 		vgic_mmio_read_v3_misc, vgic_mmio_write_v3_misc, 16),
 	REGISTER_DESC_WITH_BITS_PER_IRQ_SHARED(GICD_IGROUPR,
@@ -781,7 +781,7 @@ struct vgic_register_region vgic_v3_dist_registers[] = {
 		vgic_mmio_read_v3_idregs, vgic_mmio_write_wi, 48),
 };
 
-struct vgic_register_region vgic_v3_redist_registers[] = {
+static const struct vgic_register_region vgic_v3_redist_registers[] = {
 	REGISTER_DESC_WITH_LENGTH(GICR_CTLR,
 		vgic_mmio_read_raz, vgic_mmio_write_wi, 4),
 	REGISTER_DESC_WITH_LENGTH(GICR_IIDR,
@@ -796,7 +796,7 @@ struct vgic_register_region vgic_v3_redist_registers[] = {
 		vgic_mmio_read_v3_idregs, vgic_mmio_write_wi, 48),
 };
 
-struct vgic_register_region vgic_v3_private_registers[] = {
+static const struct vgic_register_region vgic_v3_private_registers[] = {
 	REGISTER_DESC_WITH_LENGTH(GICR_IGROUPR0,
 		vgic_mmio_read_rao, vgic_mmio_write_wi, 4),
 	REGISTER_DESC_WITH_LENGTH(GICR_ISENABLER0,
@@ -823,8 +823,8 @@ struct vgic_register_region vgic_v3_private_registers[] = {
 #endif
 
 /* Find the proper register handler entry given a certain address offset. */
-static struct vgic_register_region *
-vgic_find_mmio_region(struct vgic_register_region *region, int nr_regions,
+static const struct vgic_register_region *
+vgic_find_mmio_region(const struct vgic_register_region *region, int nr_regions,
 		      int offset)
 {
 	int i;
@@ -892,12 +892,12 @@ static void vgic_data_host_to_mmio_bus(void *buf, int len, unsigned long data)
 }
 
 static int dispatch_mmio_read(struct kvm_vcpu *vcpu,
-			      struct vgic_register_region *regions,
+			      const struct vgic_register_region *regions,
 			      int nr_regions, struct kvm_io_device *dev,
 			      gpa_t addr, int len, void *val)
 {
 	struct vgic_io_device *iodev = kvm_to_vgic_iodev(dev);
-	struct vgic_register_region *region;
+	const struct vgic_register_region *region;
 	struct kvm_vcpu *r_vcpu;
 	unsigned long data;
 
@@ -913,12 +913,12 @@ static int dispatch_mmio_read(struct kvm_vcpu *vcpu,
 }
 
 static int dispatch_mmio_write(struct kvm_vcpu *vcpu,
-			       struct vgic_register_region *regions,
+			       const struct vgic_register_region *regions,
 			       int nr_regions, struct kvm_io_device *dev,
 			       gpa_t addr, int len, const void *val)
 {
 	struct vgic_io_device *iodev = kvm_to_vgic_iodev(dev);
-	struct vgic_register_region *region;
+	const struct vgic_register_region *region;
 	struct kvm_vcpu *r_vcpu;
 	unsigned long data = vgic_data_mmio_bus_to_host(val, len);
 
@@ -944,7 +944,7 @@ int vgic_v2_dist_uaccess(struct kvm_vcpu *vcpu, bool is_write,
 	int len = 4;
 	u8 buf[4];
 	int ret;
-	struct vgic_register_region *regions = vgic_v2_dist_registers;
+	const struct vgic_register_region *regions = vgic_v2_dist_registers;
 	int nr_regions = ARRAY_SIZE(vgic_v2_dist_registers);
 
 	struct vgic_io_device dev = {
@@ -995,7 +995,7 @@ static int vgic_mmio_read_v3dist(struct kvm_vcpu *vcpu,
 				 gpa_t addr, int len, void *val)
 {
 	struct vgic_io_device *iodev = kvm_to_vgic_iodev(dev);
-	struct vgic_register_region *region;
+	const struct vgic_register_region *region;
 	int offset = addr - iodev->base_addr;
 	unsigned long data;
 
@@ -1025,7 +1025,7 @@ static int vgic_mmio_write_v3dist(struct kvm_vcpu *vcpu,
 				  gpa_t addr, int len, const void *val)
 {
 	struct vgic_io_device *iodev = kvm_to_vgic_iodev(dev);
-	struct vgic_register_region *region;
+	const struct vgic_register_region *region;
 	int offset = addr - iodev->base_addr;
 	unsigned long data = vgic_data_mmio_bus_to_host(val, len);
 
@@ -1305,7 +1305,7 @@ void vgic_v3_dispatch_sgi(struct kvm_vcpu *vcpu, u64 reg)
 int vgic_v2_has_attr_regs(struct kvm_device *dev, struct kvm_device_attr *attr)
 {
 	int nr_irqs = dev->kvm->arch.vgic.nr_spis + VGIC_NR_PRIVATE_IRQS;
-	struct vgic_register_region *regions;
+	const struct vgic_register_region *regions;
 	gpa_t addr;
 	int nr_regions, i, len;
 
