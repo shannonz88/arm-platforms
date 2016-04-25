@@ -900,8 +900,7 @@ static int dispatch_mmio_read(struct kvm_vcpu *vcpu,
 			      int nr_regions, struct kvm_io_device *dev,
 			      gpa_t addr, int len, void *val)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
+	struct vgic_io_device *iodev = kvm_to_vgic_iodev(dev);
 	struct vgic_register_region *region;
 	struct kvm_vcpu *r_vcpu;
 	unsigned long data;
@@ -922,8 +921,7 @@ static int dispatch_mmio_write(struct kvm_vcpu *vcpu,
 			       int nr_regions, struct kvm_io_device *dev,
 			       gpa_t addr, int len, const void *val)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
+	struct vgic_io_device *iodev = kvm_to_vgic_iodev(dev);
 	struct vgic_register_region *region;
 	struct kvm_vcpu *r_vcpu;
 	unsigned long data = vgic_data_mmio_bus_to_host(val, len);
@@ -1000,8 +998,7 @@ static int vgic_mmio_read_v3dist(struct kvm_vcpu *vcpu,
 				 struct kvm_io_device *dev,
 				 gpa_t addr, int len, void *val)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
+	struct vgic_io_device *iodev = kvm_to_vgic_iodev(dev);
 	struct vgic_register_region *region;
 	int offset = addr - iodev->base_addr;
 	unsigned long data;
@@ -1031,8 +1028,7 @@ static int vgic_mmio_write_v3dist(struct kvm_vcpu *vcpu,
 				  struct kvm_io_device *dev,
 				  gpa_t addr, int len, const void *val)
 {
-	struct vgic_io_device *iodev = container_of(dev,
-						    struct vgic_io_device, dev);
+	struct vgic_io_device *iodev = kvm_to_vgic_iodev(dev);
 	struct vgic_register_region *region;
 	int offset = addr - iodev->base_addr;
 	unsigned long data = vgic_data_mmio_bus_to_host(val, len);

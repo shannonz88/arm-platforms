@@ -236,6 +236,12 @@ static inline void vgic_v3_dispatch_sgi(struct kvm_vcpu *vcpu, u64 reg)
 }
 #endif
 
+static inline
+struct vgic_io_device *kvm_to_vgic_iodev(const struct kvm_io_device *dev)
+{
+	return container_of(dev, struct vgic_io_device, dev);
+}
+
 /**
  * kvm_vgic_get_max_vcpus - Get the maximum number of VCPUs allowed by HW
  *
