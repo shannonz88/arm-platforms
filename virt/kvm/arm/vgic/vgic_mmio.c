@@ -714,7 +714,8 @@ static unsigned long vgic_mmio_read_v3_idregs(struct kvm_vcpu *vcpu,
 	{.reg_offset = name, .bits_per_irq = 0, \
 	 .len = (bpi * VGIC_NR_PRIVATE_IRQS) / 8, \
 	 .ops.read = vgic_mmio_read_raz, .ops.write = vgic_mmio_write_wi, }, \
-	{.reg_offset = name, .bits_per_irq = bpi, .len = 0, \
+	{.reg_offset = name, .bits_per_irq = bpi,			\
+	 .len = (bpi * (1024 - VGIC_NR_PRIVATE_IRQS)) / 8, \
 	 .ops.read = read_ops, .ops.write = write_ops, }
 
 struct vgic_register_region vgic_v2_dist_registers[] = {
@@ -829,13 +830,8 @@ vgic_find_mmio_region(struct vgic_register_region *region, int nr_regions,
 	int i;
 
 	for (i = 0; i < nr_regions; i++) {
-		int reg_size = region[i].len;
-
-		if (!reg_size)
-			reg_size = (region[i].bits_per_irq * 1024) / 8;
-
 		if ((offset < region[i].reg_offset) ||
-		    (offset >= region[i].reg_offset + reg_size))
+		    (offset >= region[i].reg_offset + region[i].len))
 			continue;
 
 		return region + i;

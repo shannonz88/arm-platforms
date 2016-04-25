@@ -40,7 +40,7 @@ struct vgic_register_region {
  * and is mutually exclusive with the _PER_IRQ version.
  */
 #define REGISTER_DESC_WITH_BITS_PER_IRQ(name, read_ops, write_ops, bpi) \
-	{.reg_offset = name, .bits_per_irq = bpi, .len = 0, \
+	{.reg_offset = name, .bits_per_irq = bpi, .len = bpi * 1024 / 8, \
 	 .ops.read = read_ops, .ops.write = write_ops}
 #define REGISTER_DESC_WITH_LENGTH(name, read_ops, write_ops, length) \
 	{.reg_offset = name, .bits_per_irq = 0, .len = length, \
