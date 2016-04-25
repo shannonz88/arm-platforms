@@ -19,17 +19,17 @@
 struct vgic_register_ops {
 	unsigned long (*read)(struct kvm_vcpu *vcpu,
 			      gpa_t addr,
-			      int len);
+			      unsigned int len);
 	void (*write)(struct kvm_vcpu *vcpu,
 		     gpa_t addr,
-		     int len,
+		     unsigned int len,
 		     unsigned long val);
 };
 
 struct vgic_register_region {
-	int reg_offset;
-	int len;
-	int bits_per_irq;
+	unsigned int reg_offset;
+	unsigned int len;
+	unsigned int bits_per_irq;
 	struct vgic_register_ops ops;
 };
 
