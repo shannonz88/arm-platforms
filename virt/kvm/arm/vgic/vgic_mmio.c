@@ -11,13 +11,14 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/bitops.h>
+#include <linux/irqchip/arm-gic.h>
+#include <linux/irqchip/arm-gic-v3.h>
 #include <linux/kvm.h>
 #include <linux/kvm_host.h>
 #include <kvm/iodev.h>
 #include <kvm/vgic/vgic.h>
-#include <linux/bitops.h>
-#include <linux/irqchip/arm-gic.h>
-#include <linux/irqchip/arm-gic-v3.h>
+
 #include <asm/kvm_emulate.h>
 
 #include "vgic.h"
