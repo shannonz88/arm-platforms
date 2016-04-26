@@ -429,17 +429,15 @@ void vgic_data_host_to_mmio_bus(void *buf, unsigned int len,
 	kvm_mmio_write_buf(buf, len, data);
 }
 
-int dispatch_mmio_read(struct kvm_vcpu *vcpu,
-		       const struct vgic_register_region *regions,
-		       int nr_regions, struct kvm_io_device *dev,
-		       gpa_t addr, unsigned int len, void *val)
+static int dispatch_mmio_read(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
+			      gpa_t addr, int len, void *val)
 {
 	struct vgic_io_device *iodev = kvm_to_vgic_iodev(dev);
 	const struct vgic_register_region *region;
 	struct kvm_vcpu *r_vcpu;
 	unsigned long data;
 
-	region = vgic_find_mmio_region(regions, nr_regions,
+	region = vgic_find_mmio_region(iodev->regions, iodev->nr_regions,
 				       addr - iodev->base_addr);
 	if (!region)
 		return -EOPNOTSUPP;
@@ -450,17 +448,15 @@ int dispatch_mmio_read(struct kvm_vcpu *vcpu,
 	return 0;
 }
 
-int dispatch_mmio_write(struct kvm_vcpu *vcpu,
-			const struct vgic_register_region *regions,
-			int nr_regions, struct kvm_io_device *dev,
-			gpa_t addr, unsigned int len, const void *val)
+static int dispatch_mmio_write(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
+			       gpa_t addr, int len, const void *val)
 {
 	struct vgic_io_device *iodev = kvm_to_vgic_iodev(dev);
 	const struct vgic_register_region *region;
 	struct kvm_vcpu *r_vcpu;
 	unsigned long data = vgic_data_mmio_bus_to_host(val, len);
 
-	region = vgic_find_mmio_region(regions, nr_regions,
+	region = vgic_find_mmio_region(iodev->regions, iodev->nr_regions,
 				       addr - iodev->base_addr);
 	if (!region)
 		return -EOPNOTSUPP;
@@ -469,6 +465,11 @@ int dispatch_mmio_write(struct kvm_vcpu *vcpu,
 	region->ops.write(r_vcpu, addr, len, data);
 	return 0;
 }
+
+struct kvm_io_device_ops kvm_io_gic_ops = {
+	.read = dispatch_mmio_read,
+	.write = dispatch_mmio_write,
+};
 
 int vgic_register_dist_iodev(struct kvm *kvm, gpa_t dist_base_address,
 			     enum vgic_type type)
@@ -479,13 +480,11 @@ int vgic_register_dist_iodev(struct kvm *kvm, gpa_t dist_base_address,
 
 	switch (type) {
 	case VGIC_V2:
-		kvm_iodevice_init(&io_device->dev, &kvm_io_v2dist_ops);
-		len = SZ_4K;
+		len = vgic_v2_init_dist_iodev(io_device);
 		break;
 #ifdef CONFIG_KVM_ARM_VGIC_V3
 	case VGIC_V3:
-		kvm_iodevice_init(&io_device->dev, &kvm_io_v3dist_ops);
-		len = SZ_64K;
+		len = vgic_v3_init_dist_iodev(io_device);
 		break;
 #endif
 	default:

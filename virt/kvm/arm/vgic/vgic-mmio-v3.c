@@ -287,131 +287,76 @@ static const struct vgic_register_region vgic_v3_private_registers[] = {
 		vgic_mmio_read_raz, vgic_mmio_write_wi, 4),
 };
 
-static int vgic_mmio_read_v3dist(struct kvm_vcpu *vcpu,
-				 struct kvm_io_device *dev,
-				 gpa_t addr, int len, void *val)
+unsigned int vgic_v3_init_dist_iodev(struct vgic_io_device *dev)
 {
-	return dispatch_mmio_read(vcpu, vgic_v3_dist_registers,
-				  ARRAY_SIZE(vgic_v3_dist_registers), dev,
-				  addr, len, val);
+	dev->regions = vgic_v3_dist_registers;
+	dev->nr_regions = ARRAY_SIZE(vgic_v3_dist_registers);
+
+	kvm_iodevice_init(&dev->dev, &kvm_io_gic_ops);
+
+	return SZ_64K;
 }
-
-static int vgic_mmio_write_v3dist(struct kvm_vcpu *vcpu,
-				  struct kvm_io_device *dev,
-				  gpa_t addr, int len, const void *val)
-{
-	return dispatch_mmio_write(vcpu, vgic_v3_dist_registers,
-				   ARRAY_SIZE(vgic_v3_dist_registers), dev,
-				   addr, len, val);
-}
-
-struct kvm_io_device_ops kvm_io_v3dist_ops = {
-	.read = vgic_mmio_read_v3dist,
-	.write = vgic_mmio_write_v3dist,
-};
-
-static int vgic_mmio_read_v3redist(struct kvm_vcpu *vcpu,
-				   struct kvm_io_device *dev,
-				   gpa_t addr, int len, void *val)
-{
-	return dispatch_mmio_read(vcpu, vgic_v3_redist_registers,
-				  ARRAY_SIZE(vgic_v3_redist_registers), dev,
-				  addr, len, val);
-}
-
-static int vgic_mmio_write_v3redist(struct kvm_vcpu *vcpu,
-				    struct kvm_io_device *dev,
-				    gpa_t addr, int len, const void *val)
-{
-	return dispatch_mmio_write(vcpu, vgic_v3_redist_registers,
-				   ARRAY_SIZE(vgic_v3_redist_registers), dev,
-				   addr, len, val);
-}
-
-static struct kvm_io_device_ops kvm_io_v3redist_ops = {
-	.read = vgic_mmio_read_v3redist,
-	.write = vgic_mmio_write_v3redist,
-};
-
-static int vgic_mmio_read_v3redist_private(struct kvm_vcpu *vcpu,
-					   struct kvm_io_device *dev,
-					   gpa_t addr, int len, void *val)
-{
-	return dispatch_mmio_read(vcpu, vgic_v3_private_registers,
-				  ARRAY_SIZE(vgic_v3_private_registers), dev,
-				  addr, len, val);
-}
-
-static int vgic_mmio_write_v3redist_private(struct kvm_vcpu *vcpu,
-					    struct kvm_io_device *dev,
-					    gpa_t addr, int len, const void *val)
-{
-	return dispatch_mmio_write(vcpu, vgic_v3_private_registers,
-				   ARRAY_SIZE(vgic_v3_private_registers), dev,
-				   addr, len, val);
-}
-
-static struct kvm_io_device_ops kvm_io_v3redist_private_ops = {
-	.read = vgic_mmio_read_v3redist_private,
-	.write = vgic_mmio_write_v3redist_private,
-};
 
 int vgic_register_redist_iodevs(struct kvm *kvm, gpa_t redist_base_address)
 {
 	int nr_vcpus = atomic_read(&kvm->online_vcpus);
 	struct kvm_vcpu *vcpu;
-	struct vgic_io_device *regions, *region;
+	struct vgic_io_device *devices, *device;
 	int c, ret = 0;
 
-	regions = kmalloc(sizeof(struct vgic_io_device) * nr_vcpus * 2,
+	devices = kmalloc(sizeof(struct vgic_io_device) * nr_vcpus * 2,
 			  GFP_KERNEL);
-	if (!regions)
+	if (!devices)
 		return -ENOMEM;
 
-	region = regions;
+	device = devices;
 	kvm_for_each_vcpu(c, vcpu, kvm) {
-		kvm_iodevice_init(&region->dev, &kvm_io_v3redist_ops);
-		region->base_addr = redist_base_address;
-		region->redist_vcpu = vcpu;
+		kvm_iodevice_init(&device->dev, &kvm_io_gic_ops);
+		device->base_addr = redist_base_address;
+		device->regions = vgic_v3_redist_registers;
+		device->nr_regions = ARRAY_SIZE(vgic_v3_redist_registers);
+		device->redist_vcpu = vcpu;
 
 		mutex_lock(&kvm->slots_lock);
 		ret = kvm_io_bus_register_dev(kvm, KVM_MMIO_BUS,
 					      redist_base_address,
-					      SZ_64K, &region->dev);
+					      SZ_64K, &device->dev);
 		mutex_unlock(&kvm->slots_lock);
 
 		if (ret)
 			break;
 
-		region++;
-		kvm_iodevice_init(&region->dev, &kvm_io_v3redist_private_ops);
-		region->base_addr = redist_base_address + SZ_64K;
-		region->redist_vcpu = vcpu;
+		device++;
+		kvm_iodevice_init(&device->dev, &kvm_io_gic_ops);
+		device->base_addr = redist_base_address + SZ_64K;
+		device->regions = vgic_v3_private_registers;
+		device->nr_regions = ARRAY_SIZE(vgic_v3_private_registers);
+		device->redist_vcpu = vcpu;
 
 		mutex_lock(&kvm->slots_lock);
 		ret = kvm_io_bus_register_dev(kvm, KVM_MMIO_BUS,
 					      redist_base_address + SZ_64K,
-					      SZ_64K, &region->dev);
+					      SZ_64K, &device->dev);
 		mutex_unlock(&kvm->slots_lock);
 		if (ret) {
 			kvm_io_bus_unregister_dev(kvm, KVM_MMIO_BUS,
-						  &regions[c * 2].dev);
+						  &devices[c * 2].dev);
 			break;
 		}
-		region++;
+		device++;
 		redist_base_address += 2 * SZ_64K;
 	}
 
 	if (ret) {
 		for (c--; c >= 0; c--) {
 			kvm_io_bus_unregister_dev(kvm, KVM_MMIO_BUS,
-						  &regions[c * 2].dev);
+						  &devices[c * 2].dev);
 			kvm_io_bus_unregister_dev(kvm, KVM_MMIO_BUS,
-						  &regions[c * 2 + 1].dev);
+						  &devices[c * 2 + 1].dev);
 		}
-		kfree(regions);
+		kfree(devices);
 	} else {
-		kvm->arch.vgic.redist_iodevs = regions;
+		kvm->arch.vgic.redist_iodevs = devices;
 	}
 
 	return ret;

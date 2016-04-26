@@ -106,9 +106,13 @@ struct vgic_irq {
 	enum vgic_irq_config config;	/* Level or edge */
 };
 
+struct vgic_register_region;
+
 struct vgic_io_device {
 	gpa_t base_addr;
 	struct kvm_vcpu *redist_vcpu;
+	const struct vgic_register_region *regions;
+	int nr_regions;
 	struct kvm_io_device dev;
 };
 

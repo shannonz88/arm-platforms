@@ -33,6 +33,8 @@ struct vgic_register_region {
 	struct vgic_register_ops ops;
 };
 
+extern struct kvm_io_device_ops kvm_io_gic_ops;
+
 /*
  * Some VGIC registers store per-IRQ information, with a different number
  * of bits per IRQ. For those registers this macro is used.
@@ -50,16 +52,6 @@ int kvm_vgic_register_mmio_region(struct kvm *kvm, struct kvm_vcpu *vcpu,
 				  struct vgic_register_region *reg_desc,
 				  struct vgic_io_device *region,
 				  int nr_irqs, bool offset_private);
-
-int dispatch_mmio_read(struct kvm_vcpu *vcpu,
-		       const struct vgic_register_region *regions,
-		       int nr_regions, struct kvm_io_device *dev,
-		       gpa_t addr, unsigned int len, void *val);
-
-int dispatch_mmio_write(struct kvm_vcpu *vcpu,
-			const struct vgic_register_region *regions,
-			int nr_regions, struct kvm_io_device *dev,
-			gpa_t addr, unsigned int len, const void *val);
 
 unsigned long vgic_data_mmio_bus_to_host(const void *val, unsigned int len);
 
@@ -125,7 +117,8 @@ void vgic_mmio_write_config(struct kvm_vcpu *vcpu,
 			    gpa_t addr, unsigned int len,
 			    unsigned long val);
 
-extern struct kvm_io_device_ops kvm_io_v2dist_ops;
-extern struct kvm_io_device_ops kvm_io_v3dist_ops;
+unsigned int vgic_v2_init_dist_iodev(struct vgic_io_device *dev);
+
+unsigned int vgic_v3_init_dist_iodev(struct vgic_io_device *dev);
 
 #endif

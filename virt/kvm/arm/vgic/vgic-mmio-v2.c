@@ -249,21 +249,17 @@ int vgic_v2_dist_uaccess(struct kvm_vcpu *vcpu, bool is_write,
 	unsigned int len = 4;
 	u8 buf[4];
 	int ret;
-	const struct vgic_register_region *regions = vgic_v2_dist_registers;
-	int nr_regions = ARRAY_SIZE(vgic_v2_dist_registers);
 
 	struct vgic_io_device dev = {
-		.base_addr = 0,
-		.redist_vcpu = vcpu,
+		.regions = vgic_v2_dist_registers,
+		.nr_regions = ARRAY_SIZE(vgic_v2_dist_registers),
 	};
 
 	if (is_write) {
 		vgic_data_host_to_mmio_bus(buf, len, *val);
-		ret = dispatch_mmio_write(vcpu, regions, nr_regions,
-					  &dev.dev, offset, len, buf);
+		ret = kvm_io_gic_ops.write(vcpu, &dev.dev, offset, len, buf);
 	} else {
-		ret = dispatch_mmio_read(vcpu, regions, nr_regions,
-					 &dev.dev, offset, len, buf);
+		ret = kvm_io_gic_ops.read(vcpu, &dev.dev, offset, len, buf);
 		if (!ret)
 			*val = vgic_data_mmio_bus_to_host(buf, len);
 	}
@@ -271,28 +267,15 @@ int vgic_v2_dist_uaccess(struct kvm_vcpu *vcpu, bool is_write,
 	return ret;
 }
 
-static int vgic_mmio_read_v2dist(struct kvm_vcpu *vcpu,
-				 struct kvm_io_device *dev,
-				 gpa_t addr, int len, void *val)
+unsigned int vgic_v2_init_dist_iodev(struct vgic_io_device *dev)
 {
-	return dispatch_mmio_read(vcpu, vgic_v2_dist_registers,
-				  ARRAY_SIZE(vgic_v2_dist_registers), dev,
-				  addr, len, val);
-}
+	dev->regions = vgic_v2_dist_registers;
+	dev->nr_regions = ARRAY_SIZE(vgic_v2_dist_registers);
 
-static int vgic_mmio_write_v2dist(struct kvm_vcpu *vcpu,
-				  struct kvm_io_device *dev,
-				  gpa_t addr, int len, const void *val)
-{
-	return dispatch_mmio_write(vcpu, vgic_v2_dist_registers,
-				   ARRAY_SIZE(vgic_v2_dist_registers), dev,
-				   addr, len, val);
-}
+	kvm_iodevice_init(&dev->dev, &kvm_io_gic_ops);
 
-struct kvm_io_device_ops kvm_io_v2dist_ops = {
-	.read = vgic_mmio_read_v2dist,
-	.write = vgic_mmio_write_v2dist,
-};
+	return SZ_4K;
+}
 
 int vgic_v2_has_attr_regs(struct kvm_device *dev, struct kvm_device_attr *attr)
 {
