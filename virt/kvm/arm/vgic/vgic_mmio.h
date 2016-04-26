@@ -51,4 +51,85 @@ int kvm_vgic_register_mmio_region(struct kvm *kvm, struct kvm_vcpu *vcpu,
 				  struct vgic_io_device *region,
 				  int nr_irqs, bool offset_private);
 
+const struct vgic_register_region *
+vgic_find_mmio_region(const struct vgic_register_region *region, int nr_regions,
+		      unsigned int offset);
+
+int dispatch_mmio_read(struct kvm_vcpu *vcpu,
+		       const struct vgic_register_region *regions,
+		       int nr_regions, struct kvm_io_device *dev,
+		       gpa_t addr, unsigned int len, void *val);
+
+int dispatch_mmio_write(struct kvm_vcpu *vcpu,
+			const struct vgic_register_region *regions,
+			int nr_regions, struct kvm_io_device *dev,
+			gpa_t addr, unsigned int len, const void *val);
+
+unsigned long vgic_data_mmio_bus_to_host(const void *val, unsigned int len);
+
+void vgic_data_host_to_mmio_bus(void *buf, unsigned int len,
+				unsigned long data);
+
+unsigned long extract_bytes(unsigned long data,
+			    unsigned int offset, unsigned int num);
+
+unsigned long vgic_mmio_read_raz(struct kvm_vcpu *vcpu,
+				 gpa_t addr, unsigned int len);
+
+unsigned long vgic_mmio_read_rao(struct kvm_vcpu *vcpu,
+				 gpa_t addr, unsigned int len);
+
+void vgic_mmio_write_wi(struct kvm_vcpu *vcpu, gpa_t addr,
+			unsigned int len, unsigned long val);
+
+unsigned long vgic_mmio_read_enable(struct kvm_vcpu *vcpu,
+				    gpa_t addr, unsigned int len);
+
+void vgic_mmio_write_senable(struct kvm_vcpu *vcpu,
+			     gpa_t addr, unsigned int len,
+			     unsigned long val);
+
+void vgic_mmio_write_cenable(struct kvm_vcpu *vcpu,
+			     gpa_t addr, unsigned int len,
+			     unsigned long val);
+
+unsigned long vgic_mmio_read_pending(struct kvm_vcpu *vcpu,
+				     gpa_t addr, unsigned int len);
+
+void vgic_mmio_write_spending(struct kvm_vcpu *vcpu,
+			      gpa_t addr, unsigned int len,
+			      unsigned long val);
+
+void vgic_mmio_write_cpending(struct kvm_vcpu *vcpu,
+			      gpa_t addr, unsigned int len,
+			      unsigned long val);
+
+unsigned long vgic_mmio_read_active(struct kvm_vcpu *vcpu,
+				    gpa_t addr, unsigned int len);
+
+void vgic_mmio_write_cactive(struct kvm_vcpu *vcpu,
+			     gpa_t addr, unsigned int len,
+			     unsigned long val);
+
+void vgic_mmio_write_sactive(struct kvm_vcpu *vcpu,
+			     gpa_t addr, unsigned int len,
+			     unsigned long val);
+
+unsigned long vgic_mmio_read_priority(struct kvm_vcpu *vcpu,
+				      gpa_t addr, unsigned int len);
+
+void vgic_mmio_write_priority(struct kvm_vcpu *vcpu,
+			      gpa_t addr, unsigned int len,
+			      unsigned long val);
+
+unsigned long vgic_mmio_read_config(struct kvm_vcpu *vcpu,
+				    gpa_t addr, unsigned int len);
+
+void vgic_mmio_write_config(struct kvm_vcpu *vcpu,
+			    gpa_t addr, unsigned int len,
+			    unsigned long val);
+
+extern struct kvm_io_device_ops kvm_io_v2dist_ops;
+extern struct kvm_io_device_ops kvm_io_v3dist_ops;
+
 #endif
