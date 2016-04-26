@@ -41,12 +41,23 @@ extern struct kvm_io_device_ops kvm_io_gic_ops;
  * The _WITH_LENGTH version instantiates registers with a fixed length
  * and is mutually exclusive with the _PER_IRQ version.
  */
-#define REGISTER_DESC_WITH_BITS_PER_IRQ(name, read_ops, write_ops, bpi) \
-	{.reg_offset = name, .bits_per_irq = bpi, .len = bpi * 1024 / 8, \
-	 .ops.read = read_ops, .ops.write = write_ops}
-#define REGISTER_DESC_WITH_LENGTH(name, read_ops, write_ops, length) \
-	{.reg_offset = name, .bits_per_irq = 0, .len = length, \
-	 .ops.read = read_ops, .ops.write = write_ops}
+#define REGISTER_DESC_WITH_BITS_PER_IRQ(off, read_ops, write_ops, bpi)	\
+	{								\
+		.reg_offset = off,					\
+		.bits_per_irq = bpi,					\
+		.len = bpi * 1024 / 8,					\
+		.ops.read = read_ops,					\
+		.ops.write = write_ops,					\
+	}
+
+#define REGISTER_DESC_WITH_LENGTH(off, read_ops, write_ops, length)	\
+	{								\
+		.reg_offset = off,					\
+		.bits_per_irq = 0,					\
+		.len = length,						\
+		.ops.read = read_ops,					\
+		.ops.write = write_ops,					\
+	}
 
 int kvm_vgic_register_mmio_region(struct kvm *kvm, struct kvm_vcpu *vcpu,
 				  struct vgic_register_region *reg_desc,
