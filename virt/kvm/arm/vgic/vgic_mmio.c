@@ -55,15 +55,15 @@ static unsigned long vgic_mmio_read_v2_misc(struct kvm_vcpu *vcpu,
 	u32 value;
 
 	switch (addr & 0x0c) {
-	case 0x0:
+	case GIC_DIST_CTRL:
 		value = vcpu->kvm->arch.vgic.enabled ? GICD_ENABLE : 0;
 		break;
-	case 0x4:
+	case GIC_DIST_CTR:
 		value = vcpu->kvm->arch.vgic.nr_spis + VGIC_NR_PRIVATE_IRQS;
 		value = (value >> 5) - 1;
 		value |= (atomic_read(&vcpu->kvm->online_vcpus) - 1) << 5;
 		break;
-	case 0x8:
+	case GIC_DIST_IIDR:
 		value = (PRODUCT_ID_KVM << 24) | (IMPLEMENTER_ARM << 0);
 		break;
 	default:
@@ -77,20 +77,22 @@ static void vgic_mmio_write_v2_misc(struct kvm_vcpu *vcpu,
 				    gpa_t addr, unsigned int len,
 				    unsigned long val)
 {
-	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
-	bool was_enabled = dist->enabled;
+	switch (addr & 0x0c) {
+	case GIC_DIST_CTRL:
+		if (!(addr & 1)) {
+			struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
+			bool was_enabled = dist->enabled;
 
-	/*
-	 * GICD_TYPER and GICD_IIDR are read-only, the upper three bytes of
-	 * GICD_CTLR are reserved.
-	 */
-	if ((addr & 0x0f) >= 1)
+			dist->enabled = val & GICD_ENABLE;
+			if (!was_enabled && dist->enabled)
+				vgic_kick_vcpus(vcpu->kvm);
+		}
+		break;
+	case GIC_DIST_CTR:
+	case GIC_DIST_IIDR:
+		/* Nothing to do */
 		return;
-
-	vcpu->kvm->arch.vgic.enabled = (val) ? true : false;
-
-	if (!was_enabled && dist->enabled)
-		vgic_kick_vcpus(vcpu->kvm);
+	}
 }
 
 /*
