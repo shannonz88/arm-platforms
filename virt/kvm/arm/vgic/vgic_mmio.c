@@ -12,6 +12,7 @@
  */
 
 #include <linux/bitops.h>
+#include <linux/bsearch.h>
 #include <linux/kvm.h>
 #include <linux/kvm_host.h>
 #include <kvm/iodev.h>
@@ -359,22 +360,27 @@ void vgic_mmio_write_config(struct kvm_vcpu *vcpu,
 	}
 }
 
+static int match_region(const void *key, const void *elt)
+{
+	const unsigned int offset = (unsigned long)key;
+	const struct vgic_register_region *region = elt;
+
+	if (offset < region->reg_offset)
+		return -1;
+
+	if (offset >= region->reg_offset + region->len)
+		return 1;
+
+	return 0;
+}
+
 /* Find the proper register handler entry given a certain address offset. */
 static const struct vgic_register_region *
 vgic_find_mmio_region(const struct vgic_register_region *region, int nr_regions,
 		      unsigned int offset)
 {
-	int i;
-
-	for (i = 0; i < nr_regions; i++) {
-		if ((offset < region[i].reg_offset) ||
-		    (offset >= region[i].reg_offset + region[i].len))
-			continue;
-
-		return region + i;
-	}
-
-	return NULL;
+	return bsearch((void *)(uintptr_t)offset, region, nr_regions,
+		       sizeof(region[0]), match_region);
 }
 
 /*
