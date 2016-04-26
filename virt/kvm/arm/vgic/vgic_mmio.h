@@ -16,21 +16,14 @@
 #ifndef __KVM_ARM_VGIC_MMIO_H__
 #define __KVM_ARM_VGIC_MMIO_H__
 
-struct vgic_register_ops {
-	unsigned long (*read)(struct kvm_vcpu *vcpu,
-			      gpa_t addr,
-			      unsigned int len);
-	void (*write)(struct kvm_vcpu *vcpu,
-		     gpa_t addr,
-		     unsigned int len,
-		     unsigned long val);
-};
-
 struct vgic_register_region {
 	unsigned int reg_offset;
 	unsigned int len;
 	unsigned int bits_per_irq;
-	struct vgic_register_ops ops;
+	unsigned long (*read)(struct kvm_vcpu *vcpu, gpa_t addr,
+			      unsigned int len);
+	void (*write)(struct kvm_vcpu *vcpu, gpa_t addr, unsigned int len,
+		      unsigned long val);
 };
 
 extern struct kvm_io_device_ops kvm_io_gic_ops;
@@ -46,8 +39,8 @@ extern struct kvm_io_device_ops kvm_io_gic_ops;
 		.reg_offset = off,					\
 		.bits_per_irq = bpi,					\
 		.len = bpi * 1024 / 8,					\
-		.ops.read = read_ops,					\
-		.ops.write = write_ops,					\
+		.read = read_ops,					\
+		.write = write_ops,					\
 	}
 
 #define REGISTER_DESC_WITH_LENGTH(off, read_ops, write_ops, length)	\
@@ -55,8 +48,8 @@ extern struct kvm_io_device_ops kvm_io_gic_ops;
 		.reg_offset = off,					\
 		.bits_per_irq = 0,					\
 		.len = length,						\
-		.ops.read = read_ops,					\
-		.ops.write = write_ops,					\
+		.read = read_ops,					\
+		.write = write_ops,					\
 	}
 
 int kvm_vgic_register_mmio_region(struct kvm *kvm, struct kvm_vcpu *vcpu,

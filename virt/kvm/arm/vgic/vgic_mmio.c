@@ -449,7 +449,7 @@ static int dispatch_mmio_read(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
 		return -EOPNOTSUPP;
 
 	r_vcpu = iodev->redist_vcpu ? iodev->redist_vcpu : vcpu;
-	data = region->ops.read(r_vcpu, addr, len);
+	data = region->read(r_vcpu, addr, len);
 	vgic_data_host_to_mmio_bus(val, len, data);
 	return 0;
 }
@@ -468,7 +468,7 @@ static int dispatch_mmio_write(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
 		return -EOPNOTSUPP;
 
 	r_vcpu = iodev->redist_vcpu ? iodev->redist_vcpu : vcpu;
-	region->ops.write(r_vcpu, addr, len, data);
+	region->write(r_vcpu, addr, len, data);
 	return 0;
 }
 

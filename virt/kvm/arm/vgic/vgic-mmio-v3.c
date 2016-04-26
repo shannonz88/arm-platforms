@@ -206,14 +206,14 @@ static unsigned long vgic_mmio_read_v3_idregs(struct kvm_vcpu *vcpu,
 		.reg_offset = off,					\
 		.bits_per_irq = bpi,					\
 		.len = (bpi * VGIC_NR_PRIVATE_IRQS) / 8,		\
-		.ops.read = vgic_mmio_read_raz,				\
-		.ops.write = vgic_mmio_write_wi,			\
+		.read = vgic_mmio_read_raz,				\
+		.write = vgic_mmio_write_wi,				\
 	}, {								\
 		.reg_offset = off + (bpi * VGIC_NR_PRIVATE_IRQS) / 8,	\
 		.bits_per_irq = bpi,					\
 		.len = (bpi * (1024 - VGIC_NR_PRIVATE_IRQS)) / 8, 	\
-		.ops.read = read_ops,					\
-		.ops.write = write_ops,					\
+		.read = read_ops,					\
+		.write = write_ops,					\
 	}
 
 static const struct vgic_register_region vgic_v3_dist_registers[] = {
