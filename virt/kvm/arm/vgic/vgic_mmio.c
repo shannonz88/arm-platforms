@@ -435,6 +435,12 @@ void vgic_data_host_to_mmio_bus(void *buf, unsigned int len,
 	kvm_mmio_write_buf(buf, len, data);
 }
 
+static
+struct vgic_io_device *kvm_to_vgic_iodev(const struct kvm_io_device *dev)
+{
+	return container_of(dev, struct vgic_io_device, dev);
+}
+
 static int dispatch_mmio_read(struct kvm_vcpu *vcpu, struct kvm_io_device *dev,
 			      gpa_t addr, int len, void *val)
 {
