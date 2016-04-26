@@ -360,7 +360,7 @@ void vgic_mmio_write_config(struct kvm_vcpu *vcpu,
 }
 
 /* Find the proper register handler entry given a certain address offset. */
-const struct vgic_register_region *
+static const struct vgic_register_region *
 vgic_find_mmio_region(const struct vgic_register_region *region, int nr_regions,
 		      unsigned int offset)
 {

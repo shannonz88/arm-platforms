@@ -51,10 +51,6 @@ int kvm_vgic_register_mmio_region(struct kvm *kvm, struct kvm_vcpu *vcpu,
 				  struct vgic_io_device *region,
 				  int nr_irqs, bool offset_private);
 
-const struct vgic_register_region *
-vgic_find_mmio_region(const struct vgic_register_region *region, int nr_regions,
-		      unsigned int offset);
-
 int dispatch_mmio_read(struct kvm_vcpu *vcpu,
 		       const struct vgic_register_region *regions,
 		       int nr_regions, struct kvm_io_device *dev,

@@ -201,13 +201,20 @@ static unsigned long vgic_mmio_read_v3_idregs(struct kvm_vcpu *vcpu,
  * We take some special care here to fix the calculation of the register
  * offset.
  */
-#define REGISTER_DESC_WITH_BITS_PER_IRQ_SHARED(name, read_ops, write_ops, bpi) \
-	{.reg_offset = name, .bits_per_irq = 0, \
-	 .len = (bpi * VGIC_NR_PRIVATE_IRQS) / 8, \
-	 .ops.read = vgic_mmio_read_raz, .ops.write = vgic_mmio_write_wi, }, \
-	{.reg_offset = name, .bits_per_irq = bpi,			\
-	 .len = (bpi * (1024 - VGIC_NR_PRIVATE_IRQS)) / 8, \
-	 .ops.read = read_ops, .ops.write = write_ops, }
+#define REGISTER_DESC_WITH_BITS_PER_IRQ_SHARED(off, read_ops, write_ops, bpi) \
+	{								\
+		.reg_offset = off,					\
+		.bits_per_irq = bpi,					\
+		.len = (bpi * VGIC_NR_PRIVATE_IRQS) / 8,		\
+		.ops.read = vgic_mmio_read_raz,				\
+		.ops.write = vgic_mmio_write_wi,			\
+	}, {								\
+		.reg_offset = off + (bpi * VGIC_NR_PRIVATE_IRQS) / 8,	\
+		.bits_per_irq = bpi,					\
+		.len = (bpi * (1024 - VGIC_NR_PRIVATE_IRQS)) / 8, 	\
+		.ops.read = read_ops,					\
+		.ops.write = write_ops,					\
+	}
 
 static const struct vgic_register_region vgic_v3_dist_registers[] = {
 	REGISTER_DESC_WITH_LENGTH(GICD_CTLR,
@@ -284,58 +291,18 @@ static int vgic_mmio_read_v3dist(struct kvm_vcpu *vcpu,
 				 struct kvm_io_device *dev,
 				 gpa_t addr, int len, void *val)
 {
-	struct vgic_io_device *iodev = kvm_to_vgic_iodev(dev);
-	const struct vgic_register_region *region;
-	int offset = addr - iodev->base_addr;
-	unsigned long data;
-
-	region = vgic_find_mmio_region(vgic_v3_dist_registers,
-				       ARRAY_SIZE(vgic_v3_dist_registers),
-				       offset);
-	if (!region)
-		return -EOPNOTSUPP;
-
-	/* Private IRQs are RAZ on the GICv3 distributor. */
-	if (region->bits_per_irq) {
-		offset -= region->reg_offset;
-		if ((offset * 8 / region->bits_per_irq) < VGIC_NR_PRIVATE_IRQS) {
-			data = vgic_mmio_read_raz(vcpu, addr, len);
-			goto out;
-		}
-	}
-
-	data = region->ops.read(vcpu, addr, len);
-out:
-	vgic_data_host_to_mmio_bus(val, len, data);
-	return 0;
+	return dispatch_mmio_read(vcpu, vgic_v3_dist_registers,
+				  ARRAY_SIZE(vgic_v3_dist_registers), dev,
+				  addr, len, val);
 }
 
 static int vgic_mmio_write_v3dist(struct kvm_vcpu *vcpu,
 				  struct kvm_io_device *dev,
 				  gpa_t addr, int len, const void *val)
 {
-	struct vgic_io_device *iodev = kvm_to_vgic_iodev(dev);
-	const struct vgic_register_region *region;
-	int offset = addr - iodev->base_addr;
-	unsigned long data = vgic_data_mmio_bus_to_host(val, len);
-
-	region = vgic_find_mmio_region(vgic_v3_dist_registers,
-				       ARRAY_SIZE(vgic_v3_dist_registers),
-				       offset);
-	if (!region)
-		return -EOPNOTSUPP;
-
-	/* Private IRQs are WI on the GICv3 distributor. */
-	if (region->bits_per_irq) {
-		offset -= region->reg_offset;
-		if ((offset * 8 / region->bits_per_irq) < VGIC_NR_PRIVATE_IRQS) {
-			vgic_mmio_write_wi(vcpu, addr, len, 0);
-			return 0;
-		}
-	}
-
-	region->ops.write(vcpu, addr, len, data);
-	return 0;
+	return dispatch_mmio_write(vcpu, vgic_v3_dist_registers,
+				   ARRAY_SIZE(vgic_v3_dist_registers), dev,
+				   addr, len, val);
 }
 
 struct kvm_io_device_ops kvm_io_v3dist_ops = {
