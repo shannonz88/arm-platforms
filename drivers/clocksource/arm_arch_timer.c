@@ -79,9 +79,51 @@ static enum ppi_nr arch_timer_uses_ppi = VIRT_PPI;
 static bool arch_timer_c3stop;
 static bool arch_timer_mem_use_virtual;
 
+DEFINE_STATIC_KEY_FALSE(arch_timer_read_ool_enabled);
+EXPORT_SYMBOL_GPL(arch_timer_read_ool_enabled);
+
 /*
  * Architected system timer support.
  */
+
+#ifdef CONFIG_ARM64
+/*
+ * __always_inline is used to ensure that func() is not an actual function
+ * pointer, which would result in the register accesses potentially being too
+ * far apart for the loop to work.
+ */
+static __always_inline u64 arch_timer_reread(u64 (*func)(void))
+{
+	u64 cval_old, cval_new;
+	int timeout = 200;
+
+	do {
+		isb();
+		cval_old = func();
+		cval_new = func();
+		timeout--;
+	} while (cval_old != cval_new && timeout);
+
+	WARN_ON_ONCE(!timeout);
+	return cval_new;
+}
+
+u64 arch_counter_get_cntvct_ool(void)
+{
+	return arch_timer_reread(__arch_counter_get_cntvct);
+}
+
+u64 arch_timer_get_vtval_ool(void)
+{
+	return arch_timer_reread(__arch_timer_get_vtval);
+}
+
+u64 arch_timer_get_ptval_ool(void)
+{
+	return arch_timer_reread(__arch_timer_get_ptval);
+}
+
+#endif /* ARM64 */
 
 static __always_inline
 void arch_timer_reg_write(int access, enum arch_timer_reg reg, u32 val,
@@ -232,6 +274,50 @@ static __always_inline void set_next_event(const int access, unsigned long evt,
 	arch_timer_reg_write(access, ARCH_TIMER_REG_CTRL, ctrl, clk);
 }
 
+#ifdef CONFIG_ARM64
+static __always_inline void rewrite_tval(const int access,
+		unsigned long evt, struct clock_event_device *clk)
+{
+	u64 cval_old, cval_new;
+	int timeout = 200;
+
+	do {
+		cval_old = __arch_counter_get_cntvct();
+		arch_timer_reg_write(access, ARCH_TIMER_REG_TVAL, evt, clk);
+		cval_new = __arch_counter_get_cntvct();
+		timeout--;
+	} while (cval_old != cval_new && timeout);
+
+	WARN_ON_ONCE(!timeout);
+}
+
+static __always_inline void set_next_event_errata(const int access,
+		unsigned long evt, struct clock_event_device *clk)
+{
+	unsigned long ctrl;
+
+	ctrl = arch_timer_reg_read(access, ARCH_TIMER_REG_CTRL, clk);
+	ctrl |= ARCH_TIMER_CTRL_ENABLE;
+	ctrl &= ~ARCH_TIMER_CTRL_IT_MASK;
+	rewrite_tval(access, evt, clk);
+	arch_timer_reg_write(access, ARCH_TIMER_REG_CTRL, ctrl, clk);
+}
+
+static int arch_timer_set_next_event_virt_errata(unsigned long evt,
+						 struct clock_event_device *clk)
+{
+	set_next_event_errata(ARCH_TIMER_VIRT_ACCESS, evt, clk);
+	return 0;
+}
+
+static int arch_timer_set_next_event_phys_errata(unsigned long evt,
+						 struct clock_event_device *clk)
+{
+	set_next_event_errata(ARCH_TIMER_PHYS_ACCESS, evt, clk);
+	return 0;
+}
+#endif /* ARM64 */
+
 static int arch_timer_set_next_event_virt(unsigned long evt,
 					  struct clock_event_device *clk)
 {
@@ -277,6 +363,13 @@ static void __arch_timer_setup(unsigned type,
 			clk->set_state_shutdown = arch_timer_shutdown_virt;
 			clk->set_state_oneshot_stopped = arch_timer_shutdown_virt;
 			clk->set_next_event = arch_timer_set_next_event_virt;
+
+#ifdef CONFIG_ARM64
+			if (static_branch_unlikely(&arch_timer_read_ool_enabled))
+				clk->set_next_event =
+					arch_timer_set_next_event_virt_errata;
+#endif
+
 			break;
 		case PHYS_SECURE_PPI:
 		case PHYS_NONSECURE_PPI:
@@ -284,6 +377,13 @@ static void __arch_timer_setup(unsigned type,
 			clk->set_state_shutdown = arch_timer_shutdown_phys;
 			clk->set_state_oneshot_stopped = arch_timer_shutdown_phys;
 			clk->set_next_event = arch_timer_set_next_event_phys;
+
+#ifdef CONFIG_ARM64
+			if (static_branch_unlikely(&arch_timer_read_ool_enabled))
+				clk->set_next_event =
+					arch_timer_set_next_event_phys_errata;
+#endif
+
 			break;
 		default:
 			BUG();
@@ -485,6 +585,13 @@ static void __init arch_counter_register(unsigned type)
 			arch_timer_read_counter = arch_counter_get_cntvct;
 		else
 			arch_timer_read_counter = arch_counter_get_cntpct;
+
+		/*
+		 * Don't use the vdso fastpath if errata require using
+		 * the out-of-line counter accessor.
+		 */
+		if (static_branch_unlikely(&arch_timer_read_ool_enabled))
+			clocksource_counter.name = "arch_sys_counter_ool";
 	} else {
 		arch_timer_read_counter = arch_counter_get_cntvct_mem;
 
@@ -765,6 +872,9 @@ static void __init arch_timer_of_init(struct device_node *np)
 	arch_timer_detect_rate(NULL, np);
 
 	arch_timer_c3stop = !of_property_read_bool(np, "always-on");
+
+	if (of_property_read_bool(np, "fsl,erratum-a008585"))
+		static_branch_enable(&arch_timer_read_ool_enabled);
 
 	/*
 	 * If we cannot rely on firmware initializing the timer registers then
