@@ -25,24 +25,21 @@
 
 #define __hyp_text __section(.hyp.text) notrace
 
-static inline unsigned long __kern_hyp_va(unsigned long v)
-{
-	asm volatile(ALTERNATIVE("and %0, %0, %1",
-				 "nop",
-				 ARM64_HAS_VIRT_HOST_EXTN)
-		     : "+r" (v) : "i" (HYP_PAGE_OFFSET_MASK));
-	return v;
-}
-
-#define kern_hyp_va(v) (typeof(v))(__kern_hyp_va((unsigned long)(v)))
-
 static inline unsigned long __hyp_kern_va(unsigned long v)
 {
-	asm volatile(ALTERNATIVE("orr %0, %0, %1",
-				 "nop",
+	u64 mask;
+
+	asm volatile(ALTERNATIVE("mov %0, %1",
+				 "mov %0, %2",
+				 ARM64_HYP_OFFSET_LOW)
+		     : "=r" (mask)
+		     : "i" (~HYP_PAGE_OFFSET_HIGH_MASK),
+		       "i" (~HYP_PAGE_OFFSET_LOW_MASK));
+	asm volatile(ALTERNATIVE("nop",
+				 "mov %0, xzr",
 				 ARM64_HAS_VIRT_HOST_EXTN)
-		     : "+r" (v) : "i" (~HYP_PAGE_OFFSET_MASK));
-	return v;
+		     : "+r" (mask));
+	return v | mask;
 }
 
 #define hyp_kern_va(v) (typeof(v))(__hyp_kern_va((unsigned long)(v)))
