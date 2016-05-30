@@ -96,11 +96,17 @@
  * reg: VA to be converted.
  */
 .macro kern_hyp_va	reg
-alternative_if_not ARM64_HAS_VIRT_HOST_EXTN	
-	and	\reg, \reg, #HYP_PAGE_OFFSET_MASK
-alternative_else
+alternative_if_not ARM64_HAS_VIRT_HOST_EXTN
+
+  alternative_if_not ARM64_HYP_OFFSET_LOW
+	and	\reg, \reg, #HYP_PAGE_OFFSET_HIGH_MASK
+  alternative_else		/* ARM64_HYP_OFFSET_LOW */
+	and	\reg, \reg, #HYP_PAGE_OFFSET_LOW_MASK
+  alternative_endif		/* ARM64_HYP_OFFSET_LOW */
+
+alternative_else		/* ARM64_HAS_VIRT_HOST_EXTN */
 	nop
-alternative_endif
+alternative_endif		/* ARM64_HAS_VIRT_HOST_EXTN */
 .endm
 
 #else
@@ -111,7 +117,21 @@ alternative_endif
 #include <asm/mmu_context.h>
 #include <asm/pgtable.h>
 
-#define KERN_TO_HYP(kva)	((unsigned long)kva & HYP_PAGE_OFFSET_MASK)
+static inline unsigned long __kern_hyp_va(unsigned long v)
+{
+	asm volatile(ALTERNATIVE(ALTERNATIVE("and %0, %0, %1",
+					     "and %0, %0, %2",
+					     ARM64_HYP_OFFSET_LOW),
+				 "nop",
+				 ARM64_HAS_VIRT_HOST_EXTN)
+		     : "+r" (v)
+		     : "i" (HYP_PAGE_OFFSET_HIGH_MASK),
+		       "i" (HYP_PAGE_OFFSET_LOW_MASK));
+	return v;
+}
+
+#define kern_hyp_va(v) 	(typeof(v))(__kern_hyp_va((unsigned long)(v)))
+#define KERN_TO_HYP(v)	kern_hyp_va(v)
 
 /*
  * We currently only support a 40bit IPA.
