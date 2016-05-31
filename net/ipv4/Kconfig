@@ -317,6 +317,7 @@ config NET_FOU
 	tristate "IP: Foo (IP protocols) over UDP"
 	select XFRM
 	select NET_UDP_TUNNEL
+	select IPV6_TUNNEL if IPV6
 	---help---
 	  Foo over UDP allows any IP protocol to be directly encapsulated
 	  over UDP include tunnels (IPIP, GRE, SIT). By encapsulating in UDP
