@@ -1684,14 +1684,6 @@ phys_addr_t kvm_mmu_get_httbr(void)
 		return virt_to_phys(hyp_pgd);
 }
 
-phys_addr_t kvm_mmu_get_boot_httbr(void)
-{
-	if (__kvm_cpu_uses_extended_idmap())
-		return virt_to_phys(merged_hyp_pgd);
-	else
-		return virt_to_phys(hyp_pgd);
-}
-
 phys_addr_t kvm_get_idmap_vector(void)
 {
 	return hyp_idmap_vector;
