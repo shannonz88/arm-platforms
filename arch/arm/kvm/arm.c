@@ -1322,10 +1322,6 @@ static int init_hyp_mode(void)
 		}
 	}
 
-#ifndef CONFIG_HOTPLUG_CPU
-	free_boot_hyp_pgd();
-#endif
-
 	/* set size of VMID supported by CPU */
 	kvm_vmid_bits = kvm_get_vmid_bits();
 	kvm_info("%d-bit VMID\n", kvm_vmid_bits);
