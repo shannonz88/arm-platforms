@@ -180,6 +180,19 @@ static int ahci_qoriq_phy_init(struct ahci_host_priv *hpriv)
 	return 0;
 }
 
+#define DCFG		0x01e00000
+#define SATA1_AMQR	0x550
+#define SATA2_AMQR	0x554
+
+static void icid_init(void)
+{
+	void __iomem *dcfg = ioremap(DCFG, 0x1000);
+
+	writel_relaxed(0x7e, dcfg + SATA1_AMQR);
+	writel_relaxed(0x7f, dcfg + SATA2_AMQR);
+	iounmap(dcfg);
+}
+
 static int ahci_qoriq_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -201,6 +214,8 @@ static int ahci_qoriq_probe(struct platform_device *pdev)
 	qoriq_priv = devm_kzalloc(dev, sizeof(*qoriq_priv), GFP_KERNEL);
 	if (!qoriq_priv)
 		return -ENOMEM;
+
+	icid_init();
 
 	qoriq_priv->type = (enum ahci_qoriq_type)of_id->data;
 
