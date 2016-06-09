@@ -149,7 +149,7 @@ static inline unsigned long __kern_hyp_va(unsigned long v)
 
 #include <asm/stage2_pgtable.h>
 
-int create_hyp_mappings(void *from, void *to);
+int create_hyp_mappings(void *from, void *to, bool is_ro);
 int create_hyp_io_mappings(void *from, void *to, phys_addr_t);
 void free_hyp_pgds(void);
 

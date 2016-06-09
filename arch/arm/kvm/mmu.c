@@ -660,12 +660,13 @@ static phys_addr_t kvm_kaddr_to_phys(void *kaddr)
  * create_hyp_mappings - duplicate a kernel virtual address range in Hyp mode
  * @from:	The virtual kernel start address of the range
  * @to:		The virtual kernel end address of the range (exclusive)
+ * @is_to:	Is the range mapped read-only?
  *
  * The same virtual address as the kernel virtual address is also used
  * in Hyp-mode mapping (modulo HYP_PAGE_OFFSET) to the same underlying
- * physical pages.
+ * physical pages. If @is_ro is true, then the mapping is read-only.
  */
-int create_hyp_mappings(void *from, void *to)
+int create_hyp_mappings(void *from, void *to, bool is_ro)
 {
 	phys_addr_t phys_addr;
 	unsigned long virt_addr;
@@ -677,7 +678,6 @@ int create_hyp_mappings(void *from, void *to)
 
 	start = start & PAGE_MASK;
 	end = PAGE_ALIGN(end);
-
 	for (virt_addr = start; virt_addr < end; virt_addr += PAGE_SIZE) {
 		int err;
 
@@ -685,7 +685,7 @@ int create_hyp_mappings(void *from, void *to)
 		err = __create_hyp_mappings(hyp_pgd, virt_addr,
 					    virt_addr + PAGE_SIZE,
 					    __phys_to_pfn(phys_addr),
-					    PAGE_HYP);
+					    is_ro ? PAGE_HYP_RO : PAGE_HYP);
 		if (err)
 			return err;
 	}
