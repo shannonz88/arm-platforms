@@ -162,7 +162,7 @@ iort_match_node_callback(struct acpi_iort_node *node, void *context)
 			int match;
 
 			match = !strcmp(ncomp->device_name, buffer.pointer);
-			kfree(buffer.pointer);
+			acpi_os_free(buffer.pointer);
 
 			if (match)
 				return AE_OK;
