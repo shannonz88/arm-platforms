@@ -207,6 +207,15 @@ static int vgic_get_common_attr(struct kvm_device *dev,
 			     VGIC_NR_PRIVATE_IRQS, uaddr);
 		break;
 	}
+	case KVM_DEV_ARM_VGIC_GRP_GICC_OFFSET: {
+		u32 __user *uaddr = (u32 __user *)(long)attr->addr;
+
+		if (!kvm_vgic_global_state.can_emulate_gicv2)
+			return -ENXIO;
+
+		r = put_user(vgic_v2_gicc_page_offset(), uaddr);
+		break;
+	}
 	}
 
 	return r;
@@ -373,6 +382,7 @@ static int vgic_v2_has_attr(struct kvm_device *dev,
 	case KVM_DEV_ARM_VGIC_GRP_CPU_REGS:
 		return vgic_v2_has_attr_regs(dev, attr);
 	case KVM_DEV_ARM_VGIC_GRP_NR_IRQS:
+	case KVM_DEV_ARM_VGIC_GRP_GICC_OFFSET:
 		return 0;
 	case KVM_DEV_ARM_VGIC_GRP_CTRL:
 		switch (attr->attr) {
@@ -421,6 +431,10 @@ static int vgic_v3_has_attr(struct kvm_device *dev,
 		break;
 	case KVM_DEV_ARM_VGIC_GRP_NR_IRQS:
 		return 0;
+	case KVM_DEV_ARM_VGIC_GRP_GICC_OFFSET:
+		if (kvm_vgic_global_state.can_emulate_gicv2)
+			return 0;
+		break;
 	case KVM_DEV_ARM_VGIC_GRP_CTRL:
 		switch (attr->attr) {
 		case KVM_DEV_ARM_VGIC_CTRL_INIT:

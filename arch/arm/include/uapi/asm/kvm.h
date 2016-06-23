@@ -177,6 +177,7 @@ struct kvm_arch_memory_slot {
 #define KVM_DEV_ARM_VGIC_GRP_NR_IRQS	3
 #define KVM_DEV_ARM_VGIC_GRP_CTRL       4
 #define   KVM_DEV_ARM_VGIC_CTRL_INIT    0
+#define KVM_DEV_ARM_VGIC_GRP_GICC_OFFSET 5
 
 /* KVM_IRQ_LINE irq field index values */
 #define KVM_ARM_IRQ_TYPE_SHIFT		24

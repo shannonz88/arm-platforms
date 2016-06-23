@@ -116,3 +116,11 @@ Groups:
      this attribute
     -ENODEV: no online VCPU
     -ENOMEM: memory shortage when allocating vgic internal data
+
+  KVM_DEV_ARM_VGIC_GRP_GICC_OFFSET
+  Attribute:
+    A value describing the alignment of the guest's GICC region, relative
+    to a 64kB page. This attribute is read-only and only valid when the
+    host is capable of emulating a GICv2.
+  Errors:
+    -ENXIO: The underlying hardware is not capable of emulating a GICv2
