@@ -22,7 +22,8 @@
 /* common helpers */
 
 static int vgic_check_ioaddr(struct kvm *kvm, phys_addr_t *ioaddr,
-			     phys_addr_t addr, phys_addr_t alignment)
+			     phys_addr_t addr, phys_addr_t alignment,
+			     u32 page_offset)
 {
 	if (addr & ~KVM_PHYS_MASK)
 		return -E2BIG;
@@ -30,10 +31,18 @@ static int vgic_check_ioaddr(struct kvm *kvm, phys_addr_t *ioaddr,
 	if (!IS_ALIGNED(addr, alignment))
 		return -EINVAL;
 
+	if ((addr & ~PAGE_MASK) != page_offset)
+		return -EINVAL;
+
 	if (!IS_VGIC_ADDR_UNDEF(*ioaddr))
 		return -EEXIST;
 
 	return 0;
+}
+
+static u32 vgic_v2_gicc_page_offset(void)
+{
+	return kvm_vgic_global_state.vcpu_base & ~PAGE_MASK;
 }
 
 /**
@@ -58,6 +67,7 @@ int kvm_vgic_addr(struct kvm *kvm, unsigned long type, u64 *addr, bool write)
 	struct vgic_dist *vgic = &kvm->arch.vgic;
 	int type_needed;
 	phys_addr_t *addr_ptr, alignment;
+	u32 page_offset = *addr & ~PAGE_MASK;
 
 	mutex_lock(&kvm->lock);
 	switch (type) {
@@ -70,6 +80,7 @@ int kvm_vgic_addr(struct kvm *kvm, unsigned long type, u64 *addr, bool write)
 		type_needed = KVM_DEV_TYPE_ARM_VGIC_V2;
 		addr_ptr = &vgic->vgic_cpu_base;
 		alignment = SZ_4K;
+		page_offset = vgic_v2_gicc_page_offset();
 		break;
 #ifdef CONFIG_KVM_ARM_VGIC_V3
 	case KVM_VGIC_V3_ADDR_TYPE_DIST:
@@ -94,7 +105,8 @@ int kvm_vgic_addr(struct kvm *kvm, unsigned long type, u64 *addr, bool write)
 	}
 
 	if (write) {
-		r = vgic_check_ioaddr(kvm, addr_ptr, *addr, alignment);
+		r = vgic_check_ioaddr(kvm, addr_ptr, *addr, alignment,
+				      page_offset);
 		if (!r)
 			*addr_ptr = *addr;
 	} else {
