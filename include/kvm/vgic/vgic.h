@@ -20,6 +20,7 @@
 #include <linux/kvm.h>
 #include <linux/irqreturn.h>
 #include <linux/spinlock.h>
+#include <linux/static_key.h>
 #include <linux/types.h>
 #include <kvm/iodev.h>
 
@@ -46,6 +47,9 @@ struct vgic_global {
 
 	/* Physical address of vgic virtual cpu interface */
 	phys_addr_t		vcpu_base;
+
+	/* GICV mapping */
+	void __iomem		*vcpu_base_va;
 
 	/* virtual control interface mapping */
 	void __iomem		*vctrl_base;
@@ -194,6 +198,8 @@ struct vgic_cpu {
 
 	u64 live_lrs;
 };
+
+extern struct static_key_false vgic_v2_cpuif_trap;
 
 int kvm_vgic_addr(struct kvm *kvm, unsigned long type, u64 *addr, bool write);
 void kvm_vgic_early_init(struct kvm *kvm);

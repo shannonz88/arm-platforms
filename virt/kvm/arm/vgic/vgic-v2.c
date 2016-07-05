@@ -277,12 +277,14 @@ int vgic_v2_map_resources(struct kvm *kvm)
 		goto out;
 	}
 
-	ret = kvm_phys_addr_ioremap(kvm, dist->vgic_cpu_base,
-				    kvm_vgic_global_state.vcpu_base,
-				    KVM_VGIC_V2_CPU_SIZE, true);
-	if (ret) {
-		kvm_err("Unable to remap VGIC CPU to VCPU\n");
-		goto out;
+	if (!static_branch_unlikely(&vgic_v2_cpuif_trap)) {
+		ret = kvm_phys_addr_ioremap(kvm, dist->vgic_cpu_base,
+					    kvm_vgic_global_state.vcpu_base,
+					    KVM_VGIC_V2_CPU_SIZE, true);
+		if (ret) {
+			kvm_err("Unable to remap VGIC CPU to VCPU\n");
+			goto out;
+		}
 	}
 
 	dist->ready = true;
@@ -292,6 +294,8 @@ out:
 		kvm_vgic_destroy(kvm);
 	return ret;
 }
+
+DEFINE_STATIC_KEY_FALSE(vgic_v2_cpuif_trap);
 
 /**
  * vgic_v2_probe - probe for a GICv2 compatible interrupt controller in DT
@@ -309,24 +313,33 @@ int vgic_v2_probe(const struct gic_kvm_info *info)
 		return -ENXIO;
 	}
 
-	if (!PAGE_ALIGNED(info->vcpu.start)) {
-		kvm_err("GICV physical address 0x%llx not page aligned\n",
-			(unsigned long long)info->vcpu.start);
-		return -ENXIO;
-	}
+	if (!PAGE_ALIGNED(info->vcpu.start) ||
+	    !PAGE_ALIGNED(resource_size(&info->vcpu))) {
+		kvm_info("GICV region size/alignement is unsafe, using trapping\n");
+		kvm_vgic_global_state.vcpu_base_va = ioremap(info->vcpu.start,
+							     resource_size(&info->vcpu));
+		if (!kvm_vgic_global_state.vcpu_base_va) {
+			kvm_err("Cannot ioremap GICV\n");
+			return -ENOMEM;
+		}
 
-	if (!PAGE_ALIGNED(resource_size(&info->vcpu))) {
-		kvm_err("GICV size 0x%llx not a multiple of page size 0x%lx\n",
-			(unsigned long long)resource_size(&info->vcpu),
-			PAGE_SIZE);
-		return -ENXIO;
+		ret = create_hyp_io_mappings(kvm_vgic_global_state.vcpu_base_va,
+					     kvm_vgic_global_state.vcpu_base_va + resource_size(&info->vcpu),
+					     info->vcpu.start);
+		if (ret) {
+			kvm_err("Cannot map GICV into hyp\n");
+			goto out;
+		}
+
+		static_branch_enable(&vgic_v2_cpuif_trap);
 	}
 
 	kvm_vgic_global_state.vctrl_base = ioremap(info->vctrl.start,
 						   resource_size(&info->vctrl));
 	if (!kvm_vgic_global_state.vctrl_base) {
 		kvm_err("Cannot ioremap GICH\n");
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto out;
 	}
 
 	vtr = readl_relaxed(kvm_vgic_global_state.vctrl_base + GICH_VTR);
@@ -339,8 +352,7 @@ int vgic_v2_probe(const struct gic_kvm_info *info)
 
 	if (ret) {
 		kvm_err("Cannot map VCTRL into hyp\n");
-		iounmap(kvm_vgic_global_state.vctrl_base);
-		return ret;
+		goto out;
 	}
 
 	kvm_vgic_global_state.can_emulate_gicv2 = true;
@@ -353,4 +365,11 @@ int vgic_v2_probe(const struct gic_kvm_info *info)
 	kvm_info("vgic-v2@%llx\n", info->vctrl.start);
 
 	return 0;
+out:
+	if (kvm_vgic_global_state.vctrl_base)
+		iounmap(kvm_vgic_global_state.vctrl_base);
+	if (kvm_vgic_global_state.vcpu_base_va)
+		iounmap(kvm_vgic_global_state.vcpu_base_va);
+
+	return ret;
 }

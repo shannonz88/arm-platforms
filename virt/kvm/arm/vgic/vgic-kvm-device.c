@@ -80,7 +80,8 @@ int kvm_vgic_addr(struct kvm *kvm, unsigned long type, u64 *addr, bool write)
 		type_needed = KVM_DEV_TYPE_ARM_VGIC_V2;
 		addr_ptr = &vgic->vgic_cpu_base;
 		alignment = SZ_4K;
-		page_offset = vgic_v2_gicc_page_offset();
+		if (!static_branch_unlikely(&vgic_v2_cpuif_trap))
+			page_offset = vgic_v2_gicc_page_offset();
 		break;
 #ifdef CONFIG_KVM_ARM_VGIC_V3
 	case KVM_VGIC_V3_ADDR_TYPE_DIST:
