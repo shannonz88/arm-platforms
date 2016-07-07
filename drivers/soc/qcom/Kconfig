@@ -76,3 +76,11 @@ config QCOM_WCNSS_CTRL
 	help
 	  Client driver for the WCNSS_CTRL SMD channel, used to download nv
 	  firmware to a newly booted WCNSS chip.
+
+config QCOM_EBI2
+	bool "Qualcomm External Bus Interface 2 (EBI2)"
+	default y if ARCH_MSM8X60
+	help
+	  Say y here to enable support for the Qualcomm External Bus
+	  Interface 2, which can be used to connect things like NAND Flash,
+	  SRAM, ethernet adapters, FPGAs and LCD displays.
