@@ -141,6 +141,18 @@
 			};
 		};
 
+		ebi2@1a100000 {
+			compatible = "qcom,ebi2";
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges;
+			reg = <0x1a100000 0x1000>, <0x1a110000 0x1000>;
+			reg-names = "ebi2", "xmem";
+			clocks = <&gcc EBI2_2X_CLK>, <&gcc EBI2_CLK>;
+			clock-names = "ebi2x", "ebi2";
+			status = "disabled";
+		};
+
 		qcom,ssbi@500000 {
 			compatible = "qcom,ssbi";
 			reg = <0x500000 0x1000>;
