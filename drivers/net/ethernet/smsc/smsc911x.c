@@ -63,6 +63,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/property.h>
 #include <linux/gpio/consumer.h>
+#include <linux/pm_wakeirq.h>
 
 #include "smsc911x.h"
 
@@ -150,6 +151,9 @@ struct smsc911x_data {
 
 	/* Reset GPIO */
 	struct gpio_desc *reset_gpiod;
+
+	/* PME interrupt */
+	int pme_irq;
 
 	/* clock */
 	struct clk *clk;
@@ -1885,6 +1889,17 @@ static irqreturn_t smsc911x_irqhandler(int irq, void *dev_id)
 	return serviced;
 }
 
+static irqreturn_t smsc911x_pme_irq_thread(int irq, void *dev_id)
+{
+	struct net_device *dev = dev_id;
+	struct smsc911x_data *pdata __maybe_unused = netdev_priv(dev);
+
+	SMSC_TRACE(pdata, pm, "wakeup event");
+	/* This signal is active for 50 ms, wait for it to deassert */
+	usleep_range(50000, 100000);
+	return IRQ_HANDLED;
+}
+
 #ifdef CONFIG_NET_POLL_CONTROLLER
 static void smsc911x_poll_controller(struct net_device *dev)
 {
@@ -2505,6 +2520,31 @@ static int smsc911x_drv_probe(struct platform_device *pdev)
 		goto out_disable_resources;
 	}
 
+	irq = platform_get_irq(pdev, 1);
+	if (irq == -EPROBE_DEFER) {
+		retval = -EPROBE_DEFER;
+		goto out_disable_resources;
+	/* It's perfectly fine to not have a PME IRQ */
+	} else if (irq > 0) {
+		/*
+		 * The Power Management Event (PME) IRQ appears as
+		 * a pulse waking up the system from sleep in response to  a
+		 * network event.
+		 */
+		retval = request_threaded_irq(irq, NULL,
+					      smsc911x_pme_irq_thread,
+					      IRQF_ONESHOT, "smsc911x-pme",
+					      dev);
+		if (retval) {
+			SMSC_WARN(pdata, probe,
+			"Unable to claim requested PME irq: %d", irq);
+			goto out_disable_resources;
+		}
+		pdata->pme_irq = irq;
+		device_init_wakeup(&pdev->dev, true);
+		dev_pm_set_wake_irq(&pdev->dev, irq);
+	}
+
 	netif_carrier_off(dev);
 
 	retval = register_netdev(dev);
@@ -2593,6 +2633,9 @@ static int smsc911x_suspend(struct device *dev)
 		PMT_CTRL_PM_MODE_D1_ | PMT_CTRL_WOL_EN_ |
 		PMT_CTRL_ED_EN_ | PMT_CTRL_PME_EN_);
 
+	if (pdata->pme_irq && device_may_wakeup(dev))
+		enable_irq_wake(pdata->pme_irq);
+
 	return 0;
 }
 
@@ -2601,6 +2644,9 @@ static int smsc911x_resume(struct device *dev)
 	struct net_device *ndev = dev_get_drvdata(dev);
 	struct smsc911x_data *pdata = netdev_priv(ndev);
 	unsigned int to = 100;
+
+	if (pdata->pme_irq && device_may_wakeup(dev))
+		disable_irq_wake(pdata->pme_irq);
 
 	/* Note 3.11 from the datasheet:
 	 * 	"When the LAN9220 is in a power saving state, a write of any
