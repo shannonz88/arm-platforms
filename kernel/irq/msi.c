@@ -361,6 +361,13 @@ int msi_domain_alloc_irqs(struct irq_domain *domain, struct device *dev,
 		else
 			dev_dbg(dev, "irq [%d-%d] for MSI\n",
 				virq, virq + desc->nvec_used - 1);
+
+		if (info->flags & MSI_FLAG_ACTIVATE_EARLY) {
+			struct irq_data *irq_data;
+
+			irq_data = irq_domain_get_irq_data(domain, desc->irq);
+			irq_domain_activate_irq(irq_data);
+		}
 	}
 
 	return 0;
