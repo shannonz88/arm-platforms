@@ -1208,6 +1208,7 @@ static int init_subsystems(void)
 		break;
 	case -ENODEV:
 	case -ENXIO:
+		kvm_err("No useable vgic detected\n");
 		vgic_present = false;
 		err = 0;
 		break;
@@ -1218,9 +1219,13 @@ static int init_subsystems(void)
 	/*
 	 * Init HYP architected timer support
 	 */
-	err = kvm_timer_hyp_init();
-	if (err)
-		goto out;
+	if (vgic_present) {
+		err = kvm_timer_hyp_init();
+		if (err)
+			goto out;
+	} else {
+		static_branch_enable(&kvm_vgic_disabled);
+	}
 
 	kvm_perf_init();
 	kvm_coproc_table_init();

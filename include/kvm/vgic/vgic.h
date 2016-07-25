@@ -19,6 +19,7 @@
 #include <linux/kernel.h>
 #include <linux/kvm.h>
 #include <linux/irqreturn.h>
+#include <linux/jump_label.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>
 #include <kvm/iodev.h>
@@ -194,6 +195,8 @@ struct vgic_cpu {
 
 	u64 live_lrs;
 };
+
+extern struct static_key_false kvm_vgic_disabled;
 
 int kvm_vgic_addr(struct kvm *kvm, unsigned long type, u64 *addr, bool write);
 void kvm_vgic_early_init(struct kvm *kvm);

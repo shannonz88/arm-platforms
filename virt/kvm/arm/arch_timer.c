@@ -157,6 +157,9 @@ bool kvm_timer_should_fire(struct kvm_vcpu *vcpu)
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 	cycle_t cval, now;
 
+	if (static_branch_unlikely(&kvm_vgic_disabled))
+		return false;
+
 	if (!kvm_timer_irq_can_fire(vcpu))
 		return false;
 
@@ -215,6 +218,9 @@ void kvm_timer_schedule(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 
+	if (static_branch_unlikely(&kvm_vgic_disabled))
+		return;
+
 	BUG_ON(timer_is_armed(timer));
 
 	/*
@@ -239,6 +245,10 @@ void kvm_timer_schedule(struct kvm_vcpu *vcpu)
 void kvm_timer_unschedule(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+
+	if (static_branch_unlikely(&kvm_vgic_disabled))
+		return;
+
 	timer_disarm(timer);
 }
 
@@ -254,6 +264,9 @@ void kvm_timer_flush_hwstate(struct kvm_vcpu *vcpu)
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 	bool phys_active;
 	int ret;
+
+	if (static_branch_unlikely(&kvm_vgic_disabled))
+		return;
 
 	if (kvm_timer_update_state(vcpu))
 		return;
@@ -320,6 +333,9 @@ void kvm_timer_sync_hwstate(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 
+	if (static_branch_unlikely(&kvm_vgic_disabled))
+		return;
+
 	BUG_ON(timer_is_armed(timer));
 
 	/*
@@ -333,6 +349,9 @@ int kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu,
 			 const struct kvm_irq_level *irq)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+
+	if (static_branch_unlikely(&kvm_vgic_disabled))
+		return 0;
 
 	/*
 	 * The vcpu timer irq number cannot be determined in
@@ -358,6 +377,9 @@ void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 
+	if (static_branch_unlikely(&kvm_vgic_disabled))
+		return;
+
 	INIT_WORK(&timer->expired, kvm_timer_inject_irq_work);
 	hrtimer_init(&timer->timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
 	timer->timer.function = kvm_timer_expire;
@@ -371,6 +393,9 @@ static void kvm_timer_init_interrupt(void *info)
 int kvm_arm_timer_set_reg(struct kvm_vcpu *vcpu, u64 regid, u64 value)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+
+	if (static_branch_unlikely(&kvm_vgic_disabled))
+		return ~1;
 
 	switch (regid) {
 	case KVM_REG_ARM_TIMER_CTL:
@@ -393,6 +418,9 @@ int kvm_arm_timer_set_reg(struct kvm_vcpu *vcpu, u64 regid, u64 value)
 u64 kvm_arm_timer_get_reg(struct kvm_vcpu *vcpu, u64 regid)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+
+	if (static_branch_unlikely(&kvm_vgic_disabled))
+		return ~0;
 
 	switch (regid) {
 	case KVM_REG_ARM_TIMER_CTL:
@@ -475,6 +503,9 @@ void kvm_timer_vcpu_terminate(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 
+	if (static_branch_unlikely(&kvm_vgic_disabled))
+		return;
+
 	timer_disarm(timer);
 	kvm_vgic_unmap_phys_irq(vcpu, timer->irq.irq);
 }
@@ -486,6 +517,9 @@ int kvm_timer_enable(struct kvm_vcpu *vcpu)
 	struct irq_data *data;
 	int phys_irq;
 	int ret;
+
+	if (static_branch_unlikely(&kvm_vgic_disabled))
+		return 0;
 
 	if (timer->enabled)
 		return 0;
@@ -530,5 +564,8 @@ int kvm_timer_enable(struct kvm_vcpu *vcpu)
 
 void kvm_timer_init(struct kvm *kvm)
 {
+	if (static_branch_unlikely(&kvm_vgic_disabled))
+		return;
+
 	kvm->arch.timer.cntvoff = kvm_phys_timer_read();
 }
