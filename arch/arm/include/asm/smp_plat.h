@@ -26,6 +26,8 @@ static inline bool is_smp(void)
 #endif
 }
 
+extern void (*__smp_cross_call)(const struct cpumask *, unsigned int);
+
 /**
  * smp_cpuid_part() - return part id for a given cpu
  * @cpu:	logical cpu id.
