@@ -160,6 +160,32 @@ static void __hyp_text save_maint_int_state(struct kvm_vcpu *vcpu, int nr_lr)
 	}
 }
 
+#define read_aprs(ap, g, bits)						\
+	do {								\
+		switch (bits) {						\
+		case 7:							\
+			ap[3] = read_gicreg(ICH_AP##g##R3_EL2);		\
+			ap[2] = read_gicreg(ICH_AP##g##R2_EL2);		\
+		case 6:							\
+			ap[1] = read_gicreg(ICH_AP##g##R1_EL2);		\
+		default:						\
+			ap[0] = read_gicreg(ICH_AP##g##R0_EL2);		\
+		}							\
+	} while (0)
+
+#define write_aprs(ap, g, bits)						\
+	do {								\
+		switch (bits) {						\
+		case 7:							\
+			write_gicreg(ap[3], ICH_AP##g##R3_EL2);		\
+			write_gicreg(ap[2], ICH_AP##g##R2_EL2);		\
+		case 6:							\
+			write_gicreg(ap[1], ICH_AP##g##R1_EL2);		\
+		default:						\
+			write_gicreg(ap[0], ICH_AP##g##R0_EL2);		\
+		}							\
+	} while(0)
+
 void __hyp_text __vgic_v3_save_state(struct kvm_vcpu *vcpu)
 {
 	struct vgic_v3_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v3;
@@ -199,25 +225,9 @@ void __hyp_text __vgic_v3_save_state(struct kvm_vcpu *vcpu)
 			__gic_v3_set_lr(0, i);
 		}
 
-		switch (nr_pri_bits) {
-		case 7:
-			cpu_if->vgic_ap0r[3] = read_gicreg(ICH_AP0R3_EL2);
-			cpu_if->vgic_ap0r[2] = read_gicreg(ICH_AP0R2_EL2);
-		case 6:
-			cpu_if->vgic_ap0r[1] = read_gicreg(ICH_AP0R1_EL2);
-		default:
-			cpu_if->vgic_ap0r[0] = read_gicreg(ICH_AP0R0_EL2);
-		}
+		read_aprs(cpu_if->vgic_ap0r, 0, nr_pri_bits);
 
-		switch (nr_pri_bits) {
-		case 7:
-			cpu_if->vgic_ap1r[3] = read_gicreg(ICH_AP1R3_EL2);
-			cpu_if->vgic_ap1r[2] = read_gicreg(ICH_AP1R2_EL2);
-		case 6:
-			cpu_if->vgic_ap1r[1] = read_gicreg(ICH_AP1R1_EL2);
-		default:
-			cpu_if->vgic_ap1r[0] = read_gicreg(ICH_AP1R0_EL2);
-		}
+		read_aprs(cpu_if->vgic_ap1r, 1, nr_pri_bits);
 
 		vcpu->arch.vgic_cpu.live_lrs = 0;
 	} else {
@@ -279,25 +289,9 @@ void __hyp_text __vgic_v3_restore_state(struct kvm_vcpu *vcpu)
 	if (live_lrs) {
 		write_gicreg(cpu_if->vgic_hcr, ICH_HCR_EL2);
 
-		switch (nr_pri_bits) {
-		case 7:
-			write_gicreg(cpu_if->vgic_ap0r[3], ICH_AP0R3_EL2);
-			write_gicreg(cpu_if->vgic_ap0r[2], ICH_AP0R2_EL2);
-		case 6:
-			write_gicreg(cpu_if->vgic_ap0r[1], ICH_AP0R1_EL2);
-		default:
-			write_gicreg(cpu_if->vgic_ap0r[0], ICH_AP0R0_EL2);
-		}
+		write_aprs(cpu_if->vgic_ap0r, 0, nr_pri_bits);
 
-		switch (nr_pri_bits) {
-		case 7:
-			write_gicreg(cpu_if->vgic_ap1r[3], ICH_AP1R3_EL2);
-			write_gicreg(cpu_if->vgic_ap1r[2], ICH_AP1R2_EL2);
-		case 6:
-			write_gicreg(cpu_if->vgic_ap1r[1], ICH_AP1R1_EL2);
-		default:
-			write_gicreg(cpu_if->vgic_ap1r[0], ICH_AP1R0_EL2);
-		}
+		write_aprs(cpu_if->vgic_ap1r, 1, nr_pri_bits);
 
 		for (i = 0; i <= max_lr_idx; i++) {
 			if (!(live_lrs & (1 << i)))
