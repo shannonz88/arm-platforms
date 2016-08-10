@@ -711,3 +711,12 @@ bool kvm_vgic_map_is_active(struct kvm_vcpu *vcpu, unsigned int virt_irq)
 	return map_is_active;
 }
 
+void kvm_vgic_vcpu_put(struct kvm_vcpu *vcpu)
+{
+#ifdef CONFIG_KVM_ARM_VGIC_V3
+	if (vcpu->arch.vgic_cpu.v3_has_g0_interrupts) {
+		kvm_call_hyp(__vgic_v3_clear_ap0r);
+		vcpu->arch.vgic_cpu.v3_has_g0_interrupts = false;
+	}
+#endif
+}

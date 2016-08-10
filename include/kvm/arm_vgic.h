@@ -251,6 +251,7 @@ struct vgic_cpu {
 	struct list_head ap_list_head;
 
 	u64 live_lrs;
+	bool v3_has_g0_interrupts;
 
 	/*
 	 * Members below are used with GICv3 emulation only and represent
@@ -293,6 +294,7 @@ int kvm_vgic_vcpu_pending_irq(struct kvm_vcpu *vcpu);
 bool kvm_vcpu_has_pending_irqs(struct kvm_vcpu *vcpu);
 void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu);
 void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu);
+void kvm_vgic_vcpu_put(struct kvm_vcpu *vcpu);
 
 #ifdef CONFIG_KVM_ARM_VGIC_V3
 void vgic_v3_dispatch_sgi(struct kvm_vcpu *vcpu, u64 reg);

@@ -54,6 +54,7 @@ extern int __kvm_vcpu_run(struct kvm_vcpu *vcpu);
 
 extern u64 __vgic_v3_get_ich_vtr_el2(void);
 extern void __vgic_v3_init_lrs(void);
+extern void __vgic_v3_clear_ap0r(void);
 
 extern u32 __kvm_get_mdcr_el2(void);
 

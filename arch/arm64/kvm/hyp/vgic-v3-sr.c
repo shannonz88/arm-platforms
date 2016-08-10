@@ -225,7 +225,8 @@ void __hyp_text __vgic_v3_save_state(struct kvm_vcpu *vcpu)
 			__gic_v3_set_lr(0, i);
 		}
 
-		read_aprs(cpu_if->vgic_ap0r, 0, nr_pri_bits);
+		if (unlikely(vcpu->arch.vgic_cpu.v3_has_g0_interrupts))
+			read_aprs(cpu_if->vgic_ap0r, 0, nr_pri_bits);
 
 		read_aprs(cpu_if->vgic_ap1r, 1, nr_pri_bits);
 
@@ -260,6 +261,7 @@ void __hyp_text __vgic_v3_restore_state(struct kvm_vcpu *vcpu)
 	u64 val;
 	u32 max_lr_idx, nr_pri_bits;
 	u16 live_lrs = 0;
+	bool g0 = false;
 	int i;
 
 	/*
@@ -280,8 +282,11 @@ void __hyp_text __vgic_v3_restore_state(struct kvm_vcpu *vcpu)
 	nr_pri_bits = vtr_to_nr_pri_bits(val);
 
 	for (i = 0; i <= max_lr_idx; i++) {
-		if (cpu_if->vgic_lr[i] & ICH_LR_STATE)
+		if (cpu_if->vgic_lr[i] & ICH_LR_STATE) {
 			live_lrs |= (1 << i);
+			if (cpu_if->vgic_sre)
+				g0 |= !(cpu_if->vgic_lr[i] & ICH_LR_GROUP);
+		}
 	}
 
 	write_gicreg(cpu_if->vgic_vmcr, ICH_VMCR_EL2);
@@ -289,7 +294,8 @@ void __hyp_text __vgic_v3_restore_state(struct kvm_vcpu *vcpu)
 	if (live_lrs) {
 		write_gicreg(cpu_if->vgic_hcr, ICH_HCR_EL2);
 
-		write_aprs(cpu_if->vgic_ap0r, 0, nr_pri_bits);
+		if (g0)
+			write_aprs(cpu_if->vgic_ap0r, 0, nr_pri_bits);
 
 		write_aprs(cpu_if->vgic_ap1r, 1, nr_pri_bits);
 
@@ -300,6 +306,8 @@ void __hyp_text __vgic_v3_restore_state(struct kvm_vcpu *vcpu)
 			__gic_v3_set_lr(cpu_if->vgic_lr[i], i);
 		}
 	}
+
+	vcpu->arch.vgic_cpu.v3_has_g0_interrupts = g0;
 
 	/*
 	 * Ensures that the above will have reached the
@@ -320,6 +328,14 @@ void __hyp_text __vgic_v3_restore_state(struct kvm_vcpu *vcpu)
 		     ICC_SRE_EL2);
 }
 
+void __hyp_text __vgic_v3_clear_ap0r(void)
+{
+	u32 nr_pri_bits = vtr_to_nr_pri_bits(read_gicreg(ICH_VTR_EL2));
+	u32 ap0r[4] = { };
+
+	write_aprs(ap0r, 0, nr_pri_bits);
+}
+
 void __hyp_text __vgic_v3_init_lrs(void)
 {
 	int max_lr_idx = vtr_to_max_lr_idx(read_gicreg(ICH_VTR_EL2));
@@ -327,6 +343,8 @@ void __hyp_text __vgic_v3_init_lrs(void)
 
 	for (i = 0; i <= max_lr_idx; i++)
 		__gic_v3_set_lr(0, i);
+
+	__vgic_v3_clear_ap0r();
 }
 
 static u64 __hyp_text __vgic_v3_read_ich_vtr_el2(void)
