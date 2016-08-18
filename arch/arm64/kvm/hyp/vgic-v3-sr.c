@@ -34,7 +34,7 @@
 #define write_gicreg(v,r)						\
 	do {								\
 		u64 __val = (v);					\
-		asm volatile("msr_s " __stringify(r) ", %0" : : "r" (__val));\
+		asm volatile("msr_s " __stringify(r) ", %x0" : : "rZ" (__val));\
 	} while (0)
 
 static u64 __hyp_text __gic_v3_get_lr(unsigned int lr)
