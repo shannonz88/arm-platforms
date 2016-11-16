@@ -94,7 +94,7 @@ out_unlock:
 	return irq;
 }
 
-struct its_device {
+struct vits_device {
 	struct list_head dev_list;
 
 	/* the head for the list of ITTEs */
@@ -104,7 +104,7 @@ struct its_device {
 
 #define COLLECTION_NOT_MAPPED ((u32)~0)
 
-struct its_collection {
+struct vits_collection {
 	struct list_head coll_list;
 
 	u32 collection_id;
@@ -118,7 +118,7 @@ struct its_itte {
 	struct list_head itte_list;
 
 	struct vgic_irq *irq;
-	struct its_collection *collection;
+	struct vits_collection *collection;
 	u32 lpi;
 	u32 event_id;
 };
@@ -127,9 +127,9 @@ struct its_itte {
  * Find and returns a device in the device table for an ITS.
  * Must be called with the its_lock mutex held.
  */
-static struct its_device *find_its_device(struct vgic_its *its, u32 device_id)
+static struct vits_device *find_vits_device(struct vgic_its *its, u32 device_id)
 {
-	struct its_device *device;
+	struct vits_device *device;
 
 	list_for_each_entry(device, &its->device_list, dev_list)
 		if (device_id == device->device_id)
@@ -146,10 +146,10 @@ static struct its_device *find_its_device(struct vgic_its *its, u32 device_id)
 static struct its_itte *find_itte(struct vgic_its *its, u32 device_id,
 				  u32 event_id)
 {
-	struct its_device *device;
+	struct vits_device *device;
 	struct its_itte *itte;
 
-	device = find_its_device(its, device_id);
+	device = find_vits_device(its, device_id);
 	if (device == NULL)
 		return NULL;
 
@@ -180,9 +180,9 @@ static struct its_itte *find_itte(struct vgic_its *its, u32 device_id,
  * Finds and returns a collection in the ITS collection table.
  * Must be called with the its_lock mutex held.
  */
-static struct its_collection *find_collection(struct vgic_its *its, int coll_id)
+static struct vits_collection *find_collection(struct vgic_its *its, int coll_id)
 {
-	struct its_collection *collection;
+	struct vits_collection *collection;
 
 	list_for_each_entry(collection, &its->collection_list, coll_list) {
 		if (coll_id == collection->collection_id)
@@ -289,9 +289,9 @@ static void update_affinity_itte(struct kvm *kvm, struct its_itte *itte)
  * Must be called with the its_lock mutex held.
  */
 static void update_affinity_collection(struct kvm *kvm, struct vgic_its *its,
-				       struct its_collection *coll)
+				       struct vits_collection *coll)
 {
-	struct its_device *device;
+	struct vits_device *device;
 	struct its_itte *itte;
 
 	for_each_lpi_its(device, itte, its) {
@@ -596,7 +596,7 @@ static int vgic_its_cmd_handle_movi(struct kvm *kvm, struct vgic_its *its,
 	u32 coll_id = its_cmd_get_collection(its_cmd);
 	struct kvm_vcpu *vcpu;
 	struct its_itte *itte;
-	struct its_collection *collection;
+	struct vits_collection *collection;
 
 	itte = find_itte(its, device_id, event_id);
 	if (!itte)
@@ -679,10 +679,10 @@ static bool vgic_its_check_id(struct vgic_its *its, u64 baser, int id)
 }
 
 static int vgic_its_alloc_collection(struct vgic_its *its,
-				     struct its_collection **colp,
+				     struct vits_collection **colp,
 				     u32 coll_id)
 {
-	struct its_collection *collection;
+	struct vits_collection *collection;
 
 	if (!vgic_its_check_id(its, its->baser_coll_table, coll_id))
 		return E_ITS_MAPC_COLLECTION_OOR;
@@ -700,8 +700,8 @@ static int vgic_its_alloc_collection(struct vgic_its *its,
 
 static void vgic_its_free_collection(struct vgic_its *its, u32 coll_id)
 {
-	struct its_collection *collection;
-	struct its_device *device;
+	struct vits_collection *collection;
+	struct vits_device *device;
 	struct its_itte *itte;
 
 	/*
@@ -733,12 +733,12 @@ static int vgic_its_cmd_handle_mapi(struct kvm *kvm, struct vgic_its *its,
 	u32 event_id = its_cmd_get_id(its_cmd);
 	u32 coll_id = its_cmd_get_collection(its_cmd);
 	struct its_itte *itte;
-	struct its_device *device;
-	struct its_collection *collection, *new_coll = NULL;
+	struct vits_device *device;
+	struct vits_collection *collection, *new_coll = NULL;
 	int lpi_nr;
 	struct vgic_irq *irq;
 
-	device = find_its_device(its, device_id);
+	device = find_vits_device(its, device_id);
 	if (!device)
 		return E_ITS_MAPTI_UNMAPPED_DEVICE;
 
@@ -797,7 +797,7 @@ static int vgic_its_cmd_handle_mapi(struct kvm *kvm, struct vgic_its *its,
 }
 
 /* Requires the its_lock to be held. */
-static void vgic_its_unmap_device(struct kvm *kvm, struct its_device *device)
+static void vgic_its_unmap_device(struct kvm *kvm, struct vits_device *device)
 {
 	struct its_itte *itte, *temp;
 
@@ -822,12 +822,12 @@ static int vgic_its_cmd_handle_mapd(struct kvm *kvm, struct vgic_its *its,
 {
 	u32 device_id = its_cmd_get_deviceid(its_cmd);
 	bool valid = its_cmd_get_validbit(its_cmd);
-	struct its_device *device;
+	struct vits_device *device;
 
 	if (!vgic_its_check_id(its, its->baser_device_table, device_id))
 		return E_ITS_MAPD_DEVICE_OOR;
 
-	device = find_its_device(its, device_id);
+	device = find_vits_device(its, device_id);
 
 	/*
 	 * The spec says that calling MAPD on an already mapped device
@@ -844,7 +844,7 @@ static int vgic_its_cmd_handle_mapd(struct kvm *kvm, struct vgic_its *its,
 	if (!valid)
 		return 0;
 
-	device = kzalloc(sizeof(struct its_device), GFP_KERNEL);
+	device = kzalloc(sizeof(struct vits_device), GFP_KERNEL);
 	if (!device)
 		return -ENOMEM;
 
@@ -865,7 +865,7 @@ static int vgic_its_cmd_handle_mapc(struct kvm *kvm, struct vgic_its *its,
 {
 	u16 coll_id;
 	u32 target_addr;
-	struct its_collection *collection;
+	struct vits_collection *collection;
 	bool valid;
 
 	valid = its_cmd_get_validbit(its_cmd);
@@ -949,7 +949,7 @@ static int vgic_its_cmd_handle_invall(struct kvm *kvm, struct vgic_its *its,
 				      u64 *its_cmd)
 {
 	u32 coll_id = its_cmd_get_collection(its_cmd);
-	struct its_collection *collection;
+	struct vits_collection *collection;
 	struct kvm_vcpu *vcpu;
 	struct vgic_irq *irq;
 	u32 *intids;
@@ -1413,7 +1413,7 @@ static void vgic_its_destroy(struct kvm_device *kvm_dev)
 {
 	struct kvm *kvm = kvm_dev->kvm;
 	struct vgic_its *its = kvm_dev->private;
-	struct its_device *dev;
+	struct vits_device *dev;
 	struct its_itte *itte;
 	struct list_head *dev_cur, *dev_temp;
 	struct list_head *cur, *temp;
@@ -1427,7 +1427,7 @@ static void vgic_its_destroy(struct kvm_device *kvm_dev)
 
 	mutex_lock(&its->its_lock);
 	list_for_each_safe(dev_cur, dev_temp, &its->device_list) {
-		dev = container_of(dev_cur, struct its_device, dev_list);
+		dev = container_of(dev_cur, struct vits_device, dev_list);
 		list_for_each_safe(cur, temp, &dev->itt_head) {
 			itte = (container_of(cur, struct its_itte, itte_list));
 			its_free_itte(kvm, itte);
@@ -1438,7 +1438,7 @@ static void vgic_its_destroy(struct kvm_device *kvm_dev)
 
 	list_for_each_safe(cur, temp, &its->collection_list) {
 		list_del(cur);
-		kfree(container_of(cur, struct its_collection, coll_list));
+		kfree(container_of(cur, struct vits_collection, coll_list));
 	}
 	mutex_unlock(&its->its_lock);
 
