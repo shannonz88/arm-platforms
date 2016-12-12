@@ -159,7 +159,11 @@ static bool vring_use_dma_api(struct virtio_device *vdev)
 	if (xen_domain())
 		return true;
 
+#ifdef CONFIG_ARM64
+	return true;
+#else
 	return false;
+#endif
 }
 
 /*
