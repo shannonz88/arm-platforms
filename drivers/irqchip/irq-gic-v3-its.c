@@ -103,6 +103,7 @@ struct its_node {
 	u32			ite_size;
 	u32			device_ids;
 	int			numa_node;
+	bool			is_v4;
 };
 
 #define ITS_ITT_ALIGN		SZ_256
@@ -134,6 +135,8 @@ static LIST_HEAD(its_nodes);
 static DEFINE_SPINLOCK(its_lock);
 static struct rdists *gic_rdists;
 static struct irq_domain *its_parent;
+
+static unsigned long its_list_map;
 
 #define gic_data_rdist()		(raw_cpu_ptr(gic_rdists->rdist))
 #define gic_data_rdist_rd_base()	(gic_data_rdist()->rd_base)
@@ -1661,8 +1664,8 @@ static int __init its_probe_one(struct resource *res,
 {
 	struct its_node *its;
 	void __iomem *its_base;
-	u32 val;
-	u64 baser, tmp;
+	u32 val, ctlr;
+	u64 baser, tmp, typer;
 	int err;
 
 	its_base = ioremap(res->start, resource_size(res));
@@ -1695,9 +1698,44 @@ static int __init its_probe_one(struct resource *res,
 	raw_spin_lock_init(&its->lock);
 	INIT_LIST_HEAD(&its->entry);
 	INIT_LIST_HEAD(&its->its_device_list);
+	typer = gic_read_typer(its_base + GITS_TYPER);
 	its->base = its_base;
 	its->phys_base = res->start;
-	its->ite_size = ((gic_read_typer(its_base + GITS_TYPER) >> 4) & 0xf) + 1;
+	its->ite_size = ((typer >> 4) & 0xf) + 1;
+	its->is_v4 = !!(typer & GITS_TYPER_VLPIS);
+	if (its->is_v4 && !(typer & GITS_TYPER_VMOVP)) {
+		int its_number;
+
+		its_number = find_first_zero_bit(&its_list_map, 16);
+		if (its_number >= 16) {
+			pr_err("ITS@%pa: No ITSList entry available!\n",
+			       &res->start);
+			err = -EINVAL;
+			goto out_free_its;
+		}
+
+		ctlr = readl_relaxed(its_base + GITS_CTLR);
+		ctlr &= ~GITS_CTLR_ITS_NUMBER;
+		ctlr |= its_number << GITS_CTLR_ITS_NUMBER_SHIFT;
+		writel_relaxed(ctlr, its_base + GITS_CTLR);
+		ctlr = readl_relaxed(its_base + GITS_CTLR);
+		if ((ctlr & GITS_CTLR_ITS_NUMBER) != (its_number << GITS_CTLR_ITS_NUMBER_SHIFT)) {
+			its_number = ctlr & GITS_CTLR_ITS_NUMBER;
+			its_number >>= GITS_CTLR_ITS_NUMBER_SHIFT;
+		}
+
+		if (test_and_set_bit(its_number, &its_list_map)) {
+			pr_err("ITS@%pa: Duplicate ITSList entry %d\n",
+			       &res->start, its_number);
+			err = -EINVAL;
+			goto out_free_its;
+		}
+
+		pr_info("ITS@%pa: Using ITS number %d\n", &res->start, its_number);
+	} else {
+		pr_info("ITS@%pa: Single VMOVP capable\n", &res->start);
+	}
+
 	its->numa_node = numa_node;
 
 	its->cmd_base = kzalloc(ITS_CMD_QUEUE_SZ, GFP_KERNEL);
@@ -1743,7 +1781,8 @@ static int __init its_probe_one(struct resource *res,
 	}
 
 	gits_write_cwriter(0, its->base + GITS_CWRITER);
-	writel_relaxed(GITS_CTLR_ENABLE, its->base + GITS_CTLR);
+	ctlr = readl_relaxed(its->base + GITS_CTLR);
+	writel_relaxed(ctlr | GITS_CTLR_ENABLE, its->base + GITS_CTLR);
 
 	err = its_init_domain(handle, its);
 	if (err)
