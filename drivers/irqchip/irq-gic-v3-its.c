@@ -960,15 +960,21 @@ static inline u32 its_get_event_id(struct irq_data *d)
 	return d->hwirq - its_dev->event_map.lpi_base;
 }
 
+static inline bool its_is_vpe_lpi(struct irq_data *d)
+{
+	return !irq_desc_get_msi_desc(irq_data_to_desc(d));
+}
+
 static void lpi_update_config(struct irq_data *d, u8 clr, u8 set)
 {
-	struct its_device *its_dev = irq_data_get_irq_chip_data(d);
 	irq_hw_number_t hwirq;
 	struct page *prop_page;
 	u8 *cfg;
 
 	if (irqd_is_forwarded_to_vcpu(d)) {
+		struct its_device *its_dev = irq_data_get_irq_chip_data(d);
 		u32 event = its_get_event_id(d);
+
 		prop_page = its_dev->event_map.vlpi_map->vpes[0]->its_vm->vprop_page;
 		hwirq = its_dev->event_map.vlpi_map->vlpis[event].vintid;
 	} else {
@@ -989,7 +995,18 @@ static void lpi_update_config(struct irq_data *d, u8 clr, u8 set)
 		gic_flush_dcache_to_poc(cfg, sizeof(*cfg));
 	else
 		dsb(ishst);
-	its_send_inv(its_dev, its_get_event_id(d));
+
+	if (!its_is_vpe_lpi(d)) {
+		struct its_device *its_dev = irq_data_get_irq_chip_data(d);
+
+		its_send_inv(its_dev, its_get_event_id(d));
+	} else {
+		struct its_vpe *vpe = irq_data_get_irq_chip_data(d);
+		void __iomem *rdbase;
+
+		rdbase = per_cpu_ptr(gic_rdists->rdist, vpe->col_idx)->rd_base;
+		gic_write_invlpir(d->hwirq, rdbase + GICR_INVLPIR);
+	}
 }
 
 static void its_vlpi_set_doorbell(struct irq_data *d, bool enable)
@@ -2239,6 +2256,9 @@ static int its_vpe_set_vcpu_affinity(struct irq_data *d, void *vcpu_info)
 
 static struct irq_chip its_vpe_irq_chip = {
 	.name			= "GICv4-vpe",
+	.irq_mask		= its_mask_irq,
+	.irq_unmask		= its_unmask_irq,
+	.irq_eoi		= irq_chip_eoi_parent,
 	.irq_set_affinity	= its_vpe_set_affinity,
 	.irq_set_vcpu_affinity	= its_vpe_set_vcpu_affinity,
 };
