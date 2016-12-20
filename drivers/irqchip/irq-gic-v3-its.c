@@ -1947,6 +1947,13 @@ static const struct irq_domain_ops its_domain_ops = {
 	.deactivate		= its_irq_domain_deactivate,
 };
 
+static struct irq_chip its_vpe_irq_chip = {
+	.name			= "GICv4-vpe",
+};
+
+static const struct irq_domain_ops its_vpe_domain_ops = {
+};
+
 static int its_force_quiescent(void __iomem *base)
 {
 	u32 count = 1000000;	/* 1s */
@@ -2061,6 +2068,27 @@ static int its_init_domain(struct fwnode_handle *handle, struct its_node *its)
 	inner_domain->host_data = info;
 
 	return 0;
+}
+
+static struct irq_domain *its_init_vpe_domain(void)
+{
+	struct fwnode_handle *handle;
+	struct irq_domain *domain;
+
+	handle = irq_domain_alloc_fwnode("VPE domain");
+	if (!handle)
+		return NULL;
+
+	domain = irq_domain_create_tree(handle, &its_vpe_domain_ops, NULL);
+	if (!domain) {
+		kfree(handle);
+		return NULL;
+	}
+
+	domain->parent = its_parent;
+	domain->bus_token = DOMAIN_BUS_NEXUS;
+
+	return domain;
 }
 
 static int __init its_compute_its_list_map(struct resource *res,
@@ -2328,6 +2356,8 @@ int __init its_init(struct fwnode_handle *handle, struct rdists *rdists,
 		    struct irq_domain *parent_domain)
 {
 	struct device_node *of_node;
+	struct its_node *its;
+	bool has_v4 = false;
 
 	its_parent = parent_domain;
 	of_node = to_of_node(handle);
@@ -2344,6 +2374,12 @@ int __init its_init(struct fwnode_handle *handle, struct rdists *rdists,
 	gic_rdists = rdists;
 	its_alloc_lpi_tables();
 	its_lpi_init(rdists->id_bits);
+
+	list_for_each_entry(its, &its_nodes, entry)
+		has_v4 |= its->is_v4;
+
+	if (has_v4 & rdists->has_vlpis)
+		its_init_vpe_domain();
 
 	return 0;
 }
