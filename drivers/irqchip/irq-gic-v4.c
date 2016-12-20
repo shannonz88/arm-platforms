@@ -109,3 +109,34 @@ void its_free_vcpu_irqs(struct its_vm *vm, int nr_vpes)
 
 	irq_domain_free_irqs(irq, nr_vpes);
 }
+
+static int its_send_vpe_cmd(struct its_vpe *vpe, struct its_cmd_info *info)
+{
+	unsigned int irq;
+	irq_hw_number_t hwirq;
+
+	WARN_ON(preemptible());
+
+	hwirq = vpe->vpe_db_lpi - vpe->its_vm->db_lpi_base;
+	irq = irq_find_mapping(vpe->its_vm->domain, hwirq);
+
+	return irq_set_vcpu_affinity(irq, info);
+}
+
+int its_schedule_vpe(struct its_vpe *vpe, bool on)
+{
+	struct its_cmd_info info;
+
+	info.cmd_type = on ? SCHEDULE_VPE : DESCHEDULE_VPE;
+
+	return its_send_vpe_cmd(vpe, &info);
+}
+
+int its_invall_vpe(struct its_vpe *vpe)
+{
+	struct its_cmd_info info = {
+		.cmd_type = INVALL_VPE,
+	};
+
+	return its_send_vpe_cmd(vpe, &info);
+}
