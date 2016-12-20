@@ -133,6 +133,9 @@ struct its_device {
 	u32			device_id;
 };
 
+static struct its_device *vpe_proxy_dev;
+static DEFINE_RAW_SPINLOCK(vpe_proxy_dev_lock);
+
 static LIST_HEAD(its_nodes);
 static DEFINE_SPINLOCK(its_lock);
 static struct rdists *gic_rdists;
@@ -1004,8 +1007,35 @@ static void lpi_update_config(struct irq_data *d, u8 clr, u8 set)
 		struct its_vpe *vpe = irq_data_get_irq_chip_data(d);
 		void __iomem *rdbase;
 
-		rdbase = per_cpu_ptr(gic_rdists->rdist, vpe->col_idx)->rd_base;
-		gic_write_invlpir(d->hwirq, rdbase + GICR_INVLPIR);
+		if (gic_rdists->has_direct_lpi) {
+			rdbase = per_cpu_ptr(gic_rdists->rdist, vpe->col_idx)->rd_base;
+			gic_write_invlpir(d->hwirq, rdbase + GICR_INVLPIR);
+		} else {
+			/*
+			 * This is insane.
+			 *
+			 * If a GICv4 doesn't implement Direct LPIs,
+			 * the only way to perform an invalidate is to
+			 * use a fake device to issue a MAP/INV/UNMAP
+			 * sequence. Since each of these commands has
+			 * a sync operation, this is really fast. Not.
+			 *
+			 * We always use event 0, and this serialize
+			 * all VPE invalidations in the system.
+			 *
+			 * Broken by design(tm).
+			 */
+			unsigned long flags;
+
+			raw_spin_lock_irqsave(&vpe_proxy_dev_lock, flags);
+
+			vpe_proxy_dev->event_map.col_map[0] = vpe->col_idx;
+			its_send_mapti(vpe_proxy_dev, vpe->vpe_db_lpi, 0);
+			its_send_inv(vpe_proxy_dev, 0);
+			its_send_discard(vpe_proxy_dev, 0);
+
+			raw_spin_unlock_irqrestore(&vpe_proxy_dev_lock, flags);
+		}
 	}
 }
 
@@ -2013,6 +2043,14 @@ static int its_msi_prepare(struct irq_domain *domain, struct device *dev,
 	msi_info = msi_get_domain_info(domain);
 	its = msi_info->data;
 
+	if (its->is_v4 && !gic_rdists->has_direct_lpi &&
+	    dev_id == vpe_proxy_dev->device_id) {
+		/* Bad luck. Get yourself a better implementation */
+		WARN_ONCE(1, "DevId %x clashes with GICv4 VPE proxy device\n",
+			  dev_id);
+		return -EINVAL;
+	}
+
 	its_dev = its_find_device(its, dev_id);
 	if (its_dev) {
 		/*
@@ -2539,6 +2577,31 @@ static struct irq_domain *its_init_vpe_domain(void)
 {
 	struct fwnode_handle *handle;
 	struct irq_domain *domain;
+
+	if (gic_rdists->has_direct_lpi) {
+		pr_info("ITS: Using DirectLPI for VPE invalidation\n");
+	} else {
+		struct its_node *its;
+
+		list_for_each_entry(its, &its_nodes, entry) {
+			u32 devid;
+
+			if (!its->is_v4)
+				continue;
+
+			/* Use the last possible DevID */
+			devid = GENMASK(its->device_ids - 1, 0);
+			vpe_proxy_dev = its_create_device(its, devid, 1);
+			if (!vpe_proxy_dev) {
+				pr_err("ITS: Can't allocate GICv4 proxy device\n");
+				return NULL;
+			}
+
+			pr_info("ITS: Allocated DevID %x as GICv4 proxy device\n",
+				devid);
+			break;
+		}
+	}
 
 	handle = irq_domain_alloc_fwnode("VPE domain");
 	if (!handle)
