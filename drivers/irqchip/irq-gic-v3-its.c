@@ -2907,7 +2907,7 @@ int __init its_init(struct fwnode_handle *handle, struct rdists *rdists,
 		has_v4 |= its->is_v4;
 
 	if (has_v4 & rdists->has_vlpis)
-		its_init_vpe_domain();
+		its_init_v4(its_init_vpe_domain());
 
 	return 0;
 }

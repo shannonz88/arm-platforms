@@ -229,3 +229,14 @@ int its_prop_update_vlpi(int irq, u8 config)
 
 	return irq_set_vcpu_affinity(irq, &info);
 }
+
+void its_init_v4(struct irq_domain *domain)
+{
+	if (domain) {
+		pr_info("ITS: Enabling GICv4 support\n");
+		its_vpe_domain = domain;
+		return;
+	}
+
+	pr_err("ITS: No GICv4 VPE domain allocated\n");
+}
