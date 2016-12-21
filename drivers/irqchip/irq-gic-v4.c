@@ -140,3 +140,32 @@ int its_invall_vpe(struct its_vpe *vpe)
 
 	return its_send_vpe_cmd(vpe, &info);
 }
+
+int its_map_vlpi(int irq, struct its_vlpi_map *map)
+{
+	struct its_cmd_info info = {
+		.cmd_type = MAP_VLPI,
+		.map      = map,
+	};
+
+	return irq_set_vcpu_affinity(irq, &info);
+}
+
+int its_unmap_vlpi(int irq)
+{
+	struct its_cmd_info info = {
+		.cmd_type = UNMAP_VLPI,
+	};
+
+	return irq_set_vcpu_affinity(irq, &info);
+}
+
+int its_prop_update_vlpi(int irq, u8 config)
+{
+	struct its_cmd_info info = {
+		.cmd_type = PROP_UPDATE_VLPI,
+		.config   = config,
+	};
+
+	return irq_set_vcpu_affinity(irq, &info);
+}
