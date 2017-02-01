@@ -558,7 +558,20 @@ static struct sys64_hook sys64_hooks[] = {
 
 
 #ifdef CONFIG_COMPAT
+static void compat_cntfrq_read_handler(unsigned int esr, struct pt_regs *regs)
+{
+	int reg = (esr & ESR_ELx_CP15_32_ISS_RT_MASK) >> ESR_ELx_CP15_32_ISS_RT_SHIFT;
+
+	regs->user_regs.regs[reg] = arch_timer_get_rate();
+	regs->pc += 4;
+}
+
 static struct sys64_hook cp15_32_hooks[] = {
+	{
+		.esr_mask = ESR_ELx_CP15_32_ISS_SYS_MASK,
+		.esr_val = ESR_ELx_CP15_32_ISS_SYS_CNTFRQ,
+		.handler = compat_cntfrq_read_handler,
+	},
 	{},
 };
 
