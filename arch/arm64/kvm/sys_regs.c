@@ -772,6 +772,7 @@ static bool access_pmswinc(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 		return true;
 	}
 
+	kvm_inject_undefined(vcpu);
 	return false;
 }
 
