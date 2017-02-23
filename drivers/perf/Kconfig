@@ -12,6 +12,7 @@ config ARM_PMU
 	  Say y if you want to use CPU performance monitors on ARM-based
 	  systems.
 
+
 config QCOM_L2_PMU
 	bool "Qualcomm Technologies L2-cache PMU"
 	depends on ARCH_QCOM && ARM64 && PERF_EVENTS && ACPI
@@ -20,6 +21,14 @@ config QCOM_L2_PMU
 	  in Qualcomm Technologies processors.
 	  Adds the L2 cache PMU into the perf events subsystem for
 	  monitoring L2 cache events.
+
+config ARM_PMUV3
+	depends on HW_PERF_EVENTS && ARM64
+	bool "ARM PMUv3 support"
+	default y
+	help
+	  Say y if you want to use CPU performance monitors on ARMv8
+	  systems that implement the PMUv3 architecture.
 
 config XGENE_PMU
         depends on PERF_EVENTS && ARCH_XGENE
