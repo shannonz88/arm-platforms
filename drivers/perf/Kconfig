@@ -23,9 +23,9 @@ config QCOM_L2_PMU
 	  monitoring L2 cache events.
 
 config ARM_PMUV3
-	depends on HW_PERF_EVENTS && ARM64
+	depends on HW_PERF_EVENTS && ((ARM && CPU_V7) || ARM64)
 	bool "ARM PMUv3 support"
-	default y
+	default ARM64
 	help
 	  Say y if you want to use CPU performance monitors on ARMv8
 	  systems that implement the PMUv3 architecture.
