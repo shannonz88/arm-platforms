@@ -354,6 +354,8 @@
  */
 #define ICC_CTLR_EL1_EOImode_drop_dir	(0U << 1)
 #define ICC_CTLR_EL1_EOImode_drop	(1U << 1)
+#define ICC_SRE_EL1_DIB			(1U << 2)
+#define ICC_SRE_EL1_DFB			(1U << 1)
 #define ICC_SRE_EL1_SRE			(1U << 0)
 
 /*
