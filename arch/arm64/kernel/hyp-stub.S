@@ -61,12 +61,7 @@ el1_sync:
 	cmp	x30, #ESR_ELx_EC_HVC64
 	b.ne	9f				// Not an HVC trap
 
-	cmp	x0, #HVC_GET_VECTORS
-	b.ne	1f
-	mrs	x0, vbar_el2
-	b	9f
-
-1:	cmp	x0, #HVC_SET_VECTORS
+	cmp	x0, #HVC_SET_VECTORS
 	b.ne	2f
 	msr	vbar_el2, x1
 	b	9f
@@ -123,14 +118,6 @@ ENDPROC(\label)
  * so you will need to set that to something sensible at the new hypervisor's
  * initialisation entry point.
  */
-
-ENTRY(__hyp_get_vectors)
-	str	lr, [sp, #-16]!
-	mov	x0, #HVC_GET_VECTORS
-	hvc	#0
-	ldr	lr, [sp], #16
-	ret
-ENDPROC(__hyp_get_vectors)
 
 ENTRY(__hyp_set_vectors)
 	str	lr, [sp, #-16]!
