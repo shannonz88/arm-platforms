@@ -560,10 +560,19 @@ static void virtio_pci_remove(struct pci_dev *pci_dev)
 	put_device(dev);
 }
 
+static void virtio_pci_shutdown(struct pci_dev *pci_dev)
+{
+	struct virtio_pci_device *vp_dev = pci_get_drvdata(pci_dev);
+
+	if (vp_dev->msix_enabled)
+		vp_del_vqs(&vp_dev->vdev);
+}
+
 static struct pci_driver virtio_pci_driver = {
 	.name		= "virtio-pci",
 	.id_table	= virtio_pci_id_table,
 	.probe		= virtio_pci_probe,
+	.shutdown	= virtio_pci_shutdown,
 	.remove		= virtio_pci_remove,
 #ifdef CONFIG_PM_SLEEP
 	.driver.pm	= &virtio_pci_pm_ops,
