@@ -39,8 +39,8 @@ void kvm_skip_instr32(struct kvm_vcpu *vcpu, bool is_wide_instr);
 
 void kvm_inject_undefined(struct kvm_vcpu *vcpu);
 void kvm_inject_vabt(struct kvm_vcpu *vcpu);
-void kvm_inject_dabt(struct kvm_vcpu *vcpu, unsigned long addr);
-void kvm_inject_pabt(struct kvm_vcpu *vcpu, unsigned long addr);
+void kvm_inject_dabt(struct kvm_vcpu *vcpu);
+void kvm_inject_pabt(struct kvm_vcpu *vcpu);
 
 static inline void vcpu_reset_hcr(struct kvm_vcpu *vcpu)
 {
