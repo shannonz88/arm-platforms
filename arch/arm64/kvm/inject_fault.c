@@ -68,11 +68,15 @@ static void inject_undef32(struct kvm_vcpu *vcpu)
 	prepare_fault32(vcpu, COMPAT_PSR_MODE_UND, 4);
 }
 
+static u8 fsc_aarch64_to_32[] = {
+	[ESR_ELx_FSC_EXTABT]	= 0x08,
+};
+
 /*
  * Modelled after TakeDataAbortException() and TakePrefetchAbortException
  * pseudocode.
  */
-static void inject_abt32(struct kvm_vcpu *vcpu, bool is_pabt)
+static void inject_abt32(struct kvm_vcpu *vcpu, bool is_pabt, u8 fsc)
 {
 	u32 vect_offset;
 	u32 *far, *fsr;
@@ -92,12 +96,11 @@ static void inject_abt32(struct kvm_vcpu *vcpu, bool is_pabt)
 
 	*far = kvm_vcpu_get_hfar(vcpu);
 
-	/* Give the guest an IMPLEMENTATION DEFINED exception */
 	is_lpae = (vcpu_cp15(vcpu, c2_TTBCR) >> 31);
 	if (is_lpae)
-		*fsr = 1 << 9 | 0x34;
+		*fsr = 1 << 9 | fsc;
 	else
-		*fsr = 0x14;
+		*fsr = fsc_aarch64_to_32[fsc];
 }
 
 enum exception_type {
@@ -128,7 +131,7 @@ static u64 get_except_vector(struct kvm_vcpu *vcpu, enum exception_type type)
 	return vcpu_sys_reg(vcpu, VBAR_EL1) + exc_offset + type;
 }
 
-static void inject_abt64(struct kvm_vcpu *vcpu, bool is_iabt)
+static void inject_abt64(struct kvm_vcpu *vcpu, bool is_iabt, u8 fsc)
 {
 	unsigned long cpsr = *vcpu_cpsr(vcpu);
 	bool is_aarch32 = vcpu_mode_is_32bit(vcpu);
@@ -161,7 +164,7 @@ static void inject_abt64(struct kvm_vcpu *vcpu, bool is_iabt)
 	if (!is_iabt)
 		esr |= ESR_ELx_EC_DABT_LOW << ESR_ELx_EC_SHIFT;
 
-	vcpu_sys_reg(vcpu, ESR_EL1) = esr | ESR_ELx_FSC_EXTABT;
+	vcpu_sys_reg(vcpu, ESR_EL1) = esr | fsc;
 }
 
 static void inject_undef64(struct kvm_vcpu *vcpu)
@@ -195,9 +198,9 @@ static void inject_undef64(struct kvm_vcpu *vcpu)
 void kvm_inject_dabt(struct kvm_vcpu *vcpu)
 {
 	if (!(vcpu->arch.hcr_el2 & HCR_RW))
-		inject_abt32(vcpu, false);
+		inject_abt32(vcpu, false, ESR_ELx_FSC_EXTABT);
 	else
-		inject_abt64(vcpu, false);
+		inject_abt64(vcpu, false, ESR_ELx_FSC_EXTABT);
 }
 
 /**
@@ -210,9 +213,9 @@ void kvm_inject_dabt(struct kvm_vcpu *vcpu)
 void kvm_inject_pabt(struct kvm_vcpu *vcpu)
 {
 	if (!(vcpu->arch.hcr_el2 & HCR_RW))
-		inject_abt32(vcpu, true);
+		inject_abt32(vcpu, true, ESR_ELx_FSC_EXTABT);
 	else
-		inject_abt64(vcpu, true);
+		inject_abt64(vcpu, true, ESR_ELx_FSC_EXTABT);
 }
 
 /**
