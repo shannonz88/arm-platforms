@@ -254,12 +254,14 @@ static bool __hyp_text __populate_fault_info(struct kvm_vcpu *vcpu)
 	    (__check_arm_834220()() || (esr & ESR_ELx_FSC_TYPE) == FSC_PERM)) {
 		if (!__translate_far_to_hpfar(far, &hpfar))
 			return false;
-	} else {
+		vcpu->arch.fault.hpfar_el2 = hpfar;
+	} else if (!kvm_vcpu_abt_tlbabort(vcpu)) {
 		hpfar = read_sysreg(hpfar_el2);
+		vcpu->arch.fault.hpfar_el2 = hpfar;
 	}
 
+	/* On a TLB Conflict Abort, hpfar_el2 is left unpopulated */
 	vcpu->arch.fault.far_el2 = far;
-	vcpu->arch.fault.hpfar_el2 = hpfar;
 	return true;
 }
 

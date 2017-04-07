@@ -1428,6 +1428,12 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu, struct kvm_run *run)
 	gfn_t gfn;
 	int ret, idx;
 
+	/* Check for TLB Conflict Abort */
+	if (kvm_vcpu_abt_tlbabort(vcpu)) {
+		kvm_inject_tlbabort(vcpu);
+		return 1;
+	}
+
 	is_iabt = kvm_vcpu_trap_is_iabt(vcpu);
 	if (unlikely(!is_iabt && kvm_vcpu_dabt_isextabt(vcpu))) {
 		kvm_inject_vabt(vcpu);

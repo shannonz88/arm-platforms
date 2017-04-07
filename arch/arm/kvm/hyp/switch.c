@@ -142,12 +142,14 @@ static bool __hyp_text __populate_fault_info(struct kvm_vcpu *vcpu)
 			return false; /* Translation failed, back to guest */
 
 		hpfar = ((tmp >> 12) & ((1UL << 28) - 1)) << 4;
-	} else {
+		vcpu->arch.fault.hpfar = hpfar;
+	} else if (!kvm_vcpu_abt_tlbabort(vcpu)){
 		hpfar = read_sysreg(HPFAR);
+		vcpu->arch.fault.hpfar = hpfar;
 	}
 
+	/* On a TLB Conflict Abort, hpfar is left unpopulated */
 	vcpu->arch.fault.hxfar = far;
-	vcpu->arch.fault.hpfar = hpfar;
 	return true;
 }
 

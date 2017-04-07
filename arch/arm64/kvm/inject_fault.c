@@ -69,7 +69,11 @@ static void inject_undef32(struct kvm_vcpu *vcpu)
 }
 
 static u8 fsc_aarch64_to_32[] = {
+	[ESR_ELx_FSC_ACCESS]	= 0x03,
 	[ESR_ELx_FSC_EXTABT]	= 0x08,
+	[ESR_ELx_FSC_FAULT]	= 0x05,
+	[ESR_ELx_FSC_PERM]	= 0x0d,
+	[ESR_ELx_FSC_TLB_ABORT]	= 0x10,
 };
 
 /*
@@ -216,6 +220,23 @@ void kvm_inject_pabt(struct kvm_vcpu *vcpu)
 		inject_abt32(vcpu, true, ESR_ELx_FSC_EXTABT);
 	else
 		inject_abt64(vcpu, true, ESR_ELx_FSC_EXTABT);
+}
+
+/**
+ * kvm_inject_tlbabt - inject a TLB Conflict Abort into the guest
+ * @vcpu: The VCPU to receive the undefined exception
+ *
+ * It is assumed that this code is called from the VCPU thread and that the
+ * VCPU therefore is not currently executing guest code.
+ */
+void kvm_inject_tlbabort(struct kvm_vcpu *vcpu)
+{
+	bool is_iabt = kvm_vcpu_trap_is_iabt(vcpu);
+
+	if (!(vcpu->arch.hcr_el2 & HCR_RW))
+		inject_abt32(vcpu, is_iabt, ESR_ELx_FSC_TLB_ABORT);
+	else
+		inject_abt64(vcpu, is_iabt, ESR_ELx_FSC_TLB_ABORT);
 }
 
 /**
