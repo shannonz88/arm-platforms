@@ -72,8 +72,7 @@ static void inject_undef32(struct kvm_vcpu *vcpu)
  * Modelled after TakeDataAbortException() and TakePrefetchAbortException
  * pseudocode.
  */
-static void inject_abt32(struct kvm_vcpu *vcpu, bool is_pabt,
-			 unsigned long addr)
+static void inject_abt32(struct kvm_vcpu *vcpu, bool is_pabt)
 {
 	u32 vect_offset;
 	u32 *far, *fsr;
@@ -91,7 +90,7 @@ static void inject_abt32(struct kvm_vcpu *vcpu, bool is_pabt,
 
 	prepare_fault32(vcpu, COMPAT_PSR_MODE_ABT | COMPAT_PSR_A_BIT, vect_offset);
 
-	*far = addr;
+	*far = kvm_vcpu_get_hfar(vcpu);
 
 	/* Give the guest an IMPLEMENTATION DEFINED exception */
 	is_lpae = (vcpu_cp15(vcpu, c2_TTBCR) >> 31);
@@ -129,7 +128,7 @@ static u64 get_except_vector(struct kvm_vcpu *vcpu, enum exception_type type)
 	return vcpu_sys_reg(vcpu, VBAR_EL1) + exc_offset + type;
 }
 
-static void inject_abt64(struct kvm_vcpu *vcpu, bool is_iabt, unsigned long addr)
+static void inject_abt64(struct kvm_vcpu *vcpu, bool is_iabt)
 {
 	unsigned long cpsr = *vcpu_cpsr(vcpu);
 	bool is_aarch32 = vcpu_mode_is_32bit(vcpu);
@@ -141,7 +140,7 @@ static void inject_abt64(struct kvm_vcpu *vcpu, bool is_iabt, unsigned long addr
 	*vcpu_cpsr(vcpu) = PSTATE_FAULT_BITS_64;
 	*vcpu_spsr(vcpu) = cpsr;
 
-	vcpu_sys_reg(vcpu, FAR_EL1) = addr;
+	vcpu_sys_reg(vcpu, FAR_EL1) = kvm_vcpu_get_hfar(vcpu);
 
 	/*
 	 * Build an {i,d}abort, depending on the level and the
@@ -189,33 +188,31 @@ static void inject_undef64(struct kvm_vcpu *vcpu)
 /**
  * kvm_inject_dabt - inject a data abort into the guest
  * @vcpu: The VCPU to receive the undefined exception
- * @addr: The address to report in the DFAR
  *
  * It is assumed that this code is called from the VCPU thread and that the
  * VCPU therefore is not currently executing guest code.
  */
-void kvm_inject_dabt(struct kvm_vcpu *vcpu, unsigned long addr)
+void kvm_inject_dabt(struct kvm_vcpu *vcpu)
 {
 	if (!(vcpu->arch.hcr_el2 & HCR_RW))
-		inject_abt32(vcpu, false, addr);
+		inject_abt32(vcpu, false);
 	else
-		inject_abt64(vcpu, false, addr);
+		inject_abt64(vcpu, false);
 }
 
 /**
  * kvm_inject_pabt - inject a prefetch abort into the guest
  * @vcpu: The VCPU to receive the undefined exception
- * @addr: The address to report in the DFAR
  *
  * It is assumed that this code is called from the VCPU thread and that the
  * VCPU therefore is not currently executing guest code.
  */
-void kvm_inject_pabt(struct kvm_vcpu *vcpu, unsigned long addr)
+void kvm_inject_pabt(struct kvm_vcpu *vcpu)
 {
 	if (!(vcpu->arch.hcr_el2 & HCR_RW))
-		inject_abt32(vcpu, true, addr);
+		inject_abt32(vcpu, true);
 	else
-		inject_abt64(vcpu, true, addr);
+		inject_abt64(vcpu, true);
 }
 
 /**
