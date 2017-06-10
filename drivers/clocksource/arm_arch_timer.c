@@ -188,6 +188,22 @@ struct ate_acpi_oem_info {
 	u32 oem_revision;
 };
 
+static void __maybe_unused disable_vdso(void)
+{
+	/*
+	 * Don't use the vdso fastpath if errata require using the
+	 * out-of-line counter accessor and/or trap its access. We may
+	 * change our mind pretty late in the game (with a per-CPU
+	 * erratum, for example), so change both the default value and
+	 * the vdso itself.
+	 */
+	if (vdso_default) {
+		pr_info("Disabling VDSO direct access\n");
+		clocksource_counter.archdata.vdso_direct = false;
+		vdso_default = false;
+	}
+}
+
 #ifdef CONFIG_FSL_ERRATUM_A008585
 /*
  * The number of retries is an arbitrary value well beyond the highest number
@@ -457,16 +473,8 @@ void arch_timer_enable_workaround(const struct arch_timer_erratum_workaround *wa
 
 	static_branch_enable(&arch_timer_read_ool_enabled);
 
-	/*
-	 * Don't use the vdso fastpath if errata require using the
-	 * out-of-line counter accessor. We may change our mind pretty
-	 * late in the game (with a per-CPU erratum, for example), so
-	 * change both the default value and the vdso itself.
-	 */
-	if (wa->read_cntvct_el0) {
-		clocksource_counter.archdata.vdso_direct = false;
-		vdso_default = false;
-	}
+	if (wa->read_cntvct_el0)
+		disable_vdso();
 }
 
 static void arch_timer_check_ool_workaround(enum arch_timer_erratum_match_type type,
