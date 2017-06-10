@@ -30,6 +30,7 @@
 #include <linux/irq.h>
 
 #include <linux/atomic.h>
+#include <asm/arch_timer.h>
 #include <asm/cacheflush.h>
 #include <asm/exception.h>
 #include <asm/unistd.h>
@@ -733,6 +734,34 @@ static int __init arm_mrc_hook_init(void)
 
 late_initcall(arm_mrc_hook_init);
 
+#endif
+
+#ifdef CONFIG_ARM_ARCH_TIMER
+static int read_cntvct_trap(struct pt_regs *regs, unsigned int instr)
+{
+	int rt  = (instr >> 12) & 15;
+	int rt2 = (instr >> 16) & 15;
+	u64 val = arch_counter_get_cntvct();
+
+	regs->uregs[rt]  = lower_32_bits(val);
+	regs->uregs[rt2] = upper_32_bits(val);
+	regs->ARM_pc += 4;
+	return 0;
+}
+
+static struct undef_hook cntvct_hook = {
+	.instr_mask	= 0x0ff00fff,
+	.instr_val	= 0x0c500f1e,
+	.fn		= read_cntvct_trap,
+};
+
+static int __init arch_timer_hook_init(void)
+{
+	register_undef_hook(&cntvct_hook);
+	return 0;
+}
+
+late_initcall(arch_timer_hook_init);
 #endif
 
 /*
