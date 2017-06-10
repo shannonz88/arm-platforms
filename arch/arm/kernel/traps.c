@@ -755,9 +755,26 @@ static struct undef_hook cntvct_hook = {
 	.fn		= read_cntvct_trap,
 };
 
+static int read_cntfrq_trap(struct pt_regs *regs, unsigned int instr)
+{
+	int reg = (instr >> 12) & 15;
+	if (reg == 15)
+		return 1;
+	regs->uregs[reg] = arch_timer_get_rate();
+	regs->ARM_pc += 4;
+	return 0;
+}
+
+static struct undef_hook cntfrq_hook = {
+	.instr_mask	= 0x0fff0fff,
+	.instr_val	= 0x0e1e0f10,
+	.fn		= read_cntfrq_trap,
+};
+
 static int __init arch_timer_hook_init(void)
 {
 	register_undef_hook(&cntvct_hook);
+	register_undef_hook(&cntfrq_hook);
 	return 0;
 }
 
