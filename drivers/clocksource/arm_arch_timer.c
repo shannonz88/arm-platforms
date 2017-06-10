@@ -759,6 +759,25 @@ static void arch_timer_configure_evtstream(void)
 	arch_timer_evtstrm_enable(min(pos, 15));
 }
 
+static bool cntfrq_valid(void)
+{
+	u32 freq = arch_timer_get_cntfrq();
+
+	if (freq != arch_timer_rate) {
+		/*
+		 * If any of the CPUs disagrees on what CNTFRQ should
+		 * actually be, we end-up disabling the vdso fastpath
+		 * for the whole system.
+		 */
+		pr_warn("CPU%d: Invalid CNTFRQ (%u, expected %u)\n",
+			smp_processor_id(), freq, arch_timer_rate);
+		disable_vdso();
+		return false;
+	}
+
+	return true;
+}
+
 static void arch_counter_set_user_access(void)
 {
 	u32 cntkctl = arch_timer_get_cntkctl();
@@ -773,11 +792,12 @@ static void arch_counter_set_user_access(void)
 
 	/*
 	 * Enable user access to the virtual counter if it doesn't
-	 * need to be workaround. The vdso may have been already
-	 * disabled though.
+	 * need to be workaround, and that the frequency has been
+	 * correctly set. The vdso may have been already disabled
+	 * though.
 	 */
-	if (arch_timer_this_cpu_has_cntvct_wa())
-		pr_info("CPU%d: Trapping CNTVCT access\n", smp_processor_id());
+	if (arch_timer_this_cpu_has_cntvct_wa() || !cntfrq_valid())
+		pr_info("CPU%d: Trapping CNTVCT/CNTFRQ access\n", smp_processor_id());
 	else
 		cntkctl |= ARCH_TIMER_USR_VCT_ACCESS_EN;
 
