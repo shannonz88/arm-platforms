@@ -558,6 +558,14 @@ static struct sys64_hook sys64_hooks[] = {
 
 
 #ifdef CONFIG_COMPAT
+static struct sys64_hook cp15_32_hooks[] = {
+	{},
+};
+
+static struct sys64_hook cp15_64_hooks[] = {
+	{},
+};
+
 #define PSTATE_IT_1_0_SHIFT	25
 #define PSTATE_IT_1_0_MASK	(0x3 << PSTATE_IT_1_0_SHIFT)
 #define PSTATE_IT_7_2_SHIFT	10
@@ -629,6 +637,8 @@ static void advance_itstate(struct pt_regs *regs)
 
 asmlinkage void __exception do_cp15instr(unsigned int esr, struct pt_regs *regs)
 {
+	struct sys64_hook *hook, *hook_base;
+
 	if (!cp15_cond_valid(esr, regs)) {
 		advance_itstate(regs);
 		/*
@@ -638,6 +648,25 @@ asmlinkage void __exception do_cp15instr(unsigned int esr, struct pt_regs *regs)
 		regs->pc += 4;
 		return;
 	}
+
+	switch (ESR_ELx_EC(esr)) {
+	case ESR_ELx_EC_CP15_32:
+		hook_base = cp15_32_hooks;
+		break;
+	case ESR_ELx_EC_CP15_64:
+		hook_base = cp15_64_hooks;
+		break;
+	default:
+		do_undefinstr(regs);
+		return;
+	}
+
+	for (hook = hook_base; hook->handler; hook++)
+		if ((hook->esr_mask & esr) == hook->esr_val) {
+			hook->handler(esr, regs);
+			advance_itstate(regs);
+			return;
+		}
 
 	/*
 	 * New cp15 instructions may previously have been undefined at
