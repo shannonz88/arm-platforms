@@ -754,7 +754,7 @@ static void virq_debug_show_one(struct seq_file *m, struct irq_desc *desc)
 	domain = desc->irq_data.domain;
 	data = &desc->irq_data;
 
-	while (domain) {
+	while (domain && data) {
 		unsigned int irq = data->irq;
 		unsigned long hwirq = data->hwirq;
 		struct irq_chip *chip;
@@ -769,8 +769,7 @@ static void virq_debug_show_one(struct seq_file *m, struct irq_desc *desc)
 		chip = irq_data_get_irq_chip(data);
 		seq_printf(m, "%-15s  ", (chip && chip->name) ? chip->name : "none");
 
-		seq_printf(m, data ? "0x%p  " : "  %p  ",
-			   irq_data_get_irq_chip_data(data));
+		seq_printf(m, "0x%p  ", irq_data_get_irq_chip_data(data));
 
 		seq_printf(m, "   %c    ", (desc->action && desc->action->handler) ? '*' : ' ');
 		direct = (irq == hwirq) && (irq < domain->revmap_direct_max_irq);
