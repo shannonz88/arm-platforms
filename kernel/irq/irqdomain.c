@@ -406,6 +406,7 @@ void irq_domain_disassociate(struct irq_domain *domain, unsigned int irq)
 
 	irq_data->domain = NULL;
 	irq_data->hwirq = 0;
+	domain->mapcount--;
 
 	/* Clear reverse map for this hwirq */
 	if (hwirq < domain->revmap_size) {
@@ -457,6 +458,7 @@ int irq_domain_associate(struct irq_domain *domain, unsigned int virq,
 			domain->name = irq_data->chip->name;
 	}
 
+	domain->mapcount++;
 	if (hwirq < domain->revmap_size) {
 		domain->linear_revmap[hwirq] = virq;
 	} else {
@@ -1064,6 +1066,7 @@ static void irq_domain_insert_irq(int virq)
 		struct irq_domain *domain = data->domain;
 		irq_hw_number_t hwirq = data->hwirq;
 
+		domain->mapcount++;
 		if (hwirq < domain->revmap_size) {
 			domain->linear_revmap[hwirq] = virq;
 		} else {
@@ -1093,6 +1096,7 @@ static void irq_domain_remove_irq(int virq)
 		struct irq_domain *domain = data->domain;
 		irq_hw_number_t hwirq = data->hwirq;
 
+		domain->mapcount--;
 		if (hwirq < domain->revmap_size) {
 			domain->linear_revmap[hwirq] = 0;
 		} else {
