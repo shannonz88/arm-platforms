@@ -147,10 +147,15 @@ struct irq_domain *__irq_domain_add(struct fwnode_handle *fwnode, int size,
 			domain->name = fwid->name;
 			break;
 		}
-	} else {
-		if (fwnode && !is_fwnode_irqchip(fwnode))
-			pr_err("Invalid fwnode supplied for irqdomain\n");
+	} else if (of_node) {
+		domain->name = of_node_full_name(of_node);
+	}
 
+	if (!domain->name) {
+		if (fwnode) {
+			pr_err("Invalid fwnode type (%d) for irqdomain\n",
+			       fwnode->type);
+		}
 		domain->name = kasprintf(GFP_KERNEL, "unknown-%d",
 					 atomic_inc_return(&unknown_domains));
 		if (!domain->name) {
