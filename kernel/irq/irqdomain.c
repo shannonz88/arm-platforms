@@ -156,7 +156,24 @@ struct irq_domain *__irq_domain_add(struct fwnode_handle *fwnode, int size,
 			break;
 		}
 	} else if (of_node) {
-		domain->name = of_node_full_name(of_node);
+		char *name;
+
+		/*
+		 * DT paths contain '/', which debugfs is legitimately
+		 * unhappy about. Replace them with ':', which does
+		 * the trick and is not as offensive as '\'...
+		 */
+		name = kstrdup(of_node_full_name(of_node), GFP_KERNEL);
+		if (!name) {
+			kfree(domain);
+			return NULL;
+		}
+
+		strreplace(name, '/', ':');
+
+		domain->name = name;
+		domain->fwnode = fwnode;
+		domain->flags |= IRQ_DOMAIN_NAME_ALLOCATED;
 	}
 
 	if (!domain->name) {
