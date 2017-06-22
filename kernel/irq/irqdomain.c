@@ -1659,7 +1659,7 @@ static void debugfs_add_domain_dir(struct irq_domain *d)
 {
 	if (!d->name || !domain_dir || d->debugfs_file)
 		return;
-	d->debugfs_file = debugfs_create_file(d->name, 0x444, domain_dir, d,
+	d->debugfs_file = debugfs_create_file(d->name, 0444, domain_dir, d,
 					      &dfs_domain_ops);
 }
 
