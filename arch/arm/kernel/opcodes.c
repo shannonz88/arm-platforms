@@ -38,6 +38,21 @@ static const unsigned short cc_map[16] = {
 	0			/* NV                     */
 };
 
+#define PSR_IT_1_0_SHIFT	25
+#define PSR_IT_1_0_MASK		(0x3 << PSR_IT_1_0_SHIFT)
+#define PSR_IT_7_2_SHIFT	10
+#define PSR_IT_7_2_MASK		(0x3f << PSR_IT_7_2_SHIFT)
+
+static u32 psr_get_it_state(u32 psr)
+{
+	u32 it;
+
+	it  = (psr & PSR_IT_1_0_MASK) >> PSR_IT_1_0_SHIFT;
+	it |= ((psr & PSR_IT_7_2_MASK) >> PSR_IT_7_2_SHIFT) << 2;
+
+	return it;
+}
+
 /*
  * Returns:
  * ARM_OPCODE_CONDTEST_FAIL   - if condition fails
@@ -54,9 +69,26 @@ static const unsigned short cc_map[16] = {
  */
 asmlinkage unsigned int arm_check_condition(u32 opcode, u32 psr)
 {
-	u32 cc_bits  = opcode >> 28;
+	u32 cc_bits;
 	u32 psr_cond = psr >> 28;
 	unsigned int ret;
+
+	/*
+	 * If the CPU is in Thumb mode Thumb, extract the condition
+	 * code from psr. Otherwise, extract the condition code from
+	 * the instruction itself.
+	 */
+	if (psr & PSR_T_BIT) {
+		u32 it;
+
+		it = psr_get_it_state(psr);
+		if (!it)
+			return ARM_OPCODE_CONDTEST_PASS;
+
+		cc_bits = it >> 4;
+	} else {
+		cc_bits  = opcode >> 28;
+	}
 
 	if (cc_bits != ARM_OPCODE_CONDITION_UNCOND) {
 		if ((cc_map[cc_bits] >> (psr_cond)) & 1)
