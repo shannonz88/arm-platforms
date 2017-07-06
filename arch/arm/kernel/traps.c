@@ -462,6 +462,19 @@ asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 		instr = __mem_to_opcode_arm(instr);
 	}
 
+	/*
+	 * An UNDEF is allowed to trap even when failing its condition
+	 * code (see B1.9.2 in the ARMv7 ARM).
+	 */
+	if (arm_check_condition(instr, regs->ARM_cpsr) == ARM_OPCODE_CONDTEST_FAIL) {
+		if (thumb_mode(regs) && !is_wide_instruction(instr))
+			regs->ARM_pc += 2;
+		else
+			regs->ARM_pc +=4;
+
+		return;
+	}
+
 	if (call_undef_hook(regs, instr) == 0)
 		return;
 
