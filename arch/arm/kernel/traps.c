@@ -472,11 +472,14 @@ asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 		else
 			regs->ARM_pc +=4;
 
+		arm_advance_itstate(regs);
 		return;
 	}
 
-	if (call_undef_hook(regs, instr) == 0)
+	if (call_undef_hook(regs, instr) == 0) {
+		arm_advance_itstate(regs);
 		return;
+	}
 
 die_sig:
 #ifdef CONFIG_DEBUG_USER
