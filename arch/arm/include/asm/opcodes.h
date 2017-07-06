@@ -12,6 +12,8 @@
 #ifndef __ASSEMBLY__
 #include <linux/linkage.h>
 extern asmlinkage unsigned int arm_check_condition(u32 opcode, u32 psr);
+struct pt_regs;
+extern void arm_advance_itstate(struct pt_regs *regs);
 #endif
 
 #define ARM_OPCODE_CONDTEST_FAIL   0
