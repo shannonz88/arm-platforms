@@ -179,20 +179,9 @@ static int swp_handler(struct pt_regs *regs, unsigned int instr)
 
 	perf_sw_event(PERF_COUNT_SW_EMULATION_FAULTS, 1, regs, regs->ARM_pc);
 
-	res = arm_check_condition(instr, regs->ARM_cpsr);
-	switch (res) {
-	case ARM_OPCODE_CONDTEST_PASS:
-		break;
-	case ARM_OPCODE_CONDTEST_FAIL:
-		/* Condition failed - return to next instruction */
-		regs->ARM_pc += 4;
-		return 0;
-	case ARM_OPCODE_CONDTEST_UNCOND:
-		/* If unconditional encoding - not a SWP, undef */
+	/* If unconditional encoding - not a SWP, undef */
+	if (arm_check_condition(instr, regs->ARM_cpsr) == ARM_OPCODE_CONDTEST_UNCOND)
 		return -EFAULT;
-	default:
-		return -EINVAL;
-	}
 
 	if (current->pid != previous_pid) {
 		pr_debug("\"%s\" (%ld) uses deprecated SWP{B} instruction\n",
