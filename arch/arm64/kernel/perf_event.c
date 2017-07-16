@@ -882,9 +882,12 @@ static int armv8pmu_set_event_filter(struct hw_perf_event *event,
 	 * If we're running in hyp mode, then we *are* the hypervisor.
 	 * Therefore we ignore exclude_hv in this configuration, since
 	 * there's no hypervisor to sample anyway. This is consistent
-	 * with other architectures (x86 and Power).
+	 * with other architectures (x86 and Power). That's unless
+	 * exclude_host is set, indicating that we're configuring a VM
+	 * event. In that case, we fallback to the v8.0 behaviour,
+	 * were the kernel is running at EL1.
 	 */
-	if (is_kernel_in_hyp_mode()) {
+	if (is_kernel_in_hyp_mode() && !attr->exclude_host) {
 		if (!attr->exclude_kernel)
 			config_base |= ARMV8_PMU_INCLUDE_EL2;
 	} else {
