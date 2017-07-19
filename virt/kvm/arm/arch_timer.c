@@ -17,6 +17,7 @@
  */
 
 #include <linux/cpu.h>
+#include <linux/debugfs.h>
 #include <linux/kvm.h>
 #include <linux/kvm_host.h>
 #include <linux/interrupt.h>
@@ -31,6 +32,8 @@
 #include <kvm/arm_arch_timer.h>
 
 #include "trace.h"
+
+static DEFINE_PER_CPU(u64, irq_stats);
 
 static struct timecounter *timecounter;
 static unsigned int host_vtimer_irq;
@@ -443,12 +446,16 @@ void kvm_timer_flush_hwstate(struct kvm_vcpu *vcpu)
 void kvm_timer_sync_hwstate(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
 
 	/*
 	 * This is to cancel the background timer for the physical timer
 	 * emulation if it is set.
 	 */
 	timer_disarm(timer);
+
+	if (kvm_timer_should_fire(vtimer) && !vtimer->irq.level)
+		this_cpu_inc(irq_stats);
 
 	/*
 	 * The guest could have modified the timer registers or the timer
@@ -569,7 +576,7 @@ static int kvm_timer_dying_cpu(unsigned int cpu)
 int kvm_timer_hyp_init(void)
 {
 	struct arch_timer_kvm_info *info;
-	int err;
+	int err, cpu;
 
 	info = arch_timer_get_kvm_info();
 	timecounter = &info->timecounter;
@@ -607,6 +614,12 @@ int kvm_timer_hyp_init(void)
 	cpuhp_setup_state(CPUHP_AP_KVM_ARM_TIMER_STARTING,
 			  "kvm/arm/timer:starting", kvm_timer_starting_cpu,
 			  kvm_timer_dying_cpu);
+
+	for_each_online_cpu(cpu) {
+		char *str = kasprintf(GFP_KERNEL, "vtimer-%d", cpu);
+		debugfs_create_u64(str, 0666, NULL,
+				   per_cpu_ptr(&irq_stats, cpu));
+	}
 	return err;
 }
 
