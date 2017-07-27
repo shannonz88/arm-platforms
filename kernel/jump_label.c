@@ -170,6 +170,26 @@ static void static_key_slow_dec_cpuslocked(struct static_key *key,
 	jump_label_unlock();
 }
 
+void static_key_enable_cpuslocked(struct static_key *key)
+{
+	int count = static_key_count(key);
+
+	WARN_ON_ONCE(count < 0 || count > 1);
+
+	if (!count)
+		static_key_slow_inc_cpuslocked(key);
+}
+
+void static_key_disable_cpuslocked(struct static_key *key)
+{
+	int count = static_key_count(key);
+
+	WARN_ON_ONCE(count < 0 || count > 1);
+
+	if (count)
+		static_key_slow_dec_cpuslocked(key, 0, NULL);
+}
+
 static void __static_key_slow_dec(struct static_key *key,
 				  unsigned long rate_limit,
 				  struct delayed_work *work)
