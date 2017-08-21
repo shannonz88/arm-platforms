@@ -17,10 +17,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/acpi_iort.h>
 #include <linux/device.h>
 #include <linux/idr.h>
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
+#include <linux/of_irq.h>
 #include <linux/msi.h>
 #include <linux/slab.h>
 
@@ -205,13 +207,25 @@ platform_msi_alloc_priv_data(struct device *dev, unsigned int nvec,
 			     irq_write_msi_msg_t write_msi_msg)
 {
 	struct platform_msi_priv_data *datap;
+
+	/* Make sure we have an MSI domain to play with... */
+	if (!dev_get_msi_domain(dev)) {
+		if (is_of_node(dev->fwnode))
+			of_msi_configure(dev, dev->of_node);
+		if (is_acpi_node(dev->fwnode))
+			acpi_configure_pmsi_domain(dev);
+	}
+
+	if (!dev_get_msi_domain(dev))
+		return ERR_PTR(-ENODEV);
+
 	/*
 	 * Limit the number of interrupts to 2048 per device. Should we
 	 * need to bump this up, DEV_ID_SHIFT should be adjusted
 	 * accordingly (which would impact the max number of MSI
 	 * capable devices).
 	 */
-	if (!dev->msi_domain || !write_msi_msg || !nvec || nvec > MAX_DEV_MSIS)
+	if (!write_msi_msg || !nvec || nvec > MAX_DEV_MSIS)
 		return ERR_PTR(-EINVAL);
 
 	if (dev->msi_domain->bus_token != DOMAIN_BUS_PLATFORM_MSI) {
