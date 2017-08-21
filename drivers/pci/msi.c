@@ -36,7 +36,7 @@ static int pci_msi_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
 {
 	struct irq_domain *domain;
 
-	domain = dev_get_msi_domain(&dev->dev);
+	domain = pci_get_msi_domain(dev);
 	if (domain && irq_domain_is_hierarchy(domain))
 		return msi_domain_alloc_irqs(domain, &dev->dev, nvec);
 
@@ -47,7 +47,7 @@ static void pci_msi_teardown_msi_irqs(struct pci_dev *dev)
 {
 	struct irq_domain *domain;
 
-	domain = dev_get_msi_domain(&dev->dev);
+	domain = pci_get_msi_domain(dev);
 	if (domain && irq_domain_is_hierarchy(domain))
 		msi_domain_free_irqs(domain, &dev->dev);
 	else

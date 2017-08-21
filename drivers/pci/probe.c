@@ -796,7 +796,6 @@ static int pci_register_host_bridge(struct pci_host_bridge *bridge)
 	bus->bridge = get_device(&bridge->dev);
 	device_enable_async_suspend(bus->bridge);
 	pci_set_bus_of_node(bus);
-	pci_set_bus_msi_domain(bus);
 
 	if (!parent)
 		set_dev_node(bus->bridge, pcibus_to_node(bus));
@@ -915,7 +914,6 @@ static struct pci_bus *pci_alloc_child_bus(struct pci_bus *parent,
 	bridge->subordinate = child;
 
 add_dev:
-	pci_set_bus_msi_domain(child);
 	ret = device_register(&child->dev);
 	WARN_ON(ret < 0);
 
@@ -2031,6 +2029,19 @@ static void pci_set_msi_domain(struct pci_dev *dev)
 	dev_set_msi_domain(&dev->dev, d);
 }
 
+struct irq_domain *pci_get_msi_domain(struct pci_dev *dev)
+{
+	struct irq_domain *d;
+
+	d = pci_dev_msi_domain(dev);
+	if (!d) {
+		pci_set_msi_domain(dev);
+		d = pci_dev_msi_domain(dev);
+	}
+
+	return d;
+}
+
 void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 {
 	int ret;
@@ -2070,9 +2081,6 @@ void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 
 	ret = pcibios_add_device(dev);
 	WARN_ON(ret < 0);
-
-	/* Setup MSI irq domain */
-	pci_set_msi_domain(dev);
 
 	/* Notifier could use PCI capabilities */
 	dev->match_driver = false;
