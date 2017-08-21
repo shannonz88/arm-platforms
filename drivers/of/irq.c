@@ -694,15 +694,3 @@ struct irq_domain *of_msi_get_domain(struct device *dev,
 
 	return NULL;
 }
-
-/**
- * of_msi_configure - Set the msi_domain field of a device
- * @dev: device structure to associate with an MSI irq domain
- * @np: device node for that device
- */
-void of_msi_configure(struct device *dev, struct device_node *np)
-{
-	dev_set_msi_domain(dev,
-			   of_msi_get_domain(dev, np, DOMAIN_BUS_PLATFORM_MSI));
-}
-EXPORT_SYMBOL_GPL(of_msi_configure);

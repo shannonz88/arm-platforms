@@ -210,8 +210,12 @@ platform_msi_alloc_priv_data(struct device *dev, unsigned int nvec,
 
 	/* Make sure we have an MSI domain to play with... */
 	if (!dev_get_msi_domain(dev)) {
-		if (is_of_node(dev->fwnode))
-			of_msi_configure(dev, dev->of_node);
+		if (is_of_node(dev->fwnode)) {
+			struct irq_domain *d;
+			d = of_msi_get_domain(dev, to_of_node(dev->fwnode),
+					      DOMAIN_BUS_PLATFORM_MSI);
+			dev_set_msi_domain(dev, d);
+		}
 		if (is_acpi_node(dev->fwnode))
 			acpi_configure_pmsi_domain(dev);
 	}
