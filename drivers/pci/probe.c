@@ -2002,6 +2002,19 @@ static struct irq_domain *pci_dev_msi_domain(struct pci_dev *dev)
 	return NULL;
 }
 
+static struct irq_domain *pci_get_bus_msi_domain(struct pci_bus *bus)
+{
+	struct irq_domain *d;
+
+	d = dev_get_msi_domain(&bus->dev);
+	if (!d) {
+		pci_set_bus_msi_domain(bus);
+		d = dev_get_msi_domain(&bus->dev);
+	}
+
+	return d;
+}
+
 static void pci_set_msi_domain(struct pci_dev *dev)
 {
 	struct irq_domain *d;
@@ -2013,7 +2026,7 @@ static void pci_set_msi_domain(struct pci_dev *dev)
 	 */
 	d = pci_dev_msi_domain(dev);
 	if (!d)
-		d = dev_get_msi_domain(&dev->bus->dev);
+		d = pci_get_bus_msi_domain(dev->bus);
 
 	dev_set_msi_domain(&dev->dev, d);
 }
