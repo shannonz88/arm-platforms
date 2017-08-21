@@ -194,7 +194,6 @@ static const struct irq_domain_ops mvebu_icu_domain_ops = {
 static int mvebu_icu_probe(struct platform_device *pdev)
 {
 	struct mvebu_icu *icu;
-	struct device_node *node = pdev->dev.of_node;
 	struct device_node *gicp_dn;
 	struct resource *res;
 	phys_addr_t setspi, clrspi;
@@ -229,22 +228,22 @@ static int mvebu_icu_probe(struct platform_device *pdev)
 	icu->irq_chip.irq_set_affinity = irq_chip_set_affinity_parent;
 #endif
 
-	/*
-	 * We're probed after MSI domains have been resolved, so force
-	 * resolution here.
-	 */
-	pdev->dev.msi_domain = of_msi_get_domain(&pdev->dev, node,
-						 DOMAIN_BUS_PLATFORM_MSI);
-	if (!pdev->dev.msi_domain)
-		return -EPROBE_DEFER;
+	icu->domain = platform_msi_create_device_domain(&pdev->dev,
+							ICU_MAX_IRQS,
+							mvebu_icu_write_msg,
+							&mvebu_icu_domain_ops,
+							icu);
+	if (!icu->domain) {
+		if (!dev_get_msi_domain(&pdev->dev))
+			return -EPROBE_DEFER;
+		dev_err(&pdev->dev, "Failed to create ICU domain\n");
+		return -ENOMEM;
+	}
 
-	gicp_dn = irq_domain_get_of_node(pdev->dev.msi_domain);
-	if (!gicp_dn)
-		return -ENODEV;
-
+	gicp_dn = irq_domain_get_of_node(dev_get_msi_domain(&pdev->dev));
 	ret = mvebu_gicp_get_doorbells(gicp_dn, &setspi, &clrspi);
 	if (ret)
-		return ret;
+		goto out;
 
 	/* Set Clear/Set ICU SPI message address in AP */
 	writel_relaxed(upper_32_bits(setspi), icu->base + ICU_SETSPI_NSR_AH);
@@ -262,16 +261,11 @@ static int mvebu_icu_probe(struct platform_device *pdev)
 			writel_relaxed(0x0, icu->base + ICU_INT_CFG(i));
 	}
 
-	icu->domain =
-		platform_msi_create_device_domain(&pdev->dev, ICU_MAX_IRQS,
-						  mvebu_icu_write_msg,
-						  &mvebu_icu_domain_ops, icu);
-	if (!icu->domain) {
-		dev_err(&pdev->dev, "Failed to create ICU domain\n");
-		return -ENOMEM;
-	}
+out:
+	if (ret)
+		irq_domain_remove(icu->domain);
 
-	return 0;
+	return ret;
 }
 
 static const struct of_device_id mvebu_icu_of_match[] = {
