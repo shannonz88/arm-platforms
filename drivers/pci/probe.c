@@ -696,56 +696,6 @@ static void pci_set_bus_speed(struct pci_bus *bus)
 	}
 }
 
-static struct irq_domain *pci_host_bridge_msi_domain(struct pci_bus *bus)
-{
-	struct irq_domain *d;
-
-	/*
-	 * Any firmware interface that can resolve the msi_domain
-	 * should be called from here.
-	 */
-	d = pci_host_bridge_of_msi_domain(bus);
-	if (!d)
-		d = pci_host_bridge_acpi_msi_domain(bus);
-
-#ifdef CONFIG_PCI_MSI_IRQ_DOMAIN
-	/*
-	 * If no IRQ domain was found via the OF tree, try looking it up
-	 * directly through the fwnode_handle.
-	 */
-	if (!d) {
-		struct fwnode_handle *fwnode = pci_root_bus_fwnode(bus);
-
-		if (fwnode)
-			d = irq_find_matching_fwnode(fwnode,
-						     DOMAIN_BUS_PCI_MSI);
-	}
-#endif
-
-	return d;
-}
-
-static void pci_set_bus_msi_domain(struct pci_bus *bus)
-{
-	struct irq_domain *d;
-	struct pci_bus *b;
-
-	/*
-	 * The bus can be a root bus, a subordinate bus, or a virtual bus
-	 * created by an SR-IOV device.  Walk up to the first bridge device
-	 * found or derive the domain from the host bridge.
-	 */
-	for (b = bus, d = NULL; !d && !pci_is_root_bus(b); b = b->parent) {
-		if (b->self)
-			d = dev_get_msi_domain(&b->self->dev);
-	}
-
-	if (!d)
-		d = pci_host_bridge_msi_domain(b);
-
-	dev_set_msi_domain(&bus->dev, d);
-}
-
 static int pci_register_host_bridge(struct pci_host_bridge *bridge)
 {
 	struct device *parent = bridge->dev.parent;
@@ -1970,76 +1920,6 @@ static void pci_init_capabilities(struct pci_dev *dev)
 
 	/* Advanced Error Reporting */
 	pci_aer_init(dev);
-}
-
-/*
- * This is the equivalent of pci_host_bridge_msi_domain that acts on
- * devices. Firmware interfaces that can select the MSI domain on a
- * per-device basis should be called from here.
- */
-static struct irq_domain *pci_dev_msi_domain(struct pci_dev *dev)
-{
-	struct irq_domain *d;
-
-	/*
-	 * If a domain has been set through the pcibios_add_device
-	 * callback, then this is the one (platform code knows best).
-	 */
-	d = dev_get_msi_domain(&dev->dev);
-	if (d)
-		return d;
-
-	/*
-	 * Let's see if we have a firmware interface able to provide
-	 * the domain.
-	 */
-	d = pci_msi_get_device_domain(dev);
-	if (d)
-		return d;
-
-	return NULL;
-}
-
-static struct irq_domain *pci_get_bus_msi_domain(struct pci_bus *bus)
-{
-	struct irq_domain *d;
-
-	d = dev_get_msi_domain(&bus->dev);
-	if (!d) {
-		pci_set_bus_msi_domain(bus);
-		d = dev_get_msi_domain(&bus->dev);
-	}
-
-	return d;
-}
-
-static void pci_set_msi_domain(struct pci_dev *dev)
-{
-	struct irq_domain *d;
-
-	/*
-	 * If the platform or firmware interfaces cannot supply a
-	 * device-specific MSI domain, then inherit the default domain
-	 * from the host bridge itself.
-	 */
-	d = pci_dev_msi_domain(dev);
-	if (!d)
-		d = pci_get_bus_msi_domain(dev->bus);
-
-	dev_set_msi_domain(&dev->dev, d);
-}
-
-struct irq_domain *pci_get_msi_domain(struct pci_dev *dev)
-{
-	struct irq_domain *d;
-
-	d = pci_dev_msi_domain(dev);
-	if (!d) {
-		pci_set_msi_domain(dev);
-		d = pci_dev_msi_domain(dev);
-	}
-
-	return d;
 }
 
 void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
